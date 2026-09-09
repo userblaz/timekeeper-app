@@ -161,6 +161,7 @@ function saveEditReading(watchId, id){
   else delete r.isReset;
   editingReadingId = null;
   saveState();
+}
 
 function deleteReading(watchId, id){
   const w = state.watches.find(x => x.id === watchId);
@@ -185,3 +186,4 @@ function deleteWatch(watchId){
     state.activeId = state.watches[0] ? state.watches[0].id : null;
   }
   saveState();
+}
