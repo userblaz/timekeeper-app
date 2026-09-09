@@ -26,8 +26,10 @@ function render(){
   if(existingDriftScroll) driftScrollLeft = existingDriftScroll.scrollLeft;
 
   const watch = activeWatch();
+  const tabsSlotEl0 = document.getElementById('tabsSlot');
 
   if(activeTab === 'clock'){
+    if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
     root.innerHTML = buildClockTabHtml();
     attachHandlers(watch);
     updateAnalogClock();
@@ -35,6 +37,7 @@ function render(){
     return;
   }
   if(activeTab === 'timegrapher'){
+    if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
     root.innerHTML = buildTimegrapherTabHtml();
     attachHandlers(watch);
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
@@ -154,7 +157,6 @@ function render(){
   }
 
   root.innerHTML = `
-    <div class="tabs">${tabsHtml}</div>
     ${bodyHtml}
     <div class="footer-row" style="flex-direction:column;align-items:stretch;gap:10px;">
       <div style="display:flex;gap:8px;">
@@ -167,6 +169,9 @@ function render(){
       <span class="status ${saveStatus==='error'?'err':''}">${saveStatus==='saving'?'saving…':saveStatus==='error'?'save failed — storage may be full or blocked':(lastExportAt ? 'backed up ' + lastExportAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : 'stored on this device only')}</span>
     </div>
   `;
+
+  const tabsSlotEl = document.getElementById('tabsSlot');
+  if(tabsSlotEl) tabsSlotEl.innerHTML = `<div class="tabs">${tabsHtml}</div>`;
 
   attachHandlers(watch);
 
