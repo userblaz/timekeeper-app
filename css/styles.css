@@ -415,7 +415,7 @@
     gap:10px;
   }
   .row2 .field{flex:1;}
-  input[type="date"], input[type="number"], input[type="text"]{
+  input[type="date"], input[type="number"], input[type="text"], input[type="email"]{
     font-family:'Inter',sans-serif;
     font-size:14px;
     padding:11px 13px;
@@ -701,3 +701,58 @@
     color:var(--grey);
   }
   .status.err{color:var(--bad);}
+
+  /* --- auth screen (login/signup) --- */
+  #authScreen{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    padding:24px;
+  }
+  .auth-box{
+    width:100%;
+    max-width:340px;
+    text-align:center;
+  }
+  .auth-box h1{
+    font-family:'Inter',sans-serif;
+    font-weight:900;
+    font-size:22px;
+    color:var(--ink);
+    margin:0 0 6px;
+  }
+  .auth-box p{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    color:var(--grey);
+    margin:0 0 20px;
+  }
+  .auth-box .field{
+    text-align:left;
+    margin-bottom:14px;
+  }
+  .auth-box .btn-primary{
+    width:100%;
+  }
+  .auth-status{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    color:var(--grey);
+    margin-top:12px;
+    min-height:16px;
+  }
+
+  /* --- sign out button, tucked into the title block --- */
+  .signout-btn{
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+    color:var(--grey);
+    background:none;
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:4px 12px;
+    margin-top:8px;
+    cursor:pointer;
+  }
+  .signout-btn:active{color:var(--ink);}
