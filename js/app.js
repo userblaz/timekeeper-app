@@ -503,7 +503,7 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
   };
 });
 
-// --- bootstrap (must run after every other file above has loaded) ---
-loadState();
-syncTrueTime();
-setInterval(syncTrueTime, 5 * 60 * 1000);
+// --- bootstrap ---
+// loadState()/syncTrueTime() are no longer called from here. Since the app
+// is now gated behind login, js/auth.js triggers them once a session is
+// confirmed — see handleSignedIn() there.
