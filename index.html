@@ -17,11 +17,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 </head>
+<body>
 <div class="app" id="app">
+  <div class="app-title">
+    <h1>Timekeeper</h1>
+    <p>one of the best watch tools made in Semedela</p>
+  </div>
   <div id="clockSentinel" style="height:1px;"></div>
-  <div class="master-clock-box" id="masterClockBox">
-    <div class="master-clock-label" id="masterClockLabel">reference time · syncing…</div>
-    <div class="master-clock" id="masterClock">--:--:--</div>
+  <div id="stickyHeader">
+    <div class="master-clock-box" id="masterClockBox">
+      <div class="master-clock-label" id="masterClockLabel">reference time · syncing…</div>
+      <div class="master-clock" id="masterClock">--:--:--</div>
+    </div>
+    <div id="tabsSlot"></div>
   </div>
   <div id="root">Loading…</div>
 </div>
@@ -61,7 +69,6 @@
     <span>Clock</span>
   </button>
 </div>
-
 
 <script src="js/utils.js"></script>
 <script src="js/data.js"></script>
