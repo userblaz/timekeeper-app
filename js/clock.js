@@ -86,11 +86,17 @@ async function syncTrueTime(){
   if(labelEl) labelEl.textContent = 'reference time · syncing…';
   try{
     const t0 = Date.now();
-    const res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { cache: 'no-store' });
+    const res = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Etc/UTC', { cache: 'no-store' });
     const t1 = Date.now();
     if(!res.ok) throw new Error('bad response');
     const data = await res.json();
-    const serverMs = Date.parse(data.datetime);
+    // Build the timestamp from individual UTC fields rather than parsing
+    // the dateTime string directly — timeapi.io's dateTime has no 'Z' or
+    // offset suffix, so Date.parse() would misinterpret it as local time.
+    const serverMs = Date.UTC(
+      data.year, data.month - 1, data.day,
+      data.hour, data.minute, data.seconds, data.milliSeconds || 0
+    );
     if(isNaN(serverMs)) throw new Error('bad datetime');
     const roundTrip = t1 - t0;
     const estimatedServerAtT1 = serverMs + roundTrip/2;
@@ -153,6 +159,18 @@ if(clockBoxEl){
       clockTickTimeout = null;
     }
   };
+  clockBoxEl.ondblclick = (e) => {
+    e.preventDefault();
+    syncTrueTime();
+  };
+}
+
+const masterClockLabelEl = document.getElementById('masterClockLabel');
+if(masterClockLabelEl){
+  masterClockLabelEl.onclick = (e) => {
+    e.stopPropagation();
+    syncTrueTime();
+  };
 }
 
 setInterval(() => {
@@ -172,17 +190,40 @@ const clockSentinelEl = document.getElementById('clockSentinel');
 const masterClockBoxEl = document.getElementById('masterClockBox');
 const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
 
-// Continuous scroll-linked collapse: every animation frame, measure exactly
-// how far past the sentinel we've scrolled and set that as a 0–1 progress
-// value via a CSS custom property, which calc() uses to size the box.
-// This tracks the finger 1:1 (like iOS/Android collapsing headers) instead
-// of snapping between two fixed states, so there's nothing to look jumpy.
+// Discrete toggle at a single threshold, checked once per animation frame
+// but only WRITING to the DOM when the state actually changes — so the
+// (unavoidable, one-time) layout recalculation happens once per crossing,
+// not continuously. The label's opacity fade is the only continuously-
+// animated part, and that's compositor-only so it stays smooth.
+// (Note: the watch-tabs bar no longer needs its own position tracking —
+// it's now a normal flow child of the same #stickyHeader wrapper as the
+// clock, so there's no seam between them for content to show through.)
+let clockLastT = -1; // -1 forces the first frame to always write
+const clockLabelEl = document.getElementById('masterClockLabel');
+const clockDigitsEl = document.getElementById('masterClock');
+
 function clockCollapseLoop(){
   if(clockSentinelEl && masterClockBoxEl){
-    const rect = clockSentinelEl.getBoundingClientRect();
+    const rect = clockSentinelEl.getBoundingClientRect(); // single read per frame
     const distancePast = Math.max(0, -rect.bottom);
-    const t = Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE);
-    masterClockBoxEl.style.setProperty('--t', t.toFixed(3));
+    const t = Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
+    if(t !== clockLastT){
+      clockLastT = t;
+      const padTop = (26 - t*18).toFixed(1);
+      const padSide = (22 - t*4).toFixed(1);
+      const padBottom = (10 - t*2).toFixed(1);
+      masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
+      masterClockBoxEl.style.marginBottom = (12 - t*10).toFixed(1) + 'px';
+      if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
+      if(clockLabelEl){
+        const labelOpacity = Math.max(0, 1 - t*1.4);
+        clockLabelEl.style.opacity = labelOpacity.toFixed(2);
+        // once it's faded out, let clicks pass through to the pill's own
+        // sound-toggle handler instead of the (now invisible) label
+        // intercepting them for a resync tap.
+        clockLabelEl.style.pointerEvents = labelOpacity < 0.3 ? 'none' : 'auto';
+      }
+    }
   }
   requestAnimationFrame(clockCollapseLoop);
 }
