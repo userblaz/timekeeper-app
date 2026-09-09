@@ -1,36 +1,56 @@
-// Data layer: app state, localStorage persistence, watch/reading CRUD, stats.
-// This is the boundary to swap for Supabase later — everything else calls
-// these functions without knowing where the data actually lives.
+// Data layer: app state, Supabase persistence, watch/reading CRUD, stats.
+// This is the file js/auth.js swapped from localStorage to Supabase — every
+// other file still just calls these functions without knowing where the
+// data actually lives.
+//
+// currentUser and the `sb` Supabase client are defined in js/auth.js
+// (loaded after this file), but these functions are only ever called once
+// a user is signed in, so currentUser is always set by call time.
 
-const STORAGE_KEY = 'timekeeper-watches';
 let state = { watches: [], activeId: null };
 let loaded = false;
 let saveStatus = '';
 
 async function loadState(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){
-      const parsed = JSON.parse(raw);
-      state.watches = parsed.watches || [];
-      state.activeId = parsed.activeId || (state.watches[0] ? state.watches[0].id : null);
-    }
+    const { data: watchRows, error: wErr } = await sb
+      .from('watches').select('*').order('created_at', { ascending: true });
+    if(wErr) throw wErr;
+    const { data: readingRows, error: rErr } = await sb
+      .from('readings').select('*').order('date', { ascending: true });
+    if(rErr) throw rErr;
+
+    state.watches = (watchRows || []).map(w => ({
+      id: w.id,
+      name: w.name,
+      model: w.model || '',
+      reference: w.reference || '',
+      shareStats: !!w.share_stats,
+      readings: (readingRows || [])
+        .filter(r => r.watch_id === w.id)
+        .map(r => ({
+          id: r.id,
+          date: r.date,
+          offset: Number(r.offset_seconds),
+          note: r.note || '',
+          isReset: r.is_reset || undefined
+        }))
+    }));
+    state.activeId = state.watches[0] ? state.watches[0].id : null;
   }catch(e){
-    // storage unavailable or corrupted — start empty
+    // network hiccup or not signed in yet — leave state empty rather than crash
+    state.watches = [];
+    state.activeId = null;
   }
   loaded = true;
   render();
 }
 
-async function saveState(){
-  try{
-    saveStatus = 'saving';
-    render();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    saveStatus = 'saved';
-  }catch(e){
-    saveStatus = 'error';
-  }
+// No longer persists anything itself — every CRUD function below already
+// awaited its own Supabase call before updating local state. This just
+// flashes the save-status indicator the UI already shows.
+function saveState(){
+  saveStatus = 'saved';
   render();
 }
 
@@ -50,15 +70,43 @@ function exportData(){
 
 function importData(file){
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try{
       const parsed = JSON.parse(reader.result);
       if(!parsed.watches) throw new Error('bad format');
-      state.watches = parsed.watches;
-      state.activeId = parsed.activeId || (state.watches[0] ? state.watches[0].id : null);
-      saveState();
+      saveStatus = 'saving';
+      render();
+      for(const w of parsed.watches){
+        const { data: watchRow, error: wErr } = await sb.from('watches')
+          .insert({ user_id: currentUser.id, name: w.name, model: w.model || null, reference: w.reference || null })
+          .select().single();
+        if(wErr) throw wErr;
+        const newWatch = {
+          id: watchRow.id, name: watchRow.name,
+          model: watchRow.model || '', reference: watchRow.reference || '',
+          shareStats: !!watchRow.share_stats, readings: []
+        };
+        if(w.readings && w.readings.length){
+          const toInsert = w.readings.map(r => ({
+            watch_id: watchRow.id, date: r.date, offset_seconds: r.offset,
+            note: r.note || null, is_reset: !!r.isReset
+          }));
+          const { data: readingRows, error: rErr } = await sb.from('readings').insert(toInsert).select();
+          if(rErr) throw rErr;
+          newWatch.readings = readingRows.map(r => ({
+            id: r.id, date: r.date, offset: Number(r.offset_seconds),
+            note: r.note || '', isReset: r.is_reset || undefined
+          }));
+        }
+        state.watches.push(newWatch);
+      }
+      if(!state.activeId && state.watches[0]) state.activeId = state.watches[0].id;
+      saveStatus = 'saved';
+      render();
     }catch(e){
-      alert("Couldn't read that file — make sure it's a Timekeeper backup JSON.");
+      alert("Couldn't import — make sure it's a Timekeeper backup JSON.");
+      saveStatus = 'error';
+      render();
     }
   };
   reader.readAsText(file);
@@ -97,54 +145,86 @@ function overallStats(watch){
   return { avgRate, days, count: segment.length, sinceReset: lastResetIdx >= 0 };
 }
 
-function addWatch(name){
-  const w = { id: uid(), name: name.trim(), readings: [] };
+async function addWatch(name){
+  saveStatus = 'saving'; render();
+  const { data, error } = await sb.from('watches')
+    .insert({ user_id: currentUser.id, name: name.trim() })
+    .select().single();
+  if(error){ saveStatus = 'error'; render(); return; }
+  const w = {
+    id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
+    shareStats: !!data.share_stats, readings: []
+  };
   state.watches.push(w);
   state.activeId = w.id;
   saveState();
 }
 
-function addDemoWatch(){
+async function addDemoWatch(){
   const names = ['Demo Chronometer', 'Demo Diver', 'Test Watch'];
   const name = names[Math.floor(Math.random()*names.length)] + ' ' + Math.floor(Math.random()*90+10);
   const dailyRate = Math.round((Math.random()*6 - 1.5) * 10) / 10; // roughly -1.5 to +4.5 s/day
-  const w = { id: uid(), name, readings: [] };
   let offset = 0;
   const start = new Date();
   start.setDate(start.getDate() - 32);
   let dayCursor = 0;
   const gaps = [0, 3, 4, 5, 4, 6, 5, 5];
-  gaps.forEach((gap, i) => {
+  const draftReadings = gaps.map((gap, i) => {
     dayCursor += gap;
     if(i > 0){
       offset += dailyRate * gap + (Math.random()*2 - 1);
     }
     const d = new Date(start);
     d.setDate(d.getDate() + dayCursor);
-    w.readings.push({
-      id: uid(),
+    return {
       date: d.toISOString().slice(0,10),
       offset: Math.round(offset),
       note: i === 0 ? 'set to reference' : ''
-    });
+    };
   });
+
+  saveStatus = 'saving'; render();
+  const { data: watchRow, error } = await sb.from('watches')
+    .insert({ user_id: currentUser.id, name })
+    .select().single();
+  if(error){ saveStatus = 'error'; render(); return; }
+
+  const toInsert = draftReadings.map(r => ({
+    watch_id: watchRow.id, date: r.date, offset_seconds: r.offset, note: r.note || null
+  }));
+  const { data: readingRows, error: rErr } = await sb.from('readings').insert(toInsert).select();
+  if(rErr){ saveStatus = 'error'; render(); return; }
+
+  const w = {
+    id: watchRow.id, name: watchRow.name, model: '', reference: '', shareStats: false,
+    readings: readingRows.map(r => ({
+      id: r.id, date: r.date, offset: Number(r.offset_seconds), note: r.note || ''
+    }))
+  };
   state.watches.push(w);
   state.activeId = w.id;
   saveState();
 }
 
-function addReading(watchId, date, offset, note){
+async function addReading(watchId, date, offset, note){
   const w = state.watches.find(x => x.id === watchId);
   if(!w) return;
-  w.readings.push({ id: uid(), date, offset: Number(offset), note: (note||'').trim() });
+  saveStatus = 'saving'; render();
+  const { data, error } = await sb.from('readings')
+    .insert({ watch_id: watchId, date, offset_seconds: Number(offset), note: (note||'').trim() || null })
+    .select().single();
+  if(error){ saveStatus = 'error'; render(); return; }
+  w.readings.push({ id: data.id, date: data.date, offset: Number(data.offset_seconds), note: data.note || '' });
   saveState();
 }
 
 function ensureReadingIds(watch){
+  // Kept as a no-op safety net — every reading now arrives from Supabase
+  // with a real id already, so there's nothing to backfill in practice.
   watch.readings.forEach(r => { if(!r.id) r.id = uid(); });
 }
 
-function saveEditReading(watchId, id){
+async function saveEditReading(watchId, id){
   const dateEl = document.getElementById('editDate_'+id);
   const offsetEl = document.getElementById('editOffset_'+id);
   const noteEl = document.getElementById('editNote_'+id);
@@ -154,33 +234,53 @@ function saveEditReading(watchId, id){
   if(!w) return;
   const r = w.readings.find(x => x.id === id);
   if(!r) return;
-  r.date = dateEl.value;
-  r.offset = Number(offsetEl.value);
-  r.note = (noteEl ? noteEl.value : '').trim();
-  if(resetEl && resetEl.checked) r.isReset = true;
-  else delete r.isReset;
+
+  const updates = {
+    date: dateEl.value,
+    offset_seconds: Number(offsetEl.value),
+    note: (noteEl ? noteEl.value : '').trim() || null,
+    is_reset: !!(resetEl && resetEl.checked)
+  };
+  saveStatus = 'saving'; render();
+  const { error } = await sb.from('readings').update(updates).eq('id', id);
+  if(error){ saveStatus = 'error'; render(); return; }
+
+  r.date = updates.date;
+  r.offset = updates.offset_seconds;
+  r.note = updates.note || '';
+  if(updates.is_reset) r.isReset = true; else delete r.isReset;
   editingReadingId = null;
   saveState();
 }
 
-function deleteReading(watchId, id){
+async function deleteReading(watchId, id){
   const w = state.watches.find(x => x.id === watchId);
   if(!w) return;
+  saveStatus = 'saving'; render();
+  const { error } = await sb.from('readings').delete().eq('id', id);
+  if(error){ saveStatus = 'error'; render(); return; }
   w.readings = w.readings.filter(x => x.id !== id);
   editingReadingId = null;
   saveState();
 }
 
-function saveRenameWatch(id){
+async function saveRenameWatch(id){
   const inp = document.getElementById('renameInput');
   renamingWatchId = null;
   if(!inp || !inp.value.trim()){ render(); return; }
+  const newName = inp.value.trim();
+  saveStatus = 'saving'; render();
+  const { error } = await sb.from('watches').update({ name: newName }).eq('id', id);
+  if(error){ saveStatus = 'error'; render(); return; }
   const w = state.watches.find(x => x.id === id);
-  if(w) w.name = inp.value.trim();
+  if(w) w.name = newName;
   saveState();
 }
 
-function deleteWatch(watchId){
+async function deleteWatch(watchId){
+  saveStatus = 'saving'; render();
+  const { error } = await sb.from('watches').delete().eq('id', watchId);
+  if(error){ saveStatus = 'error'; render(); return; }
   state.watches = state.watches.filter(w => w.id !== watchId);
   if(state.activeId === watchId){
     state.activeId = state.watches[0] ? state.watches[0].id : null;
