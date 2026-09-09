@@ -16,7 +16,12 @@
   button, label, input, .tab{
     -webkit-text-fill-color:currentColor;
   }
-  html,body{margin:0;padding:0;}
+  html,body{
+    margin:0;
+    padding:0;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:auto;
+  }
   html{
     background:#14141C;
     color-scheme:dark;
@@ -31,17 +36,28 @@
   .app{
     max-width:480px;
     margin:0 auto;
-    padding:max(24px, env(safe-area-inset-top)) 18px calc(80px + env(safe-area-inset-bottom));
+    padding:calc(env(safe-area-inset-top) + 14px) 18px calc(80px + env(safe-area-inset-bottom));
     background:var(--bg);
     min-height:100vh;
     min-height:100dvh;
   }
+  .app-title{
+    margin-bottom:10px;
+    text-align:center;
+  }
   h1{
     font-family:'Inter',sans-serif;
     font-weight:700;
-    font-size:22px;
+    font-size:19px;
     letter-spacing:-0.3px;
     margin:0 0 2px;
+    color:var(--ink);
+  }
+  .app-title p{
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+    color:var(--accent);
+    margin:0;
   }
   .subhead{
     font-size:13px;
@@ -60,6 +76,10 @@
     scrollbar-width:none;
     margin-bottom:8px;
     border-bottom:1px solid var(--line);
+    background:var(--bg);
+    padding-top:8px;
+    padding-bottom:12px;
+    box-shadow:0 12px 12px -12px rgba(0,0,0,0.6);
   }
   .tabs::-webkit-scrollbar{display:none;}
   .tab{
@@ -448,36 +468,40 @@
     font-weight:500;
   }
 
+  #stickyHeader{
+    position:sticky;
+    top:calc(env(safe-area-inset-top) + 14px);
+    z-index:20;
+    background:var(--bg);
+  }
   .master-clock-box{
-    --t:0;
     background:var(--hero-bg);
     color:#fff;
     border-radius:20px;
-    padding:calc(10px - var(--t) * 2px) calc(22px - var(--t) * 4px);
-    margin-bottom:calc(22px - var(--t) * 20px);
-    position:sticky;
-    top:max(0px, env(safe-area-inset-top));
-    z-index:20;
+    padding:26px 22px 10px;
+    margin-bottom:12px;
     border:1px solid var(--line);
     box-shadow:0 10px 30px -10px rgba(0,0,0,0.7);
     cursor:pointer;
-    contain:layout style;
+    contain:layout style paint;
   }
   .master-clock-box.ticking{
     border-color:var(--accent);
   }
   .master-clock-label{
+    position:absolute;
+    top:8px;
+    left:0;
+    right:0;
     font-family:'Inter',sans-serif;
     font-size:11px;
     color:#A1A1AA;
-    margin-bottom:calc(4px - var(--t) * 4px);
-    max-height:calc(15px - var(--t) * 15px);
-    overflow:hidden;
-    opacity:calc(1 - var(--t));
+    text-align:center;
+    will-change:opacity;
   }
   .master-clock{
     font-family:'Inter',sans-serif;
-    font-size:calc(56px - var(--t) * 34px);
+    font-size:56px;
     font-weight:600;
     letter-spacing:0.5px;
     font-variant-numeric:tabular-nums;
@@ -485,9 +509,6 @@
     flex:1;
     text-align:center;
     line-height:1;
-  }
-  .master-clock-label{
-    will-change:opacity;
   }
 
   .quick-log-box{
