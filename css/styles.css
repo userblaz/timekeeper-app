@@ -41,7 +41,7 @@
     min-height:100dvh;
   }
   .app-title{
-    margin-top:22px;
+    margin-top:10px;
     margin-bottom:8px;
     text-align:center;
   }
@@ -768,7 +768,7 @@
     border:1px solid var(--line);
     border-radius:999px;
     padding:4px 12px;
-    margin-top:8px;
+    margin-top:6px;
     cursor:pointer;
   }
   .signout-btn:active{color:var(--ink);}
