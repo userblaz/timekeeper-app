@@ -56,6 +56,7 @@ function buildCollectionTabHtml(){
       <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
       <div class="collection-list">
         ${addHtml}
+        ${typeof buildDemoWatchButtonHtml === 'function' ? buildDemoWatchButtonHtml() : ''}
         ${watchesHtml}
       </div>
     </div>
