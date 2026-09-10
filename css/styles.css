@@ -19,7 +19,6 @@
   html,body{
     margin:0;
     padding:0;
-    -webkit-overflow-scrolling:touch;
     overscroll-behavior-y:auto;
   }
   html{
@@ -42,7 +41,8 @@
     min-height:100dvh;
   }
   .app-title{
-    margin-bottom:10px;
+    margin-top:22px;
+    margin-bottom:8px;
     text-align:center;
   }
   h1{
@@ -79,7 +79,6 @@
     background:var(--bg);
     padding-top:8px;
     padding-bottom:12px;
-    box-shadow:0 12px 12px -12px rgba(0,0,0,0.6);
   }
   .tabs::-webkit-scrollbar{display:none;}
   .tab{
@@ -470,9 +469,10 @@
 
   #stickyHeader{
     position:sticky;
-    top:calc(env(safe-area-inset-top) + 14px);
+    top:0;
     z-index:20;
     background:var(--bg);
+    padding-top:calc(env(safe-area-inset-top) + 14px);
   }
   .master-clock-box{
     background:var(--hero-bg);
@@ -483,7 +483,7 @@
     border:1px solid var(--line);
     box-shadow:0 10px 30px -10px rgba(0,0,0,0.7);
     cursor:pointer;
-    contain:layout style paint;
+    position:relative;
   }
   .master-clock-box.ticking{
     border-color:var(--accent);
@@ -497,7 +497,6 @@
     font-size:11px;
     color:#A1A1AA;
     text-align:center;
-    will-change:opacity;
   }
   .master-clock{
     font-family:'Inter',sans-serif;

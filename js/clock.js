@@ -183,7 +183,12 @@ setInterval(() => {
 }, 60);
 
 function updateClockCollapse(){
-  // kept as a no-op shim so existing render() calls to it don't error
+  // kept as a no-op shim so existing render() calls to it don't error;
+  // also used to keep the header-height spacer correct immediately after
+  // a re-render (e.g. switching watches, or switching to a tab that
+  // hides/shows the watch-tabs row), rather than waiting for the next
+  // scroll-driven animation frame.
+  if(typeof syncHeaderSpacer === 'function') syncHeaderSpacer();
 }
 
 const clockSentinelEl = document.getElementById('clockSentinel');
@@ -201,6 +206,13 @@ const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
 let clockLastT = -1; // -1 forces the first frame to always write
 const clockLabelEl = document.getElementById('masterClockLabel');
 const clockDigitsEl = document.getElementById('masterClock');
+const stickyHeaderEl = document.getElementById('stickyHeader');
+
+function syncHeaderSpacer(){
+  // no-op now that the header is position:sticky again (it reserves its
+  // own flow space automatically) — kept as a stub so existing calls
+  // don't error.
+}
 
 function clockCollapseLoop(){
   if(clockSentinelEl && masterClockBoxEl){
@@ -223,6 +235,7 @@ function clockCollapseLoop(){
         // intercepting them for a resync tap.
         clockLabelEl.style.pointerEvents = labelOpacity < 0.3 ? 'none' : 'auto';
       }
+      syncHeaderSpacer();
     }
   }
   requestAnimationFrame(clockCollapseLoop);
