@@ -83,7 +83,7 @@ function tgFormatStatsHtml(stats, isLive){
   const snrLabel = stats.snrDb < 10 ? '(weak — get closer)' : stats.snrDb < 20 ? '(ok)' : '(good)';
   return `
     <div class="tg-stat-row"><span>Detected beat rate</span><b>${stats.bph} bph</b></div>
-    <div class="tg-stat-row"><span>Rate</span><b style="color:${stats.secPerDay>=0?'#34D399':'#F87171'}">${sign}${stats.secPerDay.toFixed(1)} s/day</b></div>
+    <div class="tg-stat-row"><span>Rate</span><b style="color:${stats.secPerDay>=0?'#22C55E':'#F87171'}">${sign}${stats.secPerDay.toFixed(1)} s/day</b></div>
     <div class="tg-stat-row"><span>Beat error</span><b>${stats.beatErrorMs.toFixed(1)} ms</b></div>
     <div class="tg-stat-row"><span>Signal strength</span><b>${stats.snrDb.toFixed(0)} dB ${snrLabel}</b></div>
     <p class="hint" style="margin-top:8px;">${isLive ? 'Still listening — this will stabilize as more ticks come in.' : "Amplitude in degrees isn't shown — that needs a calibrated contact mic. Signal strength above is a rough proxy only, not a true reading."}</p>
@@ -131,7 +131,7 @@ async function tgStart(){
 function tgFlashDot(){
   const dot = document.getElementById('tgTickDot');
   if(!dot) return;
-  dot.style.background = '#34D399';
+  dot.style.background = '#22C55E';
   clearTimeout(tgFlashTimeout);
   tgFlashTimeout = setTimeout(()=>{ dot.style.background = ''; }, 90);
 }

@@ -38,7 +38,10 @@ async function loadState(){
           date: r.date,
           offset: Number(r.offset_seconds),
           note: r.note || '',
-          isReset: r.is_reset || undefined
+          isReset: r.is_reset || undefined,
+          position: r.position || '',
+          wearState: r.wear_state || '',
+          timeOfDay: r.time_of_day || ''
         }))
     }));
     state.activeId = state.watches[0] ? state.watches[0].id : null;
@@ -167,62 +170,22 @@ async function addWatch(name){
   saveState();
 }
 
-async function addDemoWatch(){
-  const names = ['Demo Chronometer', 'Demo Diver', 'Test Watch'];
-  const name = names[Math.floor(Math.random()*names.length)] + ' ' + Math.floor(Math.random()*90+10);
-  const dailyRate = Math.round((Math.random()*6 - 1.5) * 10) / 10; // roughly -1.5 to +4.5 s/day
-  let offset = 0;
-  const start = new Date();
-  start.setDate(start.getDate() - 32);
-  let dayCursor = 0;
-  const gaps = [0, 3, 4, 5, 4, 6, 5, 5];
-  const draftReadings = gaps.map((gap, i) => {
-    dayCursor += gap;
-    if(i > 0){
-      offset += dailyRate * gap + (Math.random()*2 - 1);
-    }
-    const d = new Date(start);
-    d.setDate(d.getDate() + dayCursor);
-    return {
-      date: d.toISOString().slice(0,10),
-      offset: Math.round(offset),
-      note: i === 0 ? 'set to reference' : ''
-    };
-  });
-
-  saveStatus = 'saving'; render();
-  const { data: watchRow, error } = await sb.from('watches')
-    .insert({ user_id: currentUser.id, name })
-    .select().single();
-  if(error){ saveStatus = 'error'; render(); return; }
-
-  const toInsert = draftReadings.map(r => ({
-    watch_id: watchRow.id, date: r.date, offset_seconds: r.offset, note: r.note || null
-  }));
-  const { data: readingRows, error: rErr } = await sb.from('readings').insert(toInsert).select();
-  if(rErr){ saveStatus = 'error'; render(); return; }
-
-  const w = {
-    id: watchRow.id, name: watchRow.name, model: '', reference: '', shareStats: false,
-    purchasePrice: null, purchaseDate: '', currentValue: null, photoUrl: '', conditionNotes: '',
-    readings: readingRows.map(r => ({
-      id: r.id, date: r.date, offset: Number(r.offset_seconds), note: r.note || ''
-    }))
-  };
-  state.watches.push(w);
-  state.activeId = w.id;
-  saveState();
-}
-
-async function addReading(watchId, date, offset, note){
+async function addReading(watchId, date, offset, note, conditions){
   const w = state.watches.find(x => x.id === watchId);
   if(!w) return;
+  const c = conditions || {};
   saveStatus = 'saving'; render();
   const { data, error } = await sb.from('readings')
-    .insert({ watch_id: watchId, date, offset_seconds: Number(offset), note: (note||'').trim() || null })
+    .insert({
+      watch_id: watchId, date, offset_seconds: Number(offset), note: (note||'').trim() || null,
+      position: c.position || null, wear_state: c.wearState || null, time_of_day: c.timeOfDay || null
+    })
     .select().single();
   if(error){ saveStatus = 'error'; render(); return; }
-  w.readings.push({ id: data.id, date: data.date, offset: Number(data.offset_seconds), note: data.note || '' });
+  w.readings.push({
+    id: data.id, date: data.date, offset: Number(data.offset_seconds), note: data.note || '',
+    position: data.position || '', wearState: data.wear_state || '', timeOfDay: data.time_of_day || ''
+  });
   saveState();
 }
 
@@ -237,6 +200,9 @@ async function saveEditReading(watchId, id){
   const offsetEl = document.getElementById('editOffset_'+id);
   const noteEl = document.getElementById('editNote_'+id);
   const resetEl = document.getElementById('editReset_'+id);
+  const positionEl = document.getElementById('editPosition_'+id);
+  const wearEl = document.getElementById('editWear_'+id);
+  const timeOfDayEl = document.getElementById('editTimeOfDay_'+id);
   if(!dateEl || !offsetEl || !dateEl.value || offsetEl.value === '') return;
   const w = state.watches.find(x => x.id === watchId);
   if(!w) return;
@@ -247,7 +213,10 @@ async function saveEditReading(watchId, id){
     date: dateEl.value,
     offset_seconds: Number(offsetEl.value),
     note: (noteEl ? noteEl.value : '').trim() || null,
-    is_reset: !!(resetEl && resetEl.checked)
+    is_reset: !!(resetEl && resetEl.checked),
+    position: (positionEl && positionEl.value) || null,
+    wear_state: (wearEl && wearEl.value) || null,
+    time_of_day: (timeOfDayEl && timeOfDayEl.value) || null
   };
   saveStatus = 'saving'; render();
   const { error } = await sb.from('readings').update(updates).eq('id', id);
@@ -257,6 +226,9 @@ async function saveEditReading(watchId, id){
   r.offset = updates.offset_seconds;
   r.note = updates.note || '';
   if(updates.is_reset) r.isReset = true; else delete r.isReset;
+  r.position = updates.position || '';
+  r.wearState = updates.wear_state || '';
+  r.timeOfDay = updates.time_of_day || '';
   editingReadingId = null;
   saveState();
 }
@@ -269,19 +241,6 @@ async function deleteReading(watchId, id){
   if(error){ saveStatus = 'error'; render(); return; }
   w.readings = w.readings.filter(x => x.id !== id);
   editingReadingId = null;
-  saveState();
-}
-
-async function saveRenameWatch(id){
-  const inp = document.getElementById('renameInput');
-  renamingWatchId = null;
-  if(!inp || !inp.value.trim()){ render(); return; }
-  const newName = inp.value.trim();
-  saveStatus = 'saving'; render();
-  const { error } = await sb.from('watches').update({ name: newName }).eq('id', id);
-  if(error){ saveStatus = 'error'; render(); return; }
-  const w = state.watches.find(x => x.id === id);
-  if(w) w.name = newName;
   saveState();
 }
 

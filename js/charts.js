@@ -19,7 +19,7 @@ function buildLineChart(items, opts){
   const pts = items.map((it,i) => [xAt(i), yAt(it.value)]);
   const path = pts.map((p,i)=> (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
 
-  const ticks = [max, (max+min)/2, min];
+  const ticks = [max, min + range*0.75, (max+min)/2, min + range*0.25, min];
   const gridlines = ticks.map(t => {
     const y = yAt(t);
     return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
@@ -32,7 +32,7 @@ function buildLineChart(items, opts){
   const selIdx = opts.selectedIndex;
   const dotsSvg = pts.map((p,i) => {
     const positive = items[i].value >= 0;
-    const color = positive ? '#34D399' : '#F87171';
+    const color = positive ? '#22C55E' : '#F87171';
     const isSel = selIdx === i;
     const isReset = !!items[i].isReset;
     const ring = isSel ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="7" fill="none" stroke="${color}" stroke-width="1.5" />` : '';
