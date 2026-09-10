@@ -16,9 +16,14 @@ const authScreenEl = document.getElementById('authScreen');
 const appEl = document.getElementById('app');
 const bottomTabsEl = document.getElementById('bottomTabs');
 const authEmailEl = document.getElementById('authEmail');
+const authPasswordFieldEl = document.getElementById('authPasswordField');
+const authPasswordEl = document.getElementById('authPassword');
 const authSendBtnEl = document.getElementById('authSendBtn');
+const authTogglePasswordBtnEl = document.getElementById('authTogglePasswordBtn');
 const authStatusEl = document.getElementById('authStatus');
 const signOutBtnEl = document.getElementById('signOutBtn');
+
+let usePasswordMode = false;
 
 function showApp(){
   if(authScreenEl) authScreenEl.style.display = 'none';
@@ -57,6 +62,18 @@ if(authSendBtnEl){
   authSendBtnEl.onclick = async () => {
     const email = (authEmailEl.value || '').trim();
     if(!email){ authStatusEl.textContent = 'Enter your email first.'; return; }
+
+    if(usePasswordMode){
+      const password = authPasswordEl ? authPasswordEl.value : '';
+      if(!password){ authStatusEl.textContent = 'Enter your password.'; return; }
+      authSendBtnEl.disabled = true;
+      authStatusEl.textContent = 'Signing in…';
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      authSendBtnEl.disabled = false;
+      authStatusEl.textContent = error ? 'Wrong email or password.' : '';
+      return;
+    }
+
     authSendBtnEl.disabled = true;
     authStatusEl.textContent = 'Sending…';
     const { error } = await sb.auth.signInWithOtp({
@@ -68,6 +85,22 @@ if(authSendBtnEl){
       ? ('Something went wrong — try again.')
       : 'Check your email for the sign-in link.';
   };
+}
+
+if(authTogglePasswordBtnEl){
+  authTogglePasswordBtnEl.onclick = () => {
+    usePasswordMode = !usePasswordMode;
+    if(authPasswordFieldEl) authPasswordFieldEl.style.display = usePasswordMode ? '' : 'none';
+    authSendBtnEl.textContent = usePasswordMode ? 'Sign in' : 'Send magic link';
+    authTogglePasswordBtnEl.textContent = usePasswordMode ? 'Use magic link instead' : 'Use a password instead';
+    authStatusEl.textContent = '';
+  };
+}
+
+if(authPasswordEl){
+  authPasswordEl.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); if(authSendBtnEl) authSendBtnEl.click(); }
+  });
 }
 
 if(authEmailEl){

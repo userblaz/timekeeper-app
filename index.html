@@ -27,14 +27,19 @@
       <label for="authEmail">Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
     </div>
+    <div class="field" id="authPasswordField" style="display:none;">
+      <label for="authPassword">Password</label>
+      <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" />
+    </div>
     <button id="authSendBtn" class="btn-primary">Send magic link</button>
+    <button type="button" id="authTogglePasswordBtn" class="auth-toggle-link">Use a password instead</button>
     <div id="authStatus" class="auth-status"></div>
   </div>
 </div>
 <div class="app" id="app" style="display:none;">
   <div class="app-title">
     <h1>Timekeeper</h1>
-    <p>one of the best watch tools made in Senedela</p>
+    <p>one of the best watch tools made in Semedela</p>
     <button type="button" id="signOutBtn" class="signout-btn" style="display:none;">Sign out</button>
   </div>
   <div id="clockSentinel" style="height:1px;"></div>

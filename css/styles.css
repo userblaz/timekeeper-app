@@ -741,6 +741,17 @@
     margin-top:12px;
     min-height:16px;
   }
+  .auth-toggle-link{
+    display:block;
+    width:100%;
+    background:none;
+    border:none;
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    color:var(--accent);
+    padding:10px 0 0;
+    cursor:pointer;
+  }
 
   /* --- sign out button, tucked into the title block --- */
   .signout-btn{
