@@ -1,5 +1,18 @@
 // SVG chart builders used for the offset/drift history charts.
 
+// Parses a free-text factory accuracy spec like "-4/+6 s/day", "0/+5", or
+// "±5 s/day" into a {min, max} range. Returns null if no numbers are found.
+function parseAccuracySpec(spec){
+  if(!spec) return null;
+  const nums = (spec.match(/[-+]?\d+(\.\d+)?/g) || []).map(Number);
+  if(nums.length === 0) return null;
+  if(nums.length === 1){
+    const n = Math.abs(nums[0]);
+    return { min: -n, max: n };
+  }
+  return { min: Math.min(...nums), max: Math.max(...nums) };
+}
+
 function buildLineChart(items, opts){
   if(items.length === 0) return `<div class="empty-note">${opts.emptyMsg}</div>`;
   const pxPerPoint = 46 * chartZoom;
@@ -7,6 +20,8 @@ function buildLineChart(items, opts){
   const plotW = Math.max(240, (items.length - 1) * pxPerPoint);
   const w = padL + padR + plotW;
   const values = items.map(it => it.value);
+  const accuracyRange = opts.accuracyRange || null;
+  if(accuracyRange){ values.push(accuracyRange.min, accuracyRange.max); }
   let min = Math.min(...values, 0);
   let max = Math.max(...values, 0);
   if(min === max){ min -= 1; max += 1; }
@@ -46,8 +61,21 @@ function buildLineChart(items, opts){
     </g>`;
   }).join('');
 
+  let accuracyBandSvg = '';
+  if(accuracyRange){
+    const yTop = yAt(accuracyRange.max);
+    const yBottom = yAt(accuracyRange.min);
+    accuracyBandSvg = `
+      <rect x="${padL}" y="${yTop.toFixed(1)}" width="${plotW}" height="${(yBottom-yTop).toFixed(1)}" fill="rgba(59,130,246,0.08)" />
+      <line x1="${padL}" y1="${yTop.toFixed(1)}" x2="${w-padR}" y2="${yTop.toFixed(1)}" stroke="#3B82F6" stroke-width="1" stroke-dasharray="4,3" />
+      <line x1="${padL}" y1="${yBottom.toFixed(1)}" x2="${w-padR}" y2="${yBottom.toFixed(1)}" stroke="#3B82F6" stroke-width="1" stroke-dasharray="4,3" />
+      <text x="${w-padR-4}" y="${(yTop-4).toFixed(1)}" text-anchor="end" font-size="8.5" font-family="'Inter',sans-serif" fill="#3B82F6">factory spec</text>
+    `;
+  }
+
   const svg = `<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
     ${gridlines}
+    ${accuracyBandSvg}
     <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${w-padR}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="3,3" />
     <path d="${path}" fill="none" stroke="${opts.lineColor}" stroke-width="2" />
     ${dotsSvg}
@@ -91,7 +119,7 @@ function buildOffsetChart(sortedReadings, selectedIndex){
   });
 }
 
-function buildChart(ratedReadings, selectedIndex){
+function buildChart(ratedReadings, selectedIndex, accuracySpec){
   const items = ratedReadings.map(r => ({date: r.date, value: r.rate === null ? 0 : r.rate, isReset: !!r.isReset}));
   return buildLineChart(items, {
     chartKey: 'drift',
@@ -99,7 +127,8 @@ function buildChart(ratedReadings, selectedIndex){
     selectedIndex,
     emptyMsg: 'Log a second reading to see a trend line.',
     formatTick: v => `${v.toFixed(1)} s/day`,
-    formatTooltip: v => `${v>0?'+':''}${v.toFixed(1)} s/day`
+    formatTooltip: v => `${v>0?'+':''}${v.toFixed(1)} s/day`,
+    accuracyRange: parseAccuracySpec(accuracySpec)
   });
 }
 

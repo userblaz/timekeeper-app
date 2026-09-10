@@ -28,9 +28,10 @@ async function loadState(){
       shareStats: !!w.share_stats,
       purchasePrice: w.purchase_price === null || w.purchase_price === undefined ? null : Number(w.purchase_price),
       purchaseDate: w.purchase_date || '',
-      currentValue: w.current_value === null || w.current_value === undefined ? null : Number(w.current_value),
       photoUrl: w.photo_url || '',
       conditionNotes: w.condition_notes || '',
+      accuracySpec: w.accuracy_spec || '',
+      certifications: w.certifications ? w.certifications.split(',').filter(Boolean) : [],
       readings: (readingRows || [])
         .filter(r => r.watch_id === w.id)
         .map(r => ({
@@ -162,7 +163,8 @@ async function addWatch(name){
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
     shareStats: !!data.share_stats,
-    purchasePrice: null, purchaseDate: '', currentValue: null, photoUrl: '', conditionNotes: '',
+    purchasePrice: null, purchaseDate: '', photoUrl: '', conditionNotes: '',
+    accuracySpec: '', certifications: [],
     readings: []
   };
   state.watches.push(w);

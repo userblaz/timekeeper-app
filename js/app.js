@@ -248,7 +248,7 @@ function buildWatchStatsBundle(watch){
           <button type="button" class="zoom-btn" data-action="zoomin">+</button>
         </div>
       </div>
-      ${buildChart(rated, selectedDriftIdx)}
+      ${buildChart(rated, selectedDriftIdx, watch.accuracySpec)}
     </div>
   `;
 

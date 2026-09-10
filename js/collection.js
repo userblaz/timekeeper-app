@@ -8,14 +8,24 @@ let collectionPhotoFile = null;
 let addingCollectionWatch = false;
 let viewingCollectionId = null;
 
+const CERTIFICATION_OPTIONS = [
+  'COSC',
+  'METAS (Master Chronometer)',
+  'Rolex Superlative Chronometer',
+  'Patek Philippe Seal',
+  'Geneva Seal',
+  'Qualité Fleurier',
+  'Chronofiable',
+  'Omega Co-Axial Chronometer',
+  'ISO 3159',
+  'JIS',
+  'A. Lange & Söhne in-house',
+  'Grand Seiko VFA'
+];
+
 function fmtMoney(n){
   if(n === null || n === undefined || isNaN(n)) return '—';
   return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(n) + ' €';
-}
-
-function watchGainPct(w){
-  if(!w.purchasePrice || !w.currentValue) return null;
-  return ((w.currentValue - w.purchasePrice) / w.purchasePrice) * 100;
 }
 
 function buildCollectionTabHtml(){
@@ -53,21 +63,20 @@ function buildCollectionTabHtml(){
 }
 
 function buildCollectionCard(w){
-  const pct = watchGainPct(w);
-  const pctBadge = pct === null ? '' : `<span class="gain-badge ${pct>=0?'good':'bad'}">${pct>=0?'+':''}${pct.toFixed(1)}%</span>`;
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
     : `<div class="collection-photo collection-photo-empty">＋</div>`;
+  const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
 
   return `
     <div class="collection-card" data-action="viewcollection" data-id="${w.id}">
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name">${escapeHtml(w.name)}</div>
-        <div class="collection-card-value">${w.currentValue ? fmtMoney(w.currentValue) : 'no value set'}</div>
+        <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
         ${w.conditionNotes ? `<div class="collection-card-note">${escapeHtml(w.conditionNotes)}</div>` : ''}
       </div>
-      ${pctBadge}
+      ${w.accuracySpec ? `<span class="collection-card-spec">${escapeHtml(w.accuracySpec)}</span>` : ''}
       <button type="button" class="collection-delete-btn" data-action="deletecollectionwatch" data-id="${w.id}" aria-label="Delete ${escapeHtml(w.name)}">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h16" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
@@ -152,17 +161,19 @@ function buildCollectionDetailHtml(w){
     `;
   }
 
-  const pct = watchGainPct(w);
-  const pctBadge = pct === null ? '' : `<span class="gain-badge ${pct>=0?'good':'bad'}">${pct>=0?'+':''}${pct.toFixed(1)}%</span>`;
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
     : `<div class="collection-photo collection-photo-empty">＋</div>`;
   const bundle = buildWatchStatsBundle(w);
+  const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
 
   const detailRows = [
+    ['Brand & model', w.model || null],
+    ['Reference number', w.reference || null],
     ['Purchase price', w.purchasePrice ? fmtMoney(w.purchasePrice) : null],
     ['Purchase date', w.purchaseDate ? formatShortDate(w.purchaseDate) : null],
-    ['Current value', w.currentValue ? fmtMoney(w.currentValue) : null],
+    ['Factory accuracy spec', w.accuracySpec || null],
+    ['Certificates', (w.certifications && w.certifications.length) ? w.certifications.join(', ') : null],
     ['Notes / condition', w.conditionNotes || null]
   ].filter(([, value]) => value);
   const detailsListHtml = detailRows.length === 0 ? '' : `
@@ -180,9 +191,8 @@ function buildCollectionDetailHtml(w){
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name">${escapeHtml(w.name)}</div>
-        <div class="collection-card-value">${w.currentValue ? fmtMoney(w.currentValue) : 'no value set'}</div>
+        <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
       </div>
-      ${pctBadge}
     </div>
 
     ${detailsListHtml}
@@ -202,6 +212,7 @@ function buildCollectionDetailHtml(w){
 }
 
 function buildCollectionEditForm(w){
+  const accuracyRange = parseAccuracySpec(w.accuracySpec);
   return `
     <div class="collection-card collection-card-edit">
       <div class="field">
@@ -210,6 +221,16 @@ function buildCollectionEditForm(w){
           ${collectionPhotoFile ? 'New photo selected' : (w.photoUrl ? 'Change photo' : 'Add photo')}
           <input type="file" id="colPhoto_${w.id}" accept="image/*" style="display:none;" />
         </label>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="colModel_${w.id}">Brand & model</label>
+          <input type="text" id="colModel_${w.id}" value="${escapeHtml(w.model || '')}" placeholder="e.g. Omega Speedmaster" />
+        </div>
+        <div class="field">
+          <label for="colReference_${w.id}">Reference number</label>
+          <input type="text" id="colReference_${w.id}" value="${escapeHtml(w.reference || '')}" placeholder="e.g. 311.30.42.30.01.005" />
+        </div>
       </div>
       <div class="row2">
         <div class="field">
@@ -222,8 +243,36 @@ function buildCollectionEditForm(w){
         </div>
       </div>
       <div class="field">
-        <label for="colValue_${w.id}">Current value (€)</label>
-        <input type="number" id="colValue_${w.id}" step="1" value="${w.currentValue ?? ''}" />
+        <label>Factory accuracy spec (s/day)</label>
+        <div class="row2">
+          <div class="field stepper-row-field">
+            <label for="colAccuracySlow_${w.id}">Slow</label>
+            <div class="stepper-row">
+              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="slow" data-dir="-1">−</button>
+              <input type="number" id="colAccuracySlow_${w.id}" step="1" placeholder="-4" value="${accuracyRange && accuracyRange.min < 0 ? accuracyRange.min : ''}" />
+              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="slow" data-dir="1">+</button>
+            </div>
+          </div>
+          <div class="field stepper-row-field">
+            <label for="colAccuracyFast_${w.id}">Fast</label>
+            <div class="stepper-row">
+              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="fast" data-dir="-1">−</button>
+              <input type="text" inputmode="numeric" id="colAccuracyFast_${w.id}" placeholder="+6" value="${accuracyRange && accuracyRange.max > 0 ? '+'+accuracyRange.max : (accuracyRange && accuracyRange.max < 0 ? accuracyRange.max : '')}" />
+              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="fast" data-dir="1">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Certificates</label>
+        <div class="cert-checkbox-list">
+          ${CERTIFICATION_OPTIONS.map(c => `
+            <label class="cert-checkbox">
+              <input type="checkbox" class="colCert_${w.id}" value="${escapeHtml(c)}" ${(w.certifications||[]).includes(c) ? 'checked' : ''} />
+              <span>${escapeHtml(c)}</span>
+            </label>
+          `).join('')}
+        </div>
       </div>
       <div class="field">
         <label for="colNotes_${w.id}">Notes / condition</label>
@@ -240,10 +289,15 @@ function buildCollectionEditForm(w){
 }
 
 async function saveCollectionEdit(watchId){
+  const modelEl = document.getElementById('colModel_'+watchId);
+  const referenceEl = document.getElementById('colReference_'+watchId);
   const priceEl = document.getElementById('colPrice_'+watchId);
   const dateEl = document.getElementById('colDate_'+watchId);
-  const valueEl = document.getElementById('colValue_'+watchId);
   const notesEl = document.getElementById('colNotes_'+watchId);
+  const accuracySlowEl = document.getElementById('colAccuracySlow_'+watchId);
+  const accuracyFastEl = document.getElementById('colAccuracyFast_'+watchId);
+  const certEls = document.querySelectorAll('.colCert_'+watchId+':checked');
+  const certifications = Array.from(certEls).map(el => el.value);
   const w = state.watches.find(x => x.id === watchId);
   if(!w) return;
 
@@ -259,20 +313,32 @@ async function saveCollectionEdit(watchId){
     photoUrl = pub.publicUrl;
   }
 
+  const slowVal = accuracySlowEl.value === '' ? null : Number(accuracySlowEl.value);
+  const fastVal = accuracyFastEl.value === '' ? null : Number(accuracyFastEl.value);
+  const accuracySpec = (slowVal !== null || fastVal !== null)
+    ? `${slowVal !== null ? (slowVal>0?'-':'')+slowVal : '—'}/${fastVal !== null ? (fastVal>0?'+':'')+fastVal : '—'} s/day`
+    : null;
+
   const updates = {
+    model: (modelEl.value || '').trim() || null,
+    reference: (referenceEl.value || '').trim() || null,
     purchase_price: priceEl.value === '' ? null : Number(priceEl.value),
     purchase_date: dateEl.value || null,
-    current_value: valueEl.value === '' ? null : Number(valueEl.value),
     condition_notes: (notesEl.value || '').trim() || null,
+    accuracy_spec: accuracySpec,
+    certifications: certifications.length ? certifications.join(',') : null,
     photo_url: photoUrl || null
   };
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
   if(error){ saveStatus = 'error'; render(); return; }
 
+  w.model = updates.model || '';
+  w.reference = updates.reference || '';
   w.purchasePrice = updates.purchase_price;
   w.purchaseDate = updates.purchase_date;
-  w.currentValue = updates.current_value;
   w.conditionNotes = updates.condition_notes || '';
+  w.accuracySpec = updates.accuracy_spec || '';
+  w.certifications = updates.certifications ? updates.certifications.split(',').filter(Boolean) : [];
   w.photoUrl = updates.photo_url || '';
 
   editingCollectionId = null;
@@ -319,7 +385,26 @@ function attachCollectionHandlers(){
       collectionPhotoFile = e.target.files[0] || null;
       render();
     };
+    const slowInput = document.getElementById('colAccuracySlow_'+editingCollectionId);
+    if(slowInput) slowInput.onblur = () => {
+      if(slowInput.value !== '' && Number(slowInput.value) > 0) slowInput.value = 0;
+    };
+    const fastInput = document.getElementById('colAccuracyFast_'+editingCollectionId);
+    if(fastInput) fastInput.onblur = () => {
+      if(fastInput.value !== '' && Number(fastInput.value) < 0) fastInput.value = '+0';
+    };
   }
+
+  document.querySelectorAll('[data-action="accuracystep"]').forEach(btn => {
+    btn.onclick = () => {
+      const input = document.getElementById(`colAccuracy${btn.dataset.field === 'slow' ? 'Slow' : 'Fast'}_${btn.dataset.id}`);
+      if(!input) return;
+      const current = input.value === '' ? 0 : Number(input.value);
+      let next = current + Number(btn.dataset.dir);
+      next = btn.dataset.field === 'slow' ? Math.min(0, next) : Math.max(0, next);
+      input.value = (btn.dataset.field === 'fast' && next >= 0) ? '+'+next : String(next);
+    };
+  });
 
   const startAddBtn = document.querySelector('[data-action="startaddcollectionwatch"]');
   if(startAddBtn) startAddBtn.onclick = () => {
