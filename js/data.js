@@ -26,6 +26,11 @@ async function loadState(){
       model: w.model || '',
       reference: w.reference || '',
       shareStats: !!w.share_stats,
+      purchasePrice: w.purchase_price === null || w.purchase_price === undefined ? null : Number(w.purchase_price),
+      purchaseDate: w.purchase_date || '',
+      currentValue: w.current_value === null || w.current_value === undefined ? null : Number(w.current_value),
+      photoUrl: w.photo_url || '',
+      conditionNotes: w.condition_notes || '',
       readings: (readingRows || [])
         .filter(r => r.watch_id === w.id)
         .map(r => ({
@@ -153,7 +158,9 @@ async function addWatch(name){
   if(error){ saveStatus = 'error'; render(); return; }
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
-    shareStats: !!data.share_stats, readings: []
+    shareStats: !!data.share_stats,
+    purchasePrice: null, purchaseDate: '', currentValue: null, photoUrl: '', conditionNotes: '',
+    readings: []
   };
   state.watches.push(w);
   state.activeId = w.id;
@@ -197,6 +204,7 @@ async function addDemoWatch(){
 
   const w = {
     id: watchRow.id, name: watchRow.name, model: '', reference: '', shareStats: false,
+    purchasePrice: null, purchaseDate: '', currentValue: null, photoUrl: '', conditionNotes: '',
     readings: readingRows.map(r => ({
       id: r.id, date: r.date, offset: Number(r.offset_seconds), note: r.note || ''
     }))
