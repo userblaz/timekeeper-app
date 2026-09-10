@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=3">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -27,12 +27,18 @@
       <label for="authEmail">Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
     </div>
-    <div class="field" id="authPasswordField" style="display:none;">
+    <div class="field" id="authPasswordField">
       <label for="authPassword">Password</label>
       <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" />
     </div>
-    <button id="authSendBtn" class="btn-primary">Send magic link</button>
-    <button type="button" id="authTogglePasswordBtn" class="auth-toggle-link">Use a password instead</button>
+    <div class="field" id="authCodeField" style="display:none;">
+      <label for="authCode">6-digit code</label>
+      <input type="text" id="authCode" placeholder="123456" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+    </div>
+    <button id="authSendBtn" class="btn-primary">Sign in</button>
+    <button type="button" id="authToggleSignupBtn" class="auth-toggle-link">New here? Create an account</button>
+    <button type="button" id="authToggleCodeBtn" class="auth-toggle-link">Sign in with a code instead</button>
+    <button type="button" id="authBackBtn" class="auth-toggle-link" style="display:none;">Back to password sign in</button>
     <div id="authStatus" class="auth-status"></div>
   </div>
 </div>
@@ -99,14 +105,14 @@
   </button>
 </div>
 
-<script src="js/utils.js"></script>
-<script src="js/data.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/timegrapher.js"></script>
-<script src="js/clock.js"></script>
-<script src="js/collection.js"></script>
-<script src="js/demo.js"></script>
-<script src="js/app.js"></script>
-<script src="js/auth.js"></script>
+<script src="js/utils.js?v=3"></script>
+<script src="js/data.js?v=3"></script>
+<script src="js/charts.js?v=3"></script>
+<script src="js/timegrapher.js?v=3"></script>
+<script src="js/clock.js?v=3"></script>
+<script src="js/collection.js?v=3"></script>
+<script src="js/demo.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
+<script src="js/auth.js?v=3"></script>
 </body>
 </html>
