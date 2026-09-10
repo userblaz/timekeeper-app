@@ -217,6 +217,10 @@ function buildCollectionEditForm(w){
   return `
     <div class="collection-card collection-card-edit">
       <div class="field">
+        <label for="colName_${w.id}">Watch name</label>
+        <input type="text" id="colName_${w.id}" value="${escapeHtml(w.name || '')}" placeholder="e.g. Submariner Date" />
+      </div>
+      <div class="field">
         <label for="colPhoto_${w.id}">Photo</label>
         <label class="btn-secondary" style="text-align:center;cursor:pointer;">
           ${collectionPhotoFile ? 'New photo selected' : (w.photoUrl ? 'Change photo' : 'Add photo')}
@@ -290,6 +294,7 @@ function buildCollectionEditForm(w){
 }
 
 async function saveCollectionEdit(watchId){
+  const nameEl = document.getElementById('colName_'+watchId);
   const modelEl = document.getElementById('colModel_'+watchId);
   const referenceEl = document.getElementById('colReference_'+watchId);
   const priceEl = document.getElementById('colPrice_'+watchId);
@@ -321,6 +326,8 @@ async function saveCollectionEdit(watchId){
     : null;
 
   const updates = {
+    // a watch always needs a name, so an emptied field keeps the old one
+    name: (nameEl.value || '').trim() || w.name,
     model: (modelEl.value || '').trim() || null,
     reference: (referenceEl.value || '').trim() || null,
     purchase_price: priceEl.value === '' ? null : Number(priceEl.value),
@@ -333,6 +340,7 @@ async function saveCollectionEdit(watchId){
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
   if(error){ saveStatus = 'error'; render(); return; }
 
+  w.name = updates.name;
   w.model = updates.model || '';
   w.reference = updates.reference || '';
   w.purchasePrice = updates.purchase_price;
