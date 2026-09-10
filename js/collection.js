@@ -52,7 +52,7 @@ function buildCollectionTabHtml(){
   `;
 
   return `
-    <div class="section" style="margin-top:22px;padding-top:0;border-top:none;">
+    <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
       <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
       <div class="collection-list">
         ${addHtml}

@@ -169,7 +169,7 @@ function render(){
   let bodyHtml = '';
 
   if(!watch){
-    bodyHtml = `<p class="empty-note">No watches yet — add one from the Collection tab to start logging readings.</p>`;
+    bodyHtml = `<p class="empty-state">No watches yet.<br />Add one from the <strong>Collection</strong> tab to start logging readings.</p>`;
   } else {
     const bundle = buildWatchStatsBundle(watch);
 
@@ -188,6 +188,13 @@ function render(){
     `;
   }
 
+  // Nothing to say when idle — the status line only appears while a save is
+  // in flight, has failed, or a backup was just exported.
+  const statusText = saveStatus === 'saving' ? 'saving…'
+    : saveStatus === 'error' ? 'save failed — storage may be full or blocked'
+    : lastExportAt ? 'backed up ' + lastExportAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+    : '';
+
   root.innerHTML = `
     ${bodyHtml}
     <div class="footer-row" style="flex-direction:column;align-items:stretch;gap:10px;">
@@ -198,7 +205,7 @@ function render(){
           <input type="file" id="importFile" accept="application/json" style="display:none;" />
         </label>
       </div>
-      <span class="status ${saveStatus==='error'?'err':''}">${saveStatus==='saving'?'saving…':saveStatus==='error'?'save failed — storage may be full or blocked':(lastExportAt ? 'backed up ' + lastExportAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : 'stored on this device only')}</span>
+      ${statusText ? `<span class="status ${saveStatus==='error'?'err':''}">${statusText}</span>` : ''}
     </div>
   `;
 
@@ -288,11 +295,16 @@ function buildWatchStatsBundle(watch){
         r.wearState ? WEAR_STATE_OPTIONS.find(([v])=>v===r.wearState)?.[1] : null,
         r.timeOfDay ? TIME_OF_DAY_OPTIONS.find(([v])=>v===r.timeOfDay)?.[1] : null
       ].filter(Boolean).join(' · ');
+      // Conditions and note share one line, capped so a row is never taller
+      // than two lines — the full text is still there when the row is tapped
+      // open for editing.
+      const metaLine = [conditionLabels, r.note].filter(Boolean).join(' · ');
       return `<div class="history-item" data-action="edithistory" data-id="${r.id}">
-        <span class="hist-date">${r.date} · offset ${r.offset>0?'+':''}${r.offset}s</span>
-        ${rateHtml}
-        ${r.note ? `<span class="hist-note">${escapeHtml(r.note)}</span>` : ''}
-        ${conditionLabels ? `<span class="hist-note">${escapeHtml(conditionLabels)}</span>` : ''}
+        <div class="hist-main">
+          <span class="hist-date">${r.date} · offset ${r.offset>0?'+':''}${r.offset}s</span>
+          ${rateHtml}
+        </div>
+        ${metaLine ? `<div class="hist-note">${escapeHtml(metaLine)}</div>` : ''}
       </div>`;
     }).join('');
 
