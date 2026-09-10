@@ -755,3 +755,98 @@
     cursor:pointer;
   }
   .signout-btn:active{color:var(--ink);}
+
+  /* --- Collection tab --- */
+  .collection-summary{margin-top:22px;}
+  .collection-total-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:6px;
+  }
+  .collection-total{
+    font-family:'Inter',sans-serif;
+    font-size:26px;
+    font-weight:700;
+    letter-spacing:-0.5px;
+  }
+  .collection-profit{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    margin-top:4px;
+  }
+  .collection-profit span{font-weight:400;color:var(--grey);}
+  .collection-profit.good{color:var(--good);}
+  .collection-profit.bad{color:var(--bad);}
+  .gain-badge{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:600;
+    padding:5px 10px;
+    border-radius:999px;
+    flex-shrink:0;
+  }
+  .gain-badge.good{background:rgba(52,211,153,0.15);color:var(--good);}
+  .gain-badge.bad{background:rgba(248,113,113,0.15);color:var(--bad);}
+
+  .collection-list{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .collection-card{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:12px;
+    cursor:pointer;
+  }
+  .collection-card-edit{
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+    cursor:default;
+  }
+  .collection-photo{
+    width:56px;
+    height:56px;
+    border-radius:12px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:var(--surface-2);
+  }
+  .collection-photo-empty{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--grey);
+    font-size:20px;
+  }
+  .collection-card-body{flex:1;min-width:0;}
+  .collection-card-name{
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    font-weight:600;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .collection-card-value{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    color:var(--grey);
+    margin-top:2px;
+  }
+  .collection-card-note{
+    font-family:'Inter',sans-serif;
+    font-size:11.5px;
+    color:var(--grey-light);
+    margin-top:2px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }

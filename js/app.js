@@ -43,6 +43,13 @@ function render(){
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
     return;
   }
+  if(activeTab === 'collection'){
+    if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
+    root.innerHTML = buildCollectionTabHtml();
+    attachCollectionHandlers();
+    if(typeof updateClockCollapse === 'function') updateClockCollapse();
+    return;
+  }
 
   let tabsHtml = state.watches.map(w => `
     <button class="tab ${w.id===state.activeId?'active':''}" data-action="select" data-id="${w.id}">${escapeHtml(w.name)}</button>
@@ -499,6 +506,7 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
     btn.classList.add('active');
     editingReadingId = null;
     renamingWatchId = null;
+    editingCollectionId = null;
     render();
   };
 });
