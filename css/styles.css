@@ -84,26 +84,23 @@
     border-bottom:1px solid var(--line);
     background:var(--bg);
     padding-top:0;
-    padding-bottom:12px;
+    padding-bottom:10px;
   }
   .tabs::-webkit-scrollbar{display:none;}
   .tab{
     font-family:'Inter',sans-serif;
     font-size:14px;
     font-weight:500;
-    padding:0 0 11px;
+    padding:0;
     border:none;
-    border-bottom:2px solid transparent;
     background:transparent;
     color:var(--grey);
     cursor:pointer;
-    margin-bottom:-1px;
     flex-shrink:0;
     white-space:nowrap;
   }
   .tab.active{
     color:var(--accent);
-    border-bottom-color:var(--accent);
   }
 
   /* Dial */
@@ -519,8 +516,6 @@
     border-radius:12px;
     background:var(--surface-2);
     box-shadow:0 14px 32px -10px rgba(0,0,0,0.8);
-    max-height:246px;
-    overflow-y:auto;
   }
   .select-menu.drop-up{
     top:auto;
@@ -621,7 +616,9 @@
     color:#fff;
     border-radius:20px;
     padding:26px 22px 10px;
-    margin-bottom:12px;
+    /* Constant, not part of the collapse animation — it's the gap above the
+       watch-tab row, which must stay equal to the gap below it. */
+    margin-bottom:10px;
     border:1px solid var(--line);
     box-shadow:0 10px 30px -10px rgba(0,0,0,0.7);
     cursor:pointer;

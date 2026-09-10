@@ -14,14 +14,16 @@ let driftScrollLeft = null;
 let editingReadingId = null;
 let activeTab = 'data';
 
-// Standard 6-position set used in COSC/timegrapher testing — rate varies by
-// orientation since gravity pulls differently on the balance wheel.
+// The 5 standard COSC test positions — rate varies by orientation since
+// gravity pulls differently on the balance wheel. Crown right is omitted:
+// it mirrors crown left, so chronometer testing doesn't use it.
 const POSITION_OPTIONS = [
   ['', 'Position (optional)'], ['DU', 'Dial up'], ['DD', 'Dial down'],
-  ['CU', 'Crown up'], ['CD', 'Crown down'], ['CL', 'Crown left'], ['CR', 'Crown right']
+  ['CD', 'Crown down'], ['CL', 'Crown left'], ['CU', 'Crown up']
 ];
 const WEAR_STATE_OPTIONS = [
-  ['', 'Wear state (optional)'], ['worn', 'Worn on wrist'], ['rest', 'At rest'], ['winder', 'In a winder']
+  ['', 'Wear state (optional)'], ['worn', 'Worn on wrist'], ['rest', 'At rest'],
+  ['winder', 'In a winder'], ['mixed', 'Mixed']
 ];
 const TIME_OF_DAY_OPTIONS = [
   ['', 'Time of day (optional)'], ['overnight', 'Overnight'], ['day', 'Daytime'], ['mixed', 'Mixed']
@@ -71,10 +73,14 @@ document.addEventListener('click', (e) => {
     menu.hidden = !willOpen;
     toggle.setAttribute('aria-expanded', String(willOpen));
     if(willOpen){
-      // flip above the field when it would otherwise run off the bottom
+      // The menu is never scrollable, so when it doesn't fit below, open it
+      // upward — but only if there's actually more room up there.
       menu.classList.remove('drop-up');
-      const spaceBelow = window.innerHeight - toggle.getBoundingClientRect().bottom;
-      if(menu.getBoundingClientRect().height + 12 > spaceBelow) menu.classList.add('drop-up');
+      const box = toggle.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - box.bottom;
+      const spaceAbove = box.top;
+      const needed = menu.getBoundingClientRect().height + 12;
+      if(needed > spaceBelow && spaceAbove > spaceBelow) menu.classList.add('drop-up');
     }
     return;
   }

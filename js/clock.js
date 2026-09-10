@@ -225,7 +225,6 @@ function clockCollapseLoop(){
       const padSide = (22 - t*4).toFixed(1);
       const padBottom = (10 - t*2).toFixed(1);
       masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
-      masterClockBoxEl.style.marginBottom = (12 - t*10).toFixed(1) + 'px';
       if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
       if(clockLabelEl){
         const labelOpacity = Math.max(0, 1 - t*1.4);
