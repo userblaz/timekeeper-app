@@ -89,9 +89,8 @@
   .tabs::-webkit-scrollbar{display:none;}
   .tab{
     font-family:'Inter',sans-serif;
-    /* matches .section-title so the watch name reads as this tab's heading */
-    font-size:15px;
-    font-weight:600;
+    font-size:14px;
+    font-weight:500;
     padding:0;
     border:none;
     background:transparent;
