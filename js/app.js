@@ -27,12 +27,79 @@ const TIME_OF_DAY_OPTIONS = [
   ['', 'Time of day (optional)'], ['overnight', 'Overnight'], ['day', 'Daytime'], ['mixed', 'Mixed']
 ];
 
+// A custom dropdown rather than a native <select>: the popup a <select>
+// opens is drawn by the OS and only partly honours CSS, so on some phones it
+// came out unreadable (white-on-white, then dark-on-dark). The chosen value
+// lives in a hidden input carrying the same id the caller asked for, so
+// everything reading `document.getElementById(id).value` still works.
 function buildSelect(id, options, selectedValue){
+  const current = selectedValue || '';
+  const currentLabel = (options.find(([value]) => value === current) || options[0])[1];
   const optionsHtml = options.map(([value, label]) =>
-    `<option value="${value}" ${value===(selectedValue||'')?'selected':''}>${escapeHtml(label)}</option>`
+    `<button type="button" class="select-option${value===current?' selected':''}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
   ).join('');
-  return `<select id="${id}" class="condition-select">${optionsHtml}</select>`;
+  return `
+    <div class="select-wrap">
+      <input type="hidden" id="${id}" value="${escapeHtml(current)}" />
+      <button type="button" class="condition-select${current ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+        <span class="select-value">${escapeHtml(currentLabel)}</span>
+        <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      <div class="select-menu" hidden>${optionsHtml}</div>
+    </div>
+  `;
 }
+
+function closeAllSelects(except){
+  document.querySelectorAll('.select-wrap').forEach(wrap => {
+    if(wrap === except) return;
+    wrap.querySelector('.select-menu').hidden = true;
+    wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
+  });
+}
+
+// Delegated once at load so it survives every re-render without rewiring.
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-action="toggleselect"]');
+  if(toggle){
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = toggle.closest('.select-wrap');
+    const menu = wrap.querySelector('.select-menu');
+    const willOpen = menu.hidden;
+    closeAllSelects(wrap);
+    menu.hidden = !willOpen;
+    toggle.setAttribute('aria-expanded', String(willOpen));
+    if(willOpen){
+      // flip above the field when it would otherwise run off the bottom
+      menu.classList.remove('drop-up');
+      const spaceBelow = window.innerHeight - toggle.getBoundingClientRect().bottom;
+      if(menu.getBoundingClientRect().height + 12 > spaceBelow) menu.classList.add('drop-up');
+    }
+    return;
+  }
+
+  const option = e.target.closest('.select-option');
+  if(option){
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = option.closest('.select-wrap');
+    const button = wrap.querySelector('[data-action="toggleselect"]');
+    wrap.querySelector('input[type="hidden"]').value = option.dataset.value;
+    wrap.querySelector('.select-value').textContent = option.textContent;
+    button.classList.toggle('placeholder', !option.dataset.value);
+    wrap.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
+    wrap.querySelector('.select-menu').hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  closeAllSelects(null);
+});
+
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape') closeAllSelects(null);
+});
 
 function readConditionInputs(prefix){
   const positionEl = document.getElementById(prefix+'Position');
