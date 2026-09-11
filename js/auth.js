@@ -18,12 +18,22 @@ const bottomTabsEl = document.getElementById('bottomTabs');
 const authEmailEl = document.getElementById('authEmail');
 const authPasswordFieldEl = document.getElementById('authPasswordField');
 const authPasswordEl = document.getElementById('authPassword');
+const authCodeFieldEl = document.getElementById('authCodeField');
+const authCodeEl = document.getElementById('authCode');
 const authSendBtnEl = document.getElementById('authSendBtn');
-const authTogglePasswordBtnEl = document.getElementById('authTogglePasswordBtn');
+const authToggleSignupBtnEl = document.getElementById('authToggleSignupBtn');
+const authToggleCodeBtnEl = document.getElementById('authToggleCodeBtn');
+const authBackBtnEl = document.getElementById('authBackBtn');
 const authStatusEl = document.getElementById('authStatus');
 const signOutBtnEl = document.getElementById('signOutBtn');
 
-let usePasswordMode = false;
+// authMode: 'signin' | 'signup' | 'code-request' | 'code-verify'.
+// One state machine instead of separate toggle flags — every field's
+// visibility and the button's label are derived from this one value.
+let authMode = 'signin';
+let codeSentToEmail = ''; // locked in once a code is sent, so editing the
+// email field mid-verify can't send the code to one address and verify
+// against another.
 
 function showApp(){
   if(authScreenEl) authScreenEl.style.display = 'none';
@@ -58,12 +68,40 @@ function handleSignedOut(){
   showAuthScreen();
 }
 
+function renderAuthMode(){
+  const isPasswordStep = authMode === 'signin' || authMode === 'signup';
+  const isCodeVerify = authMode === 'code-verify';
+
+  if(authPasswordFieldEl) authPasswordFieldEl.style.display = isPasswordStep ? '' : 'none';
+  if(authCodeFieldEl) authCodeFieldEl.style.display = isCodeVerify ? '' : 'none';
+  if(authToggleSignupBtnEl) authToggleSignupBtnEl.style.display = isPasswordStep ? '' : 'none';
+  if(authToggleCodeBtnEl) authToggleCodeBtnEl.style.display = authMode === 'signin' ? '' : 'none';
+  if(authBackBtnEl) authBackBtnEl.style.display = (authMode === 'code-request' || isCodeVerify) ? '' : 'none';
+  if(authEmailEl) authEmailEl.disabled = isCodeVerify;
+
+  if(authToggleSignupBtnEl){
+    authToggleSignupBtnEl.textContent = authMode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account';
+  }
+  if(authSendBtnEl){
+    authSendBtnEl.textContent =
+      authMode === 'signin' ? 'Sign in' :
+      authMode === 'signup' ? 'Create account' :
+      authMode === 'code-request' ? 'Send code' : 'Verify code';
+  }
+  authStatusEl.textContent = '';
+}
+
+function setAuthMode(mode){
+  authMode = mode;
+  renderAuthMode();
+}
+
 if(authSendBtnEl){
   authSendBtnEl.onclick = async () => {
     const email = (authEmailEl.value || '').trim();
-    if(!email){ authStatusEl.textContent = 'Enter your email first.'; return; }
+    if(authMode !== 'code-verify' && !email){ authStatusEl.textContent = 'Enter your email first.'; return; }
 
-    if(usePasswordMode){
+    if(authMode === 'signin'){
       const password = authPasswordEl ? authPasswordEl.value : '';
       if(!password){ authStatusEl.textContent = 'Enter your password.'; return; }
       authSendBtnEl.disabled = true;
@@ -74,10 +112,106 @@ if(authSendBtnEl){
       return;
     }
 
-    authSendBtnEl.disabled = true;
-    authStatusEl.textContent = 'Sending…';
-    const { error } = await sb.auth.signInWithOtp({
-      email,
+    if(authMode === 'signup'){
+      const password = authPasswordEl ? authPasswordEl.value : '';
+      if(!password){ authStatusEl.textContent = 'Enter your password.'; return; }
+      authSendBtnEl.disabled = true;
+      authStatusEl.textContent = 'Creating account…';
+      const { data, error } = await sb.auth.signUp({ email, password });
+      authSendBtnEl.disabled = false;
+      if(error){ authStatusEl.textContent = error.message; return; }
+      if(!data.session){
+        // "Confirm email" is still on in Supabase settings — account was
+        // created but needs the emailed link clicked before it can sign in.
+        // This is the ONLY place email confirmation happens — signing in
+        // afterwards, in any browser, never asks for it again.
+        authStatusEl.textContent = 'Account created — check your email to confirm it, then sign in.';
+        return;
+      }
+      authStatusEl.textContent = ''; // onAuthStateChange takes it from here
+      return;
+    }
+
+    if(authMode === 'code-request'){
+      authSendBtnEl.disabled = true;
+      authStatusEl.textContent = 'Sending code…';
+      // Same call as before, but we now verify the 6-digit code Supabase
+      // includes in that email instead of relying on the clickable link —
+      // that's what lets this finish in the same browser tab.
+      const { error } = await sb.auth.signInWithOtp({ email });
+      authSendBtnEl.disabled = false;
+      if(error){ authStatusEl.textContent = 'Something went wrong — try again.'; return; }
+      codeSentToEmail = email;
+      setAuthMode('code-verify');
+      authStatusEl.textContent = 'Enter the 6-digit code we just emailed you.';
+      return;
+    }
+
+    if(authMode === 'code-verify'){
+      const code = (authCodeEl ? authCodeEl.value : '').trim();
+      if(!code){ authStatusEl.textContent = 'Enter the code from your email.'; return; }
+      authSendBtnEl.disabled = true;
+      authStatusEl.textContent = 'Verifying…';
+      const { error } = await sb.auth.verifyOtp({ email: codeSentToEmail, token: code, type: 'email' });
+      authSendBtnEl.disabled = false;
+      authStatusEl.textContent = error ? 'Wrong or expired code — try again.' : '';
+      return;
+    }
+  };
+}
+
+if(authEmailEl){
+  authEmailEl.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); if(authSendBtnEl) authSendBtnEl.click(); }
+  });
+}
+
+if(authPasswordEl){
+  authPasswordEl.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); if(authSendBtnEl) authSendBtnEl.click(); }
+  });
+}
+
+if(authCodeEl){
+  authCodeEl.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); if(authSendBtnEl) authSendBtnEl.click(); }
+  });
+}
+
+if(authToggleSignupBtnEl){
+  authToggleSignupBtnEl.onclick = () => setAuthMode(authMode === 'signup' ? 'signin' : 'signup');
+}
+
+if(authToggleCodeBtnEl){
+  authToggleCodeBtnEl.onclick = () => setAuthMode('code-request');
+}
+
+if(authBackBtnEl){
+  authBackBtnEl.onclick = () => setAuthMode('signin');
+}
+
+if(signOutBtnEl){
+  signOutBtnEl.onclick = async () => {
+    await sb.auth.signOut();
+  };
+}
+
+sb.auth.onAuthStateChange((event, session) => {
+  if(session && session.user){
+    handleSignedIn(session.user);
+  } else {
+    handleSignedOut();
+  }
+});
+
+// Covers the very first load, before onAuthStateChange's initial event fires.
+sb.auth.getSession().then(({ data }) => {
+  if(data && data.session && data.session.user){
+    handleSignedIn(data.session.user);
+  } else {
+    showAuthScreen();
+  }
+});
       options: { emailRedirectTo: window.location.origin + window.location.pathname }
     });
     authSendBtnEl.disabled = false;
