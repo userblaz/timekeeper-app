@@ -204,6 +204,18 @@ const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
 // it's now a normal flow child of the same #stickyHeader wrapper as the
 // clock, so there's no seam between them for content to show through.)
 let clockLastT = -1; // -1 forces the first frame to always write
+
+// Holds the header collapsed regardless of scroll position. Used while the
+// capture panel is open: that panel has to sit entirely below the header,
+// and scrolling far enough to collapse the clock the normal way would drag
+// the panel's own top up underneath it. Nothing is lost — the big reference
+// clock has already done its job by the time the reading is captured.
+let clockForceCollapsed = false;
+function setClockCollapsed(on){
+  if(clockForceCollapsed === on) return;
+  clockForceCollapsed = on;
+  clockLastT = -1; // the loop only writes on change, so force the next frame
+}
 const clockLabelEl = document.getElementById('masterClockLabel');
 const clockDigitsEl = document.getElementById('masterClock');
 const stickyHeaderEl = document.getElementById('stickyHeader');
@@ -218,7 +230,8 @@ function clockCollapseLoop(){
   if(clockSentinelEl && masterClockBoxEl){
     const rect = clockSentinelEl.getBoundingClientRect(); // single read per frame
     const distancePast = Math.max(0, -rect.bottom);
-    const t = Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
+    const t = clockForceCollapsed ? 1
+      : Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
     if(t !== clockLastT){
       clockLastT = t;
       const padTop = (26 - t*18).toFixed(1);

@@ -626,6 +626,11 @@
     z-index:20;
     background:var(--bg);
     padding-top:14px;
+    /* Contains the last child's bottom margin. Without it that margin
+       collapses out through the header's bottom edge, leaving an 8px strip
+       below the header that the header's own background doesn't paint — so
+       scrolling content showed through it as a sliver above the first card. */
+    display:flow-root;
     /* This box's height is animated on every scroll-driven rAF frame (see
        clockCollapseLoop in clock.js). Without this, the browser's scroll
        anchoring "corrects" scrollY to compensate for that self-inflicted
@@ -679,6 +684,32 @@
     margin-bottom:16px;
     box-shadow:0 8px 24px -8px rgba(0,0,0,0.5);
   }
+  /* Shutter flash on the panel that opens when a reading is captured: light
+     rushing in from every edge, then a slow fade out. An overlay rather than
+     a box-shadow on the panel itself, so it can fade independently of the
+     panel's own resting shadow — and pointer-events:none so it never
+     swallows a tap on the fields underneath while it's still fading. */
+  .snap-flash{position:relative;}
+  .snap-flash::after{
+    content:'';
+    position:absolute;
+    inset:0;
+    border-radius:inherit;
+    pointer-events:none;
+    box-shadow:inset 0 0 30px 2px rgba(255,255,255,0.45);
+    animation:snap-flash 1.25s ease-out forwards;
+  }
+  /* Holds at full brightness for the first 0.25s (20% of 1.25s) before the
+     1s fade begins, so the flash lands as a pop rather than starting to
+     disappear the instant it arrives. */
+  @keyframes snap-flash{
+    0%{opacity:1;}
+    20%{opacity:1;}
+    100%{opacity:0;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .snap-flash::after{animation:none; opacity:0;}
+  }
   .quick-log-box .hint{margin-top:0;margin-bottom:12px;text-align:center;}
   .quick-btns{
     display:grid;
@@ -711,7 +742,9 @@
     font-size:26px;
     font-weight:600;
     text-align:center;
-    color:var(--ink);
+    /* Accent, not ink — this is the one frozen reading on a page otherwise
+       full of live white clocks, and the colour is what separates it. */
+    color:var(--accent);
     margin-bottom:4px;
     /* Plays once when the panel appears — the timestamp snaps down onto the
        panel like a shutter closing on the moment it just froze. Ease-out

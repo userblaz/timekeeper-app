@@ -137,6 +137,13 @@ function render(){
     driftScrollLeft = atEdge ? null : existingDriftScroll.scrollLeft;
   }
 
+  // While the capture panel is open the clock is held collapsed outright,
+  // rather than scrolling far enough to collapse it the normal way — that
+  // would drag the panel's own top up under the header, and the two can't
+  // both be satisfied by scroll position alone. Derived here, once, so a tab
+  // switch or a watch change can't leave it stuck on.
+  setClockCollapsed(activeTab === 'data' && !manualMode && !!quickCaptured);
+
   const watch = activeWatch();
   const tabsSlotEl0 = document.getElementById('tabsSlot');
 
@@ -357,29 +364,57 @@ function buildWatchStatsBundle(watch){
 }
 
 
-// Scrolls the page so the opened history edit form sits entirely in the gap
-// between the sticky header and the bottom tab bar — both are fixed, so a
-// plain scrollIntoView would happily park the form underneath them. The list
-// itself stops scrolling while editing, so the page is the right axis to move.
-function scrollEditRowIntoView(){
-  const row = document.querySelector('.history-edit-row');
-  if(!row) return;
-  const header = document.getElementById('stickyHeader');
-  const tabs = document.querySelector('.bottom-tabs');
-  const gap = 10;
-  const topLimit = (header ? header.getBoundingClientRect().bottom : 0) + gap;
-  const bottomLimit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - gap;
-  const box = row.getBoundingClientRect();
+// Scrolls the page so `el` sits in the gap between the sticky header and the
+// bottom tab bar — both are fixed, so a plain scrollIntoView would happily
+// park it underneath either one. With pinTop the element's top is brought up
+// against the header whether or not it already fits, which also carries the
+// page past the point where the clock collapses and frees up the room.
+function scrollPanelIntoView(el, pinTop){
+  if(!el) return;
 
-  let delta = 0;
-  if(box.height > bottomLimit - topLimit){
-    delta = box.top - topLimit;          // too tall to fit — pin its top instead
-  } else if(box.bottom > bottomLimit){
-    delta = box.bottom - bottomLimit;    // hanging below the tab bar
-  } else if(box.top < topLimit){
-    delta = box.top - topLimit;          // tucked under the header
-  }
-  if(Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'smooth' });
+  const step = () => {
+    const header = document.getElementById('stickyHeader');
+    const tabs = document.querySelector('.bottom-tabs');
+    // Pin flush to the header, with no gap of its own: the header already
+    // carries 8px of its own background below the watch-tab row, so the panel
+    // still looks like it floats clear — and a real gap would be a window
+    // onto whatever content is scrolled behind, which reads as the panel
+    // being clipped rather than as space.
+    const topGap = pinTop ? 0 : 10;
+    const topLimit = (header ? header.getBoundingClientRect().bottom : 0) + topGap;
+    const bottomLimit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - 10;
+    const box = el.getBoundingClientRect();
+
+    let delta = 0;
+    if(pinTop || box.height > bottomLimit - topLimit){
+      delta = box.top - topLimit;        // pin the top: taller than the gap, or asked for
+    } else if(box.bottom > bottomLimit){
+      delta = box.bottom - bottomLimit;  // hanging below the tab bar
+    } else if(box.top < topLimit){
+      delta = box.top - topLimit;        // tucked under the header
+    }
+    if(Math.abs(delta) <= 1) return true;
+    window.scrollTo({ top: window.scrollY + delta, behavior: 'auto' });
+    return false;
+  };
+
+  // Why this iterates instead of scrolling once: the header collapses as the
+  // page scrolls, shrinking the very gap just measured against, so a single
+  // pass always lands short. Each pass closes part of what remains and the
+  // collapse has a hard stop, so this converges in a handful of frames. The
+  // scrolls are instant and one frame apart — the whole run is over in well
+  // under a tenth of a second and reads as a single jump.
+  let passes = 0;
+  const run = () => {
+    if(step() || ++passes > 12) return;
+    requestAnimationFrame(run);
+  };
+  run();
+}
+
+
+function scrollEditRowIntoView(){
+  scrollPanelIntoView(document.querySelector('.history-edit-row'), false);
 }
 
 // Chart zoom buttons, chart-dot selection, and history-row edit/save/delete
@@ -534,7 +569,7 @@ function buildQuickLogArea(){
   const c = quickCaptured.at;
   const timeStr = pad2(c.getHours()) + ':' + pad2(c.getMinutes()) + ':' + pad2(quickCaptured.second);
   return `
-    <div class="quick-log-box">
+    <div class="quick-log-box snap-flash">
       <div class="confirm-time">${timeStr}</div>
       <div class="confirm-sub">captured at <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> phone time</div>
       <div class="row2">
@@ -642,11 +677,19 @@ function attachHandlers(watch){
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       render();
+      requestAnimationFrame(() => scrollPanelIntoView(document.querySelector('.quick-log-box'), true));
     };
   });
 
   const quickCancelBtn = document.querySelector('[data-action="quickcancel"]');
-  if(quickCancelBtn) quickCancelBtn.onclick = () => { quickCaptured = null; render(); };
+  // Cancelling undoes the jump the capture made, so the page is back where
+  // it started rather than parked halfway down with the tap buttons above
+  // the fold.
+  if(quickCancelBtn) quickCancelBtn.onclick = () => {
+    quickCaptured = null;
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const quickConfirmBtn = document.querySelector('[data-action="quickconfirm"]');
   if(quickConfirmBtn) quickConfirmBtn.onclick = () => {
