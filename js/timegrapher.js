@@ -44,16 +44,23 @@ let tgRawPeakHold = 0;
 // and "the dot never lights" were the same fact stated twice — exactly the
 // wrong signal while trying to tell "the mic hears nothing" apart from "it
 // hears clicks, they just aren't locking yet". This flashes on any transient
-// in the raw signal, well before — and independent of — any lock, on a fast
-// attack / slow release envelope with its own adaptive floor, the same shape
-// the old threshold-based detector used for actual detection. Here it only
-// drives a light; it feeds nothing downstream.
-let tgRawEnv = 0;
-let tgRawEnvFloor = 0.0005;
-let tgRawAttackCoef = 0;
-let tgRawReleaseCoef = 0;
-let tgRawRefractorySample = -Infinity;
-let tgRawSampleIdx = 0;
+// in the raw signal, well before — and independent of — any lock. Here it
+// only drives a light; it feeds nothing downstream.
+//
+// This compares each callback's own peak sample against a floor that tracks
+// the *peak*, not the mean or RMS — deliberately. An attack/release envelope
+// (the first version of this) smooths the signal before comparing it, and a
+// tick is only 1-3 ms: smoothing it away before the comparison can lose more
+// of its true height than the threshold ever gave back, which silently
+// undersells a real but brief click. Comparing raw peaks sidesteps that
+// entirely. And a mean- or RMS-tracked floor badly understates how loud
+// ordinary noise alone gets moment to moment — Gaussian noise routinely
+// peaks several times its own RMS within a buffer — so a floor tracked that
+// way lets ordinary room noise cross a "here's a click" threshold on its
+// own. Tracking the floor as a peak already absorbs that swing, which is
+// what keeps this from false-flashing on the room by itself.
+let tgRawFloorPeak = 0.0005;
+let tgRawLastFlashAt = 0;
 let tgRawFlashTimeout = null;
 let tgSensitivity = 2.5; // higher = more sensitive (accepts a weaker lock)
 let tgStartWallClock = null;
@@ -332,15 +339,8 @@ function tgResetCapture(){
   tgLockPeriodMs = 0;
   tgLockAnchorMs = 0;
   tgLastDotFlash = 0;
-  tgRawEnv = 0;
-  tgRawEnvFloor = 0.0005;
-  // 0.3 ms attack, 6 ms release: fast enough onto a 1-3 ms click that the
-  // rising edge is still sharp, slow enough to ride over one click as a
-  // single bump rather than a burst of crossings on the way down.
-  tgRawAttackCoef = Math.exp(-1 / (0.0003 * tgSampleRate));
-  tgRawReleaseCoef = Math.exp(-1 / (0.006 * tgSampleRate));
-  tgRawRefractorySample = -Infinity;
-  tgRawSampleIdx = 0;
+  tgRawFloorPeak = 0.0005;
+  tgRawLastFlashAt = 0;
   tgStartWallClock = Date.now();
 }
 
@@ -417,22 +417,6 @@ function tgProcessAudio(e){
     if(a > tgDecimPeak) tgDecimPeak = a;
     if(a > rawPeak) rawPeak = a;
 
-    // Live transient flash — see tgFlashRawActivity above. Same fast-attack,
-    // slow-release envelope shape the old detector used for real detection;
-    // here it only drives a light, so a generous threshold (well above the
-    // floor) and refractory window (so one click reads as one flash, not a
-    // strobe) are fine — a false flash costs nothing, a missed one just
-    // means one less blink out of many.
-    const coef = a > tgRawEnv ? tgRawAttackCoef : tgRawReleaseCoef;
-    tgRawEnv = coef * tgRawEnv + (1 - coef) * a;
-    const gIdx = tgRawSampleIdx + i;
-    if(gIdx >= tgRawRefractorySample && tgRawEnv > tgRawEnvFloor * 4 + 0.001){
-      tgRawRefractorySample = gIdx + Math.round(0.05 * tgSampleRate);
-      tgFlashRawActivity();
-    } else if(gIdx >= tgRawRefractorySample){
-      tgRawEnvFloor += (tgRawEnv - tgRawEnvFloor) * (tgRawEnv > tgRawEnvFloor ? 0.00005 : 0.0005);
-    }
-
     if(++tgDecimCount >= tgDecim){
       if(tgDecimPeak > bufferPeak) bufferPeak = tgDecimPeak;
       const slot = tgEnvWrite % tgEnvBufs[0].length;
@@ -447,7 +431,31 @@ function tgProcessAudio(e){
   }
   tgLastBufferPeak = bufferPeak;
   if(rawPeak > tgRawPeakHold) tgRawPeakHold = rawPeak;
-  tgRawSampleIdx += len;
+
+  // Live transient flash — see tgFlashRawActivity and tgRawFloorPeak above.
+  // Checked once per callback (~23 ms at 44.1 kHz) against this callback's
+  // own raw peak, which is already computed above. A refractory window in
+  // wall-clock time (not sample count — there is nothing left here counting
+  // samples) keeps one click from re-triggering the flash's own visual
+  // duration.
+  const transientMult = 2.2 + 4 / tgSensitivity;
+  const now = tgAudioCtx ? tgAudioCtx.currentTime * 1000 : Date.now();
+  if(rawPeak > tgRawFloorPeak * transientMult && now - tgRawLastFlashAt > 90){
+    tgRawLastFlashAt = now;
+    tgFlashRawActivity();
+  }
+  // Tracks the *peak*, not the mean — see the comment on tgRawFloorPeak.
+  // Unconditional: adapting only on blocks that don't cross the threshold
+  // was the first version of this, and it can deadlock. If the floor starts
+  // below the room's real level, most blocks cross immediately, which is
+  // exactly the condition that was supposed to gate the update — so the
+  // floor never gets the chance to catch up, and the room false-flashes
+  // indefinitely. The climb is kept slow so a real tick's own peak — rare
+  // relative to how many blocks it isn't in — only nudges the floor a
+  // little; the room settling down after a loud moment is allowed to happen
+  // much faster.
+  tgRawFloorPeak += (rawPeak - tgRawFloorPeak) * (rawPeak > tgRawFloorPeak ? 0.01 : 0.2);
+
   // Display only — the analysis has no use for a noise floor any more.
   const bufferMean = bufferSum / len;
   tgNoiseFloor += (bufferMean - tgNoiseFloor) * 0.05;
