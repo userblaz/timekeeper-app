@@ -784,8 +784,11 @@
   @media (prefers-reduced-motion: reduce){
     .confirm-time{animation:none;}
   }
-  .confirm-time.ahead{color:var(--good);}
-  .confirm-time.behind{color:var(--bad);}
+  .confirm-time.ahead,
+  .confirm-offset.ahead{color:var(--good);}
+  .confirm-time.behind,
+  .confirm-offset.behind{color:var(--bad);}
+  .confirm-offset{font-weight:600;}
   .confirm-sub{
     font-family:'Inter',sans-serif;
     text-align:center;

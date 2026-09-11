@@ -601,10 +601,14 @@ function buildQuickLogArea(){
   let aheadBy = quickCaptured.second - c.getSeconds();
   while(aheadBy > 30) aheadBy -= 60;
   while(aheadBy <= -30) aheadBy += 60;
+  // Seconds, not s/day — a rate needs two readings separated by time, and
+  // this is a single instant. The rate appears on the dial once it can be
+  // worked out.
+  const offsetLabel = aheadBy === 0 ? 'spot on' : `${aheadBy > 0 ? '+' : ''}${aheadBy}s`;
   return `
     <div class="quick-log-box snap-flash">
       <div class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${timeStr}</div>
-      <div class="confirm-sub">captured at <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> phone time</div>
+      <div class="confirm-sub">captured at <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> phone time · <span class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
       <div class="row2">
         <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
         <div class="field"><label for="qM">Watch min</label><input type="number" id="qM" min="0" max="59" placeholder="${pad2(c.getMinutes())}" /></div>
