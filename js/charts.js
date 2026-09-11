@@ -176,4 +176,3 @@ function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate){
     summary: (avgRate === null || avgRate === undefined) ? null : avgRate
   });
 }
-

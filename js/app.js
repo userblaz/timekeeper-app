@@ -18,15 +18,15 @@ let activeTab = 'data';
 // gravity pulls differently on the balance wheel. Crown right is omitted:
 // it mirrors crown left, so chronometer testing doesn't use it.
 const POSITION_OPTIONS = [
-  ['', 'Position (optional)'], ['DU', 'Dial up'], ['DD', 'Dial down'],
+  ['', 'Position'], ['DU', 'Dial up'], ['DD', 'Dial down'],
   ['CD', 'Crown down'], ['CL', 'Crown left'], ['CU', 'Crown up']
 ];
 const WEAR_STATE_OPTIONS = [
-  ['', 'Wear state (optional)'], ['worn', 'Worn on wrist'], ['rest', 'At rest'],
+  ['', 'Wear state'], ['worn', 'Worn on wrist'], ['rest', 'At rest'],
   ['winder', 'In a winder'], ['mixed', 'Mixed']
 ];
 const TIME_OF_DAY_OPTIONS = [
-  ['', 'Time of day (optional)'], ['overnight', 'Overnight'], ['day', 'Daytime'], ['mixed', 'Mixed']
+  ['', 'Time of day'], ['overnight', 'Overnight'], ['day', 'Daytime'], ['mixed', 'Mixed']
 ];
 
 // A custom dropdown rather than a native <select>: the popup a <select>
@@ -196,6 +196,13 @@ function render(){
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
     return;
   }
+  if(activeTab === 'profile'){
+    if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
+    root.innerHTML = buildProfileTabHtml();
+    attachProfileHandlers();
+    if(typeof updateClockCollapse === 'function') updateClockCollapse();
+    return;
+  }
 
   let tabsHtml = state.watches.map(w => `
     <button class="tab ${w.id===state.activeId?'active':''}" data-action="select" data-id="${w.id}">${escapeHtml(w.name)}</button>
@@ -308,13 +315,15 @@ function buildWatchStatsBundle(watch){
             <div class="field"><label for="editDate_${r.id}">Date</label><input type="date" id="editDate_${r.id}" value="${r.date}" /></div>
             <div class="field"><label for="editOffset_${r.id}">Offset (s)</label><input type="number" id="editOffset_${r.id}" value="${r.offset}" /></div>
           </div>
-          <div class="field" style="margin-top:12px;">
-            <label for="editNote_${r.id}">Note</label>
-            <input type="text" id="editNote_${r.id}" value="${escapeHtml(r.note||'')}" />
+          <div class="row3" style="margin-top:12px;">
+            <div class="field">${buildSelect('editPosition_'+r.id, POSITION_OPTIONS, r.position)}</div>
+            <div class="field">${buildSelect('editWear_'+r.id, WEAR_STATE_OPTIONS, r.wearState)}</div>
+            <div class="field">${buildSelect('editTimeOfDay_'+r.id, TIME_OF_DAY_OPTIONS, r.timeOfDay)}</div>
           </div>
-          <div class="field">${buildSelect('editPosition_'+r.id, POSITION_OPTIONS, r.position)}</div>
-          <div class="field">${buildSelect('editWear_'+r.id, WEAR_STATE_OPTIONS, r.wearState)}</div>
-          <div class="field">${buildSelect('editTimeOfDay_'+r.id, TIME_OF_DAY_OPTIONS, r.timeOfDay)}</div>
+          <div class="field" style="margin-top:10px;">
+            <label for="editNote_${r.id}">Note (optional)</label>
+            <input type="text" id="editNote_${r.id}" value="${escapeHtml(r.note||'')}" placeholder="worn daily, dial up overnight…" />
+          </div>
           <label class="reset-check-row" for="editReset_${r.id}" style="margin-top:12px;">
             <input type="checkbox" id="editReset_${r.id}" ${r.isReset ? 'checked' : ''} />
             Mark as reset point (watch was just serviced or regulated)
@@ -327,7 +336,9 @@ function buildWatchStatsBundle(watch){
         </div>`;
       }
       const rateHtml = r.rate === null
-        ? `<span class="hist-rate" style="color:var(--grey)">${r.isReset ? '⟲ reset' : 'reference'}</span>`
+        ? (r.isReset
+            ? `<span class="hist-rate" style="color:var(--grey)">⟲ reset</span>`
+            : `<span class="hist-rate slow">reference</span>`)
         : `<span class="hist-rate ${r.rate>=0?'slow':'fast'}">${fmtRate(r.rate)} s/day</span>`;
       const conditionLabels = [
         r.position ? POSITION_OPTIONS.find(([v])=>v===r.position)?.[1] : null,
@@ -635,11 +646,13 @@ function buildQuickLogArea(){
         <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
         <div class="field"><label for="qM">Watch min</label><input type="number" id="qM" min="0" max="59" placeholder="${pad2(c.getMinutes())}" /></div>
       </div>
-      <p class="hint" style="margin-top:10px;">Leave blank if your watch's hour and minute matched the phone's.</p>
-      <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
-      <div class="field">${buildSelect('qWear', WEAR_STATE_OPTIONS)}</div>
-      <div class="field">${buildSelect('qTimeOfDay', TIME_OF_DAY_OPTIONS)}</div>
-      <div class="field">
+      <p class="hint" style="margin-top:8px;margin-bottom:8px;">Leave blank if it already matched the phone.</p>
+      <div class="row3">
+        <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
+        <div class="field">${buildSelect('qWear', WEAR_STATE_OPTIONS)}</div>
+        <div class="field">${buildSelect('qTimeOfDay', TIME_OF_DAY_OPTIONS)}</div>
+      </div>
+      <div class="field" style="margin-top:10px;">
         <label for="qNote">Note (optional)</label>
         <input type="text" id="qNote" placeholder="worn daily, dial up overnight…" />
       </div>
@@ -667,10 +680,12 @@ function buildManualForm(){
         </div>
       </div>
       <p class="hint">Offset = how far the watch has drifted from correct time since you set it (negative = slow, positive = fast).</p>
-      <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
-      <div class="field">${buildSelect('rWear', WEAR_STATE_OPTIONS)}</div>
-      <div class="field">${buildSelect('rTimeOfDay', TIME_OF_DAY_OPTIONS)}</div>
-      <div class="field">
+      <div class="row3">
+        <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
+        <div class="field">${buildSelect('rWear', WEAR_STATE_OPTIONS)}</div>
+        <div class="field">${buildSelect('rTimeOfDay', TIME_OF_DAY_OPTIONS)}</div>
+      </div>
+      <div class="field" style="margin-top:10px;">
         <label for="rNote">Note (optional)</label>
         <input type="text" id="rNote" placeholder="worn daily, dial up overnight…" />
       </div>
@@ -798,12 +813,31 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
     if(tgListening && btn.dataset.tab !== 'timegrapher') tgAbort();
     activeTab = btn.dataset.tab;
     syncBottomTabs();
+    // Small bounce on the icon being switched to — a one-shot CSS
+    // animation class, removed once it finishes so it can replay cleanly
+    // next time this same tab is tapped again.
+    btn.classList.remove('tab-pop');
+    void btn.offsetWidth; // force a reflow so re-adding the class restarts the animation
+    btn.classList.add('tab-pop');
+    btn.addEventListener('animationend', () => btn.classList.remove('tab-pop'), { once: true });
+    // Jump straight to the top on every tab switch, so leaving a
+    // scrolled-down tab for a much shorter one never lands on a leftover
+    // scroll position the new page barely has room for.
+    window.scrollTo(0, 0);
     editingReadingId = null;
     editingCollectionId = null;
     viewingCollectionId = null;
     render();
     pinCapturePanel();
   };
+  // iOS Safari often never applies :active on tap at all unless something
+  // on the page explicitly listens for touch — a real touch listener
+  // toggling this class sidesteps that, on every platform, rather than
+  // depending on WebKit's touch-to-:active mapping.
+  btn.addEventListener('touchstart', () => btn.classList.add('pressed'), { passive: true });
+  const clearPressed = () => btn.classList.remove('pressed');
+  btn.addEventListener('touchend', clearPressed);
+  btn.addEventListener('touchcancel', clearPressed);
 });
 
 // --- bootstrap ---

@@ -27,6 +27,7 @@ async function loadState(){
       reference: w.reference || '',
       shareStats: !!w.share_stats,
       purchasePrice: w.purchase_price === null || w.purchase_price === undefined ? null : Number(w.purchase_price),
+      purchaseCurrency: w.purchase_currency || 'EUR',
       purchaseDate: w.purchase_date || '',
       photoUrl: w.photo_url || '',
       conditionNotes: w.condition_notes || '',
@@ -165,7 +166,7 @@ async function addWatch(name){
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
     shareStats: !!data.share_stats,
-    purchasePrice: null, purchaseDate: '', photoUrl: '', conditionNotes: '',
+    purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
     accuracySpec: '', powerReserveHours: null, lastWoundAt: null, certifications: [],
     readings: []
   };

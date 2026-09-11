@@ -23,9 +23,17 @@ const CERTIFICATION_OPTIONS = [
   'Grand Seiko VFA'
 ];
 
-function fmtMoney(n){
+const CURRENCY_OPTIONS = [
+  ['EUR', 'EUR'], ['USD', 'USD'], ['GBP', 'GBP'], ['CHF', 'CHF'], ['JPY', 'JPY'],
+  ['AUD', 'AUD'], ['CAD', 'CAD'], ['HKD', 'HKD'], ['SGD', 'SGD'], ['CNY', 'CNY'],
+  ['SEK', 'SEK'], ['NOK', 'NOK'], ['DKK', 'DKK'], ['PLN', 'PLN'], ['AED', 'AED']
+];
+
+function fmtMoney(n, currency){
   if(n === null || n === undefined || isNaN(n)) return '—';
-  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(n) + ' €';
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency', currency: currency || 'EUR', maximumFractionDigits: 0
+  }).format(n);
 }
 
 function buildCollectionTabHtml(){
@@ -129,7 +137,7 @@ function buildPowerReserveHtml(w){
     <div class="reserve-row" data-reserve-for="${w.id}">
       <div class="reserve-track">
         ${hoursLeft > 0 ? `<div class="reserve-low-zone" style="width:${(POWER_RESERVE_LOW_FRACTION*100).toFixed(0)}%"></div>` : ''}
-        <div class="reserve-fill${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}" style="width:0%" data-reserve-target="${pct.toFixed(1)}"></div>
+        <div class="reserve-fill${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div>
       </div>
       <span class="reserve-label${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}">${formatReserveRemaining(hoursLeft)}</span>
     </div>
@@ -230,23 +238,6 @@ function wireCollectionSwipe(){
 // bar moves about 0.04% a minute, so there is nothing to animate, it just
 // needs refreshing — and straight after a wind, where keeping the existing
 // elements is what lets the fill's width transition run.
-// The markup renders every bar at zero width and carries its real value in a
-// data attribute; this fills them in one frame later, which is what turns the
-// CSS width transition into a slide. Setting the final width in the markup
-// instead gives the browser nothing to animate from, so the bar simply
-// appears at full length.
-//
-// Deliberately two frames, not one: a single rAF can still land in the same
-// style recalculation as the insertion, and the transition is then skipped.
-function slideReserveBarsIn(){
-  const fills = document.querySelectorAll('.reserve-fill[data-reserve-target]');
-  if(!fills.length) return;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    fills.forEach(fill => { fill.style.width = fill.dataset.reserveTarget + '%'; });
-  }));
-}
-
-
 function updatePowerReserveBars(){
   document.querySelectorAll('[data-reserve-for]').forEach(row => {
     const w = state.watches.find(x => x.id === row.dataset.reserveFor);
@@ -264,9 +255,6 @@ function updatePowerReserveBars(){
     const label = row.querySelector('.reserve-label');
     if(fill){
       fill.style.width = pct.toFixed(1) + '%';
-      // Keep the slide-in target current, so a later re-render animates to
-      // where the bar actually is rather than back to a stale value.
-      fill.dataset.reserveTarget = pct.toFixed(1);
       fill.classList.toggle('low', low);
       fill.classList.toggle('empty', hoursLeft <= 0);
     }
@@ -399,7 +387,7 @@ function buildCollectionDetailHtml(w){
   const detailRows = [
     ['Brand & model', w.model || null],
     ['Reference number', w.reference || null],
-    ['Purchase price', w.purchasePrice ? fmtMoney(w.purchasePrice) : null],
+    ['Purchase price', w.purchasePrice ? fmtMoney(w.purchasePrice, w.purchaseCurrency) : null],
     ['Purchase date', w.purchaseDate ? formatShortDate(w.purchaseDate) : null],
     ['Factory accuracy spec', w.accuracySpec || null],
     ['Power reserve', w.powerReserveHours ? w.powerReserveHours + ' hours' : null],
@@ -468,8 +456,11 @@ function buildCollectionEditForm(w){
       </div>
       <div class="row2">
         <div class="field">
-          <label for="colPrice_${w.id}">Purchase price (€)</label>
-          <input type="number" id="colPrice_${w.id}" step="1" value="${w.purchasePrice ?? ''}" />
+          <label for="colPrice_${w.id}">Purchase price</label>
+          <div class="price-currency-row">
+            <input type="number" id="colPrice_${w.id}" step="1" value="${w.purchasePrice ?? ''}" />
+            ${buildSelect('colCurrency_'+w.id, CURRENCY_OPTIONS, w.purchaseCurrency || 'EUR')}
+          </div>
         </div>
         <div class="field">
           <label for="colDate_${w.id}">Purchase date</label>
@@ -531,6 +522,7 @@ async function saveCollectionEdit(watchId){
   const modelEl = document.getElementById('colModel_'+watchId);
   const referenceEl = document.getElementById('colReference_'+watchId);
   const priceEl = document.getElementById('colPrice_'+watchId);
+  const currencyEl = document.getElementById('colCurrency_'+watchId);
   const dateEl = document.getElementById('colDate_'+watchId);
   const notesEl = document.getElementById('colNotes_'+watchId);
   const reserveEl = document.getElementById('colReserve_'+watchId);
@@ -565,6 +557,7 @@ async function saveCollectionEdit(watchId){
     model: (modelEl.value || '').trim() || null,
     reference: (referenceEl.value || '').trim() || null,
     purchase_price: priceEl.value === '' ? null : Number(priceEl.value),
+    purchase_currency: (currencyEl && currencyEl.value) || 'EUR',
     purchase_date: dateEl.value || null,
     condition_notes: (notesEl.value || '').trim() || null,
     accuracy_spec: accuracySpec,
@@ -584,6 +577,7 @@ async function saveCollectionEdit(watchId){
   w.model = updates.model || '';
   w.reference = updates.reference || '';
   w.purchasePrice = updates.purchase_price;
+  w.purchaseCurrency = updates.purchase_currency;
   w.purchaseDate = updates.purchase_date;
   w.conditionNotes = updates.condition_notes || '';
   w.accuracySpec = updates.accuracy_spec || '';
@@ -663,7 +657,6 @@ function attachCollectionHandlers(){
     };
   });
   wireCollectionSwipe();
-  slideReserveBarsIn();
   const backBtn = document.querySelector('[data-action="backtocollectionlist"]');
   if(backBtn) backBtn.onclick = () => { viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null; render(); };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');

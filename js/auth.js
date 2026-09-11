@@ -54,6 +54,9 @@ async function handleSignedIn(user){
   // the same session — guard against loading everything twice.
   if(currentUser && currentUser.id === user.id){ showApp(); return; }
   currentUser = user;
+  activeTab = 'data'; // always start on Data after signing in — a session
+  // that had ended on some other tab (Profile included) shouldn't reopen
+  // there next time.
   showApp();
   await loadState();
   syncTrueTime();

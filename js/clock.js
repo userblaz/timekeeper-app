@@ -236,6 +236,11 @@ function updateClockCollapse(){
 const clockSentinelEl = document.getElementById('clockSentinel');
 const masterClockBoxEl = document.getElementById('masterClockBox');
 const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
+// Toggle for the scroll-shrink effect specifically — set to true to bring
+// it back. Doesn't affect clockForceCollapsed below, which is a separate,
+// functional behavior (holding the header collapsed while the capture
+// panel is open) rather than a decorative scroll animation.
+const CLOCK_SCROLL_COLLAPSE_ENABLED = false;
 
 // Discrete toggle at a single threshold, checked once per animation frame
 // but only WRITING to the DOM when the state actually changes — so the
@@ -252,8 +257,14 @@ let clockLastT = -1; // -1 forces the first frame to always write
 // and scrolling far enough to collapse the clock the normal way would drag
 // the panel's own top up underneath it. Nothing is lost — the big reference
 // clock has already done its job by the time the reading is captured.
+//
+// Toggle for this specific behavior — set to true to bring it back. app.js
+// still calls setClockCollapsed() on every capture as before; this just
+// makes the call a no-op while off, so nothing else needs to change.
+const CLOCK_FORCE_COLLAPSE_ENABLED = false;
 let clockForceCollapsed = false;
 function setClockCollapsed(on){
+  if(!CLOCK_FORCE_COLLAPSE_ENABLED) return;
   if(clockForceCollapsed === on) return;
   clockForceCollapsed = on;
   // Applied now, not on the next animation frame: the caller scrolls the
@@ -298,6 +309,7 @@ function applyClockCollapse(t){
 }
 
 function scrollCollapseT(){
+  if(!CLOCK_SCROLL_COLLAPSE_ENABLED) return 0;
   const rect = clockSentinelEl.getBoundingClientRect();
   const distancePast = Math.max(0, -rect.bottom);
   return Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
