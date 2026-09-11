@@ -13,11 +13,25 @@ function parseAccuracySpec(spec){
   return { min: Math.min(...nums), max: Math.max(...nums) };
 }
 
+// How wide the chart can be drawn before it needs to scroll. Measured from a
+// chart already on the page when there is one; on the very first render there
+// isn't, so fall back to #root minus the chart box's own padding and border.
+function availableChartWidth(){
+  const existing = document.querySelector('.chart-scroll');
+  if(existing && existing.clientWidth) return existing.clientWidth;
+  const root = document.getElementById('root');
+  if(root && root.clientWidth) return root.clientWidth - 34;
+  return 240;
+}
+
 function buildLineChart(items, opts){
   if(items.length === 0) return `<div class="empty-note">${opts.emptyMsg}</div>`;
   const pxPerPoint = 46 * chartZoom;
   const h = 160, padL = 34, padR = 16, padT = 10, padB = 18;
-  const plotW = Math.max(240, (items.length - 1) * pxPerPoint);
+  // Always fill the container, so a chart with one or two readings still
+  // spans the full width instead of stopping short of the zoom buttons.
+  const minPlotW = Math.max(240, availableChartWidth() - padL - padR);
+  const plotW = Math.max(minPlotW, (items.length - 1) * pxPerPoint);
   const w = padL + padR + plotW;
   const values = items.map(it => it.value);
   const accuracyRange = opts.accuracyRange || null;
@@ -41,7 +55,10 @@ function buildLineChart(items, opts){
   }).join('');
 
   const xLabelsSvg = items.map((it,i) => {
-    return `<text x="${xAt(i).toFixed(1)}" y="${h-6}" text-anchor="middle" font-size="9" font-family="'Inter',sans-serif" fill="#A1A1AA">${formatShortDate(it.date)}</text>`;
+    // the first and last labels sit on the plot edges, so centring them would
+    // push half the text outside the chart
+    const anchor = i === 0 ? 'start' : (i === items.length-1 ? 'end' : 'middle');
+    return `<text x="${xAt(i).toFixed(1)}" y="${h-6}" text-anchor="${anchor}" font-size="9" font-family="'Inter',sans-serif" fill="#A1A1AA">${formatShortDate(it.date)}</text>`;
   }).join('');
 
   const selIdx = opts.selectedIndex;
