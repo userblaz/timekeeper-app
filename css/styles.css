@@ -1236,6 +1236,11 @@
        up. The 30-second tick moves it by a hair, where this is invisible. */
     transition:width 650ms cubic-bezier(0.22, 1, 0.36, 1);
   }
+  @media (prefers-reduced-motion: reduce){
+    /* Without the transition the bar is painted straight at its real width,
+       since the slide starts from a zero-width element. */
+    .reserve-fill{transition:none;}
+  }
   .reserve-fill.low{background:#FBBF24;}
   .reserve-fill.empty{background:transparent;}
   .reserve-label{

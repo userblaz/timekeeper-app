@@ -129,7 +129,7 @@ function buildPowerReserveHtml(w){
     <div class="reserve-row" data-reserve-for="${w.id}">
       <div class="reserve-track">
         ${hoursLeft > 0 ? `<div class="reserve-low-zone" style="width:${(POWER_RESERVE_LOW_FRACTION*100).toFixed(0)}%"></div>` : ''}
-        <div class="reserve-fill${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div>
+        <div class="reserve-fill${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}" style="width:0%" data-reserve-target="${pct.toFixed(1)}"></div>
       </div>
       <span class="reserve-label${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}">${formatReserveRemaining(hoursLeft)}</span>
     </div>
@@ -230,6 +230,23 @@ function wireCollectionSwipe(){
 // bar moves about 0.04% a minute, so there is nothing to animate, it just
 // needs refreshing — and straight after a wind, where keeping the existing
 // elements is what lets the fill's width transition run.
+// The markup renders every bar at zero width and carries its real value in a
+// data attribute; this fills them in one frame later, which is what turns the
+// CSS width transition into a slide. Setting the final width in the markup
+// instead gives the browser nothing to animate from, so the bar simply
+// appears at full length.
+//
+// Deliberately two frames, not one: a single rAF can still land in the same
+// style recalculation as the insertion, and the transition is then skipped.
+function slideReserveBarsIn(){
+  const fills = document.querySelectorAll('.reserve-fill[data-reserve-target]');
+  if(!fills.length) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    fills.forEach(fill => { fill.style.width = fill.dataset.reserveTarget + '%'; });
+  }));
+}
+
+
 function updatePowerReserveBars(){
   document.querySelectorAll('[data-reserve-for]').forEach(row => {
     const w = state.watches.find(x => x.id === row.dataset.reserveFor);
@@ -247,6 +264,9 @@ function updatePowerReserveBars(){
     const label = row.querySelector('.reserve-label');
     if(fill){
       fill.style.width = pct.toFixed(1) + '%';
+      // Keep the slide-in target current, so a later re-render animates to
+      // where the bar actually is rather than back to a stale value.
+      fill.dataset.reserveTarget = pct.toFixed(1);
       fill.classList.toggle('low', low);
       fill.classList.toggle('empty', hoursLeft <= 0);
     }
@@ -643,6 +663,7 @@ function attachCollectionHandlers(){
     };
   });
   wireCollectionSwipe();
+  slideReserveBarsIn();
   const backBtn = document.querySelector('[data-action="backtocollectionlist"]');
   if(backBtn) backBtn.onclick = () => { viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null; render(); };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
