@@ -103,6 +103,25 @@
   .tab.active{
     color:var(--accent);
   }
+  /* The + that jumps to the Collection tab's add form. Bumped up a little so
+     the glyph's optical weight matches the watch names it sits beside, and
+     nudged down to keep their baselines aligned. */
+  .tab-add{
+    font-size:19px;
+    font-weight:400;
+    line-height:1;
+    color:var(--grey);
+    position:relative;
+    top:1px;
+  }
+  /* The spelled-out version on an empty collection — back to heading size,
+     and in the accent colour since it's the only thing to do on the page. */
+  .tab-add-wide{
+    font-size:15px;
+    font-weight:600;
+    color:var(--accent);
+    top:0;
+  }
 
   /* Dial */
   .dial-wrap{
@@ -572,10 +591,9 @@
     padding:13px;
     font-size:14px;
     font-weight:600;
-    box-shadow:0 6px 18px -4px rgba(59,130,246,0.55);
   }
   .btn-primary:active{background:#2563EB;}
-  .btn-primary:disabled{opacity:0.5;box-shadow:none;}
+  .btn-primary:disabled{opacity:0.5;}
   .btn-secondary{
     flex:1;
     background:var(--surface-2);
@@ -695,6 +713,19 @@
     text-align:center;
     color:var(--ink);
     margin-bottom:4px;
+    /* Plays once when the panel appears — the timestamp snaps down onto the
+       panel like a shutter closing on the moment it just froze. Ease-out
+       expo: almost all of the travel happens in the first third, so it
+       reads as a snap landing rather than a slow zoom. */
+    animation:confirm-snap 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes confirm-snap{
+    0%{transform:scale(1.5); opacity:0;}
+    45%{opacity:1;}
+    100%{transform:scale(1); opacity:1;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .confirm-time{animation:none;}
   }
   .confirm-sub{
     font-family:'Inter',sans-serif;
@@ -702,6 +733,13 @@
     font-size:11.5px;
     color:var(--grey);
     margin-bottom:14px;
+  }
+  /* The timestamp itself carries the information; "captured at … phone time"
+     is just the sentence around it, so only the figure is lifted out. */
+  .confirm-sub b{
+    color:var(--ink);
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
   }
 
   /* History */
@@ -833,20 +871,6 @@
     color:var(--grey);
     padding:6px 0 0;
   }
-  .empty-state{
-    font-family:'Inter',sans-serif;
-    font-size:14px;
-    line-height:1.6;
-    color:var(--grey);
-    text-align:center;
-    padding:44px 16px;
-    margin:0;
-  }
-  .empty-state strong{
-    color:var(--accent);
-    font-weight:600;
-  }
-
   .footer-row{
     margin-top:30px;
     display:flex;

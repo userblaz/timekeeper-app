@@ -119,13 +119,20 @@ function buildLineChart(items, opts){
   }).join('');
   const yAxisHtml = `<div class="chart-yaxis" style="width:${padL}px;height:${h}px">${yAxisTicksHtml}</div>`;
 
+  // Colour the reading and its unit as one figure, leaving only the date in
+  // the label's own colour — and use the same sign rule the dots use, so a
+  // tapped reading reads out in the colour of the dot you just tapped.
+  const colorFor = v => v >= 0 ? '#22C55E' : '#F87171';
+  const colored = (v, color) => `<b style="color:${color};font-weight:600">${fmtSigned(v)}${opts.unit}</b>`;
+
   // Left slot: the tapped reading, or the period summary when nothing is tapped.
   let leftHtml = '';
   if(selIdx !== null && items[selIdx]){
     const it = items[selIdx];
-    leftHtml = `<span class="chart-tooltip">${formatShortDate(it.date)} · ${fmtSigned(it.value)}${opts.unit}</span>`;
+    const color = it.isReset ? '#9C9AB5' : colorFor(it.value);
+    leftHtml = `<span class="chart-tooltip">${formatShortDate(it.date)} · ${colored(it.value, color)}</span>`;
   } else if(opts.summary !== null && opts.summary !== undefined){
-    leftHtml = `<span class="chart-tooltip">avg ${fmtSigned(opts.summary)}${opts.unit}</span>`;
+    leftHtml = `<span class="chart-tooltip">avg ${colored(opts.summary, colorFor(opts.summary))}</span>`;
   }
 
   const dateLabel = items.length > 1

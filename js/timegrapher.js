@@ -11,9 +11,34 @@ let tgProcessor = null;
 let tgSampleRate = 44100;
 let tgTotalSamples = 0;
 let tgRefractorySample = -Infinity;
-let tgNoiseFloor = 0.001;
+let tgNoiseFloor = 0.0002;
 let tgLastBufferPeak = 0;
 let tgSensitivity = 2.5; // higher = more sensitive (lower detection threshold)
+let tgEnv = 0;       // running envelope of the band-passed signal
+let tgPrevEnv = 0;   // previous sample's envelope, to catch the rising edge
+let tgAttackCoef = 0;
+let tgReleaseCoef = 0;
+
+// Detector tuning, collected here so the whole thing can be re-tuned in one
+// place. The numbers come from what an escapement actually sounds like: the
+// click is a broadband impulse whose useful energy sits well above the band
+// where room rumble, HVAC, handling noise and voices live, so the band-pass
+// is deliberately narrow and high. Everything downstream works on the
+// envelope of that band rather than raw samples — a tick is a 1–3 ms
+// transient, and raw per-sample thresholding mostly finds noise spikes.
+const TG_HIGHPASS_HZ = 1800;
+const TG_LOWPASS_HZ = 12000;
+const TG_PREAMP = 40;        // the band-passed tick is tiny; give it headroom
+const TG_ATTACK_MS = 0.2;    // envelope rise — fast enough to keep the onset sharp
+const TG_RELEASE_MS = 4;     // envelope fall — slow enough to ride over one click
+const TG_REFRACTORY_MS = 22; // shortest gap between two ticks we'll accept
+
+// Threshold is a multiple of the tracked noise floor. The slider picks the
+// multiple: gentle at the low end, nearly floor-level at the high end.
+function tgThresholdFor(noiseFloor){
+  const k = 1.2 + 7 / tgSensitivity;
+  return noiseFloor * k + 0.0004 / tgSensitivity;
+}
 let tgTickTimes = [];
 let tgTickPeaks = [];
 let tgStartWallClock = null;
@@ -107,17 +132,35 @@ async function tgStart(){
   tgStream = stream;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   tgAudioCtx = new Ctx();
+  // getUserMedia's await spends the user-gesture token, so the context can
+  // come back suspended — and a suspended context never fires onaudioprocess
+  // at all, which looks exactly like a mic that hears nothing.
+  if(tgAudioCtx.state === 'suspended'){
+    try{ await tgAudioCtx.resume(); }catch(e){}
+  }
   tgSampleRate = tgAudioCtx.sampleRate;
   const source = tgAudioCtx.createMediaStreamSource(stream);
-  const hp = tgAudioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 300;
-  const lp = tgAudioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 10000;
+  // Two cascaded high-passes: one biquad rolls off at 12 dB/octave, which
+  // still lets plenty of low-frequency room noise through right below the
+  // corner. Doubling it up gets the band genuinely clean.
+  const hp1 = tgAudioCtx.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = TG_HIGHPASS_HZ;
+  const hp2 = tgAudioCtx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = TG_HIGHPASS_HZ;
+  const lp = tgAudioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = Math.min(TG_LOWPASS_HZ, tgSampleRate / 2 - 1000);
+  const preamp = tgAudioCtx.createGain(); preamp.gain.value = TG_PREAMP;
   const processor = tgAudioCtx.createScriptProcessor(1024, 1, 1);
   const silentGain = tgAudioCtx.createGain(); silentGain.gain.value = 0;
-  source.connect(hp); hp.connect(lp); lp.connect(processor); processor.connect(silentGain); silentGain.connect(tgAudioCtx.destination);
+  source.connect(hp1); hp1.connect(hp2); hp2.connect(lp); lp.connect(preamp); preamp.connect(processor);
+  processor.connect(silentGain); silentGain.connect(tgAudioCtx.destination);
   tgProcessor = processor;
   tgTotalSamples = 0;
   tgRefractorySample = -Infinity;
-  tgNoiseFloor = 0.001;
+  tgNoiseFloor = 0.0002;
+  tgEnv = 0;
+  tgPrevEnv = 0;
+  tgAttackCoef = Math.exp(-1 / (TG_ATTACK_MS / 1000 * tgSampleRate));
+  tgReleaseCoef = Math.exp(-1 / (TG_RELEASE_MS / 1000 * tgSampleRate));
   tgTickTimes = [];
   tgTickPeaks = [];
   tgStartWallClock = Date.now();
@@ -139,27 +182,43 @@ function tgFlashDot(){
 
 function tgProcessAudio(e){
   const input = e.inputBuffer.getChannelData(0);
+  const refractory = Math.floor(TG_REFRACTORY_MS / 1000 * tgSampleRate);
   let bufferPeak = 0;
   let anyTick = false;
-  const factor = 1.8 / tgSensitivity;
-  const absFloor = 0.0018 / tgSensitivity;
-  const threshold = Math.max(tgNoiseFloor * factor, absFloor);
+
   for(let i=0;i<input.length;i++){
     const a = Math.abs(input[i]);
-    if(a > bufferPeak) bufferPeak = a;
+    // Fast attack, slow release: the envelope jumps onto the click within a
+    // fraction of a millisecond and then coasts down, so one tick reads as a
+    // single bump instead of a burst of individual sample crossings.
+    const coef = a > tgEnv ? tgAttackCoef : tgReleaseCoef;
+    tgEnv = coef * tgEnv + (1 - coef) * a;
+    if(tgEnv > bufferPeak) bufferPeak = tgEnv;
+
     const gIdx = tgTotalSamples + i;
-    if(gIdx >= tgRefractorySample && a > threshold){
+    const threshold = tgThresholdFor(tgNoiseFloor);
+
+    // Fire on the rising edge only. Thresholding the level instead would
+    // re-trigger on every sample the envelope stays high for, and the
+    // refractory window would then be doing all the work.
+    if(gIdx >= tgRefractorySample && tgEnv > threshold && tgPrevEnv <= threshold){
       tgTickTimes.push(gIdx / tgSampleRate);
-      tgTickPeaks.push(a);
-      tgRefractorySample = gIdx + Math.floor(0.025 * tgSampleRate);
+      tgTickPeaks.push(tgEnv);
+      tgRefractorySample = gIdx + refractory;
       anyTick = true;
-      tgFlashDot();
+    } else if(gIdx >= tgRefractorySample){
+      // Track the quiet baseline between ticks: creep up slowly, settle down
+      // faster. Following the envelope's low side is what makes this the
+      // noise floor rather than (as before) an average of the peaks, which
+      // climbed until the ticks themselves could no longer clear it.
+      const rate = tgEnv > tgNoiseFloor ? 0.00005 : 0.0005;
+      tgNoiseFloor += (tgEnv - tgNoiseFloor) * rate;
     }
+    tgPrevEnv = tgEnv;
   }
+
   tgLastBufferPeak = bufferPeak;
-  if(!anyTick){
-    tgNoiseFloor = tgNoiseFloor * 0.98 + bufferPeak * 0.02;
-  }
+  if(anyTick) tgFlashDot();
   tgTotalSamples += input.length;
 }
 
@@ -176,6 +235,13 @@ function tgStop(){
   tgTeardownAudio();
   tgListening = false;
   tgResults = tgComputeStats();
+  // Silently dropping back to the start screen left no clue as to whether
+  // the mic heard nothing or heard only noise — say which.
+  if(!tgResults){
+    tgError = tgTickTimes.length < 10
+      ? "Didn't hear enough ticks. Press the phone's mic right against the caseback, somewhere quiet, and raise the sensitivity."
+      : "Picked up sound, but nothing steady enough to be an escapement. Try somewhere quieter, or move the mic closer.";
+  }
   render();
 }
 
@@ -195,6 +261,11 @@ function tgComputeStats(){
   if(filtered.length < 3) return null;
   const sorted = [...filtered].sort((a,b)=>a-b);
   const median = sorted[Math.floor(sorted.length/2)];
+  // A real escapement is metronomic, so most gaps should land on the median.
+  // Room noise also produces gaps in the 60–400 ms window, and without this
+  // check a handful of random thumps would be reported as a confident bph.
+  const onBeat = filtered.filter(x => Math.abs(x - median) <= median * 0.15).length;
+  if(onBeat / filtered.length < 0.6) return null;
   const standardBph = [14400, 18000, 19800, 21600, 25200, 28800, 36000];
   let bestBph = standardBph[0], bestDiff = Infinity;
   standardBph.forEach(b => {
@@ -217,6 +288,13 @@ function tgComputeStats(){
 }
 
 
+// Maps an envelope level onto the meter: 0% at -60 dB, 100% at full scale.
+function tgLevelPct(v){
+  const db = 20 * Math.log10(Math.max(v, 1e-6));
+  return Math.max(0, Math.min(100, Math.round((db + 60) / 60 * 100)));
+}
+
+
 function tgRefreshLiveDisplay(){
   const elCount = document.getElementById('tgTickCount');
   if(!elCount) return;
@@ -226,24 +304,21 @@ function tgRefreshLiveDisplay(){
     elElapsed.textContent = Math.floor((Date.now()-tgStartWallClock)/1000) + 's';
   }
 
-  // live mic level meter — scaled against a fixed reference (0.3) so a
-  // moderate real-world tick shows as a clearly visible spike, not a
-  // barely-there sliver
+  // Live mic level meter, on a decibel scale. A linear one was the reason
+  // the meter looked dead: a perfectly usable tick 40 dB down from full
+  // scale is 1% of the bar's width and invisible, while the noise floor and
+  // the threshold marker both sat pinned at zero on top of each other.
   const elLevelFill = document.getElementById('tgLevelFill');
   const elLevelPct = document.getElementById('tgLevelPct');
   if(elLevelFill){
-    const pct = Math.min(100, Math.round((tgLastBufferPeak / 0.3) * 100));
+    const pct = tgLevelPct(tgLastBufferPeak);
     elLevelFill.style.width = pct + '%';
-    elLevelFill.style.background = pct > 70 ? 'var(--good)' : pct > 15 ? 'var(--accent)' : 'var(--grey)';
+    elLevelFill.style.background = pct > 70 ? 'var(--good)' : pct > 25 ? 'var(--accent)' : 'var(--grey)';
     if(elLevelPct) elLevelPct.textContent = pct + '%';
   }
   const elThreshold = document.getElementById('tgLevelThreshold');
   if(elThreshold){
-    const factor = 1.8 / tgSensitivity;
-    const absFloor = 0.0018 / tgSensitivity;
-    const threshold = Math.max(tgNoiseFloor * factor, absFloor);
-    const thresholdPct = Math.min(100, Math.round((threshold / 0.3) * 100));
-    elThreshold.style.left = thresholdPct + '%';
+    elThreshold.style.left = tgLevelPct(tgThresholdFor(tgNoiseFloor)) + '%';
   }
 
   if(tgTickTimes.length >= 10){

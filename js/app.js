@@ -171,11 +171,17 @@ function render(){
   let tabsHtml = state.watches.map(w => `
     <button class="tab ${w.id===state.activeId?'active':''}" data-action="select" data-id="${w.id}">${escapeHtml(w.name)}</button>
   `).join('');
+  // Sits alongside the watch names so adding one is reachable from here
+  // instead of only from the Collection tab. On an empty collection it's the
+  // only thing on the row, so it spells itself out rather than leaving a
+  // bare glyph as the whole page.
+  const addLabel = state.watches.length ? '+' : '+ Add watch';
+  tabsHtml += `<button class="tab tab-add${state.watches.length ? '' : ' tab-add-wide'}" data-action="jumptoaddwatch" title="Add a watch" aria-label="Add a watch">${addLabel}</button>`;
 
   let bodyHtml = '';
 
   if(!watch){
-    bodyHtml = `<p class="empty-state">No watches yet.<br />Add one from the <strong>Collection</strong> tab to start logging readings.</p>`;
+    bodyHtml = '';
   } else {
     const bundle = buildWatchStatsBundle(watch);
 
@@ -530,7 +536,7 @@ function buildQuickLogArea(){
   return `
     <div class="quick-log-box">
       <div class="confirm-time">${timeStr}</div>
-      <div class="confirm-sub">captured at ${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())} phone time</div>
+      <div class="confirm-sub">captured at <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> phone time</div>
       <div class="row2">
         <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
         <div class="field"><label for="qM">Watch min</label><input type="number" id="qM" min="0" max="59" placeholder="${pad2(c.getMinutes())}" /></div>
@@ -584,6 +590,22 @@ function attachHandlers(watch){
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => { if(tgListening) tgAbort(); state.activeId = el.dataset.id; selectedOffsetIdx=null; selectedDriftIdx=null; offsetScrollLeft=null; driftScrollLeft=null; editingReadingId=null; render(); };
   });
+
+  // The + beside the watch names. Rather than duplicate the add form here,
+  // it opens the Collection tab in exactly the state the tab's own "+ Add
+  // watch" button would leave it in, then puts the cursor in the name field.
+  const jumpAddBtn = document.querySelector('[data-action="jumptoaddwatch"]');
+  if(jumpAddBtn) jumpAddBtn.onclick = () => {
+    if(tgListening) tgAbort();
+    activeTab = 'collection';
+    viewingCollectionId = null;
+    editingCollectionId = null;
+    addingCollectionWatch = true;
+    syncBottomTabs();
+    render();
+    const nameEl = document.getElementById('newCollectionWatchName');
+    if(nameEl) nameEl.focus();
+  };
 
   const form = document.getElementById('readingForm');
   if(form) form.onsubmit = (e) => {
@@ -659,12 +681,20 @@ function attachHandlers(watch){
 
 
 // --- tab switching ---
+// The bottom bar lives outside #root, so render() never touches it — its
+// highlight has to be moved by hand whenever activeTab changes, including
+// when something other than the bar itself changes it.
+function syncBottomTabs(){
+  document.querySelectorAll('.bottom-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === activeTab);
+  });
+}
+
 document.querySelectorAll('.bottom-tab').forEach(btn => {
   btn.onclick = () => {
     if(tgListening && btn.dataset.tab !== 'timegrapher') tgAbort();
     activeTab = btn.dataset.tab;
-    document.querySelectorAll('.bottom-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    syncBottomTabs();
     editingReadingId = null;
     editingCollectionId = null;
     viewingCollectionId = null;
