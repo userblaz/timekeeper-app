@@ -423,6 +423,21 @@ function scrollPanelIntoView(el, pinTop){
 }
 
 
+// Puts the open capture panel back where it belongs. Call it straight after
+// a render(), synchronously: render() has already collapsed the header, so
+// the first measurement is the final geometry and the page arrives in one
+// paint rather than converging over several frames.
+//
+// Needed on returning to the Data tab as well as on capture. The other tabs
+// are shorter pages, so switching away clamps the scroll position to fit
+// them, and the browser has no memory of where this tab was — coming back
+// left the panel open but the page at the top, no longer pinned.
+function pinCapturePanel(){
+  if(!quickCaptured || manualMode || activeTab !== 'data') return;
+  scrollPanelIntoView(document.querySelector('.quick-log-box'), true);
+}
+
+
 function scrollEditRowIntoView(){
   scrollPanelIntoView(document.querySelector('.history-edit-row'), false);
 }
@@ -696,10 +711,7 @@ function attachHandlers(watch){
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       playShutterSound();
       render();
-      // Synchronous, in the same task as the render: render() has already
-      // collapsed the header, so the very first measurement is the final
-      // geometry and the page jumps straight there in one paint.
-      scrollPanelIntoView(document.querySelector('.quick-log-box'), true);
+      pinCapturePanel();
     };
   });
 
@@ -764,6 +776,7 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
     editingCollectionId = null;
     viewingCollectionId = null;
     render();
+    pinCapturePanel();
   };
 });
 

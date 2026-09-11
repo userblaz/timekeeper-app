@@ -376,6 +376,17 @@
     display:flex;
     align-items:center;
     justify-content:center;
+    /* Springs back slower than it presses in, which is what makes a button
+       feel physical rather than just rescaled. */
+    transition:transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .bottom-tab:active .bottom-tab-icon{
+    transform:scale(0.84);
+    transition-duration:90ms;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .bottom-tab-icon,
+    .bottom-tab:active .bottom-tab-icon{transition:none; transform:none;}
   }
 
   .analog-clock-wrap{
