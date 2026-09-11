@@ -365,7 +365,7 @@ function buildConditionInsightsHtml(watch){
 function buildCollectionDetailHtml(w){
   if(editingCollectionId === w.id){
     return `
-      <button type="button" class="reset-link" data-action="backtocollectionlist" style="margin:22px 0 14px;">‹ Back to collection</button>
+      <button type="button" class="reset-link back-link" data-action="backtocollectionlist" style="margin:22px 0 14px;">‹ Back to collection</button>
       ${buildCollectionEditForm(w)}
     `;
   }
@@ -395,7 +395,7 @@ function buildCollectionDetailHtml(w){
   `;
 
   return `
-    <button type="button" class="reset-link" data-action="backtocollectionlist" style="margin:22px 0 14px;">‹ Back to collection</button>
+    <button type="button" class="reset-link back-link" data-action="backtocollectionlist" style="margin:22px 0 14px;">‹ Back to collection</button>
 
     <div class="collection-card" style="cursor:default;">
       ${photoHtml}

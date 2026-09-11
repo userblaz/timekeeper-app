@@ -954,6 +954,14 @@
     text-decoration:underline;
     padding:0;
   }
+  /* The back link sits where a heading would and reads as this view's first
+     line, so it takes .section-title's size and weight. It keeps the grey of
+     a secondary control rather than the ink of a real title — it's a way out
+     of the view, not a name for it. */
+  .reset-link.back-link{
+    font-size:15px;
+    font-weight:600;
+  }
   .status{
     font-family:'Inter',sans-serif;
     font-size:11.5px;
