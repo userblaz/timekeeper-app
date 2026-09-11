@@ -63,6 +63,20 @@ function buildCollectionTabHtml(){
   `;
 }
 
+// How the watch is actually running, with its factory spec underneath for
+// comparison. Either half is omitted when there's nothing to show.
+function buildCollectionCardStats(w){
+  const stats = overallStats(w);
+  if(!stats && !w.accuracySpec) return '';
+  const rateHtml = stats
+    ? `<span class="collection-card-rate ${stats.avgRate>=0?'good':'bad'}">${fmtRate(stats.avgRate)} s/day</span>`
+    : '';
+  const specHtml = w.accuracySpec
+    ? `<span class="collection-card-spec">${escapeHtml(w.accuracySpec)}</span>`
+    : '';
+  return `<div class="collection-card-stats">${rateHtml}${specHtml}</div>`;
+}
+
 function buildCollectionCard(w){
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
@@ -77,7 +91,7 @@ function buildCollectionCard(w){
         <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
         ${w.conditionNotes ? `<div class="collection-card-note">${escapeHtml(w.conditionNotes)}</div>` : ''}
       </div>
-      ${w.accuracySpec ? `<span class="collection-card-spec">${escapeHtml(w.accuracySpec)}</span>` : ''}
+      ${buildCollectionCardStats(w)}
       <button type="button" class="collection-delete-btn" data-action="deletecollectionwatch" data-id="${w.id}" aria-label="Delete ${escapeHtml(w.name)}">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h16" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
