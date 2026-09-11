@@ -39,6 +39,22 @@ let tgLastBufferPeak = 0;
 // enough to see whether it picked up anything at all, without having to
 // catch the bar mid-jump.
 let tgRawPeakHold = 0;
+// A raw transient detector, independent of any lock. The dot below only
+// blinked once a full correlation lock existed, which meant "no lock yet"
+// and "the dot never lights" were the same fact stated twice — exactly the
+// wrong signal while trying to tell "the mic hears nothing" apart from "it
+// hears clicks, they just aren't locking yet". This flashes on any transient
+// in the raw signal, well before — and independent of — any lock, on a fast
+// attack / slow release envelope with its own adaptive floor, the same shape
+// the old threshold-based detector used for actual detection. Here it only
+// drives a light; it feeds nothing downstream.
+let tgRawEnv = 0;
+let tgRawEnvFloor = 0.0005;
+let tgRawAttackCoef = 0;
+let tgRawReleaseCoef = 0;
+let tgRawRefractorySample = -Infinity;
+let tgRawSampleIdx = 0;
+let tgRawFlashTimeout = null;
 let tgSensitivity = 2.5; // higher = more sensitive (accepts a weaker lock)
 let tgStartWallClock = null;
 let tgError = null;
@@ -178,6 +194,7 @@ function buildTimegrapherPanel(){
         <div><div class="tg-live-num" id="tgElapsed">0s</div><div class="dial-unit">elapsed</div></div>
         <div><div class="tg-tick-dot" id="tgTickDot"></div><div class="dial-unit">tick</div></div>
       </div>
+      <p class="hint" style="text-align:center;margin-top:2px;">grey = a click was heard · green = locked to the beat</p>
       <div id="tgLiveStats"></div>
       <button type="button" class="btn-secondary" data-action="tgstop" style="width:100%;margin-top:10px;">Stop</button>
     </div>`;
@@ -315,6 +332,15 @@ function tgResetCapture(){
   tgLockPeriodMs = 0;
   tgLockAnchorMs = 0;
   tgLastDotFlash = 0;
+  tgRawEnv = 0;
+  tgRawEnvFloor = 0.0005;
+  // 0.3 ms attack, 6 ms release: fast enough onto a 1-3 ms click that the
+  // rising edge is still sharp, slow enough to ride over one click as a
+  // single bump rather than a burst of crossings on the way down.
+  tgRawAttackCoef = Math.exp(-1 / (0.0003 * tgSampleRate));
+  tgRawReleaseCoef = Math.exp(-1 / (0.006 * tgSampleRate));
+  tgRawRefractorySample = -Infinity;
+  tgRawSampleIdx = 0;
   tgStartWallClock = Date.now();
 }
 
@@ -325,6 +351,20 @@ function tgFlashDot(){
   dot.style.background = '#22C55E';
   clearTimeout(tgFlashTimeout);
   tgFlashTimeout = setTimeout(()=>{ dot.style.background = ''; }, 90);
+}
+
+
+// A dimmer, neutral flash for a raw transient — deliberately not green, so
+// it reads as "heard a click" rather than "found the watch". Only runs
+// before a lock exists; once locked, tgDotLoop's green, beat-synced flash is
+// the more meaningful signal and this steps aside for it.
+function tgFlashRawActivity(){
+  if(tgLockPeriodMs) return;
+  const dot = document.getElementById('tgTickDot');
+  if(!dot) return;
+  dot.style.background = '#9C9AB5';
+  clearTimeout(tgRawFlashTimeout);
+  tgRawFlashTimeout = setTimeout(()=>{ if(!tgLockPeriodMs) dot.style.background = ''; }, 90);
 }
 
 
@@ -376,6 +416,23 @@ function tgProcessAudio(e){
     bufferSum += a;
     if(a > tgDecimPeak) tgDecimPeak = a;
     if(a > rawPeak) rawPeak = a;
+
+    // Live transient flash — see tgFlashRawActivity above. Same fast-attack,
+    // slow-release envelope shape the old detector used for real detection;
+    // here it only drives a light, so a generous threshold (well above the
+    // floor) and refractory window (so one click reads as one flash, not a
+    // strobe) are fine — a false flash costs nothing, a missed one just
+    // means one less blink out of many.
+    const coef = a > tgRawEnv ? tgRawAttackCoef : tgRawReleaseCoef;
+    tgRawEnv = coef * tgRawEnv + (1 - coef) * a;
+    const gIdx = tgRawSampleIdx + i;
+    if(gIdx >= tgRawRefractorySample && tgRawEnv > tgRawEnvFloor * 4 + 0.001){
+      tgRawRefractorySample = gIdx + Math.round(0.05 * tgSampleRate);
+      tgFlashRawActivity();
+    } else if(gIdx >= tgRawRefractorySample){
+      tgRawEnvFloor += (tgRawEnv - tgRawEnvFloor) * (tgRawEnv > tgRawEnvFloor ? 0.00005 : 0.0005);
+    }
+
     if(++tgDecimCount >= tgDecim){
       if(tgDecimPeak > bufferPeak) bufferPeak = tgDecimPeak;
       const slot = tgEnvWrite % tgEnvBufs[0].length;
@@ -390,6 +447,7 @@ function tgProcessAudio(e){
   }
   tgLastBufferPeak = bufferPeak;
   if(rawPeak > tgRawPeakHold) tgRawPeakHold = rawPeak;
+  tgRawSampleIdx += len;
   // Display only — the analysis has no use for a noise floor any more.
   const bufferMean = bufferSum / len;
   tgNoiseFloor += (bufferMean - tgNoiseFloor) * 0.05;
@@ -400,6 +458,8 @@ function tgProcessAudio(e){
 function tgTeardownAudio(){
   if(tgUpdateInterval){ clearTimeout(tgUpdateInterval); tgUpdateInterval = null; }
   if(tgDotRaf){ cancelAnimationFrame(tgDotRaf); tgDotRaf = null; }
+  clearTimeout(tgFlashTimeout);
+  clearTimeout(tgRawFlashTimeout);
   if(tgProcessor){ tgProcessor.onaudioprocess = null; try{ tgProcessor.disconnect(); }catch(e){} tgProcessor = null; }
   if(tgAudioCtx){ try{ tgAudioCtx.close(); }catch(e){} tgAudioCtx = null; }
   if(tgStream){ tgStream.getTracks().forEach(t => t.stop()); tgStream = null; }
