@@ -7,6 +7,10 @@ let editingCollectionId = null;
 let collectionPhotoFile = null;
 let addingCollectionWatch = false;
 let viewingCollectionId = null;
+// Surfaced at the top of the list when a write fails. The Data tab's status
+// line doesn't render here, so a failed save on this tab was silent — the
+// button simply appeared to do nothing.
+let collectionError = '';
 
 const CERTIFICATION_OPTIONS = [
   'COSC',
@@ -54,6 +58,7 @@ function buildCollectionTabHtml(){
   return `
     <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
       <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
+      ${collectionError ? `<p class="collection-error">${escapeHtml(collectionError)}</p>` : ''}
       <div class="collection-list">
         ${addHtml}
         ${typeof buildDemoWatchButtonHtml === 'function' ? buildDemoWatchButtonHtml() : ''}
@@ -63,18 +68,165 @@ function buildCollectionTabHtml(){
   `;
 }
 
-// How the watch is actually running, with its factory spec underneath for
-// comparison. Either half is omitted when there's nothing to show.
+// How the watch is actually running, and the factory spec it's measured
+// against — set small beside the name so they read as a qualifier on it
+// rather than as a second column competing with the reserve bar. Either half
+// is omitted when there's nothing to show.
 function buildCollectionCardStats(w){
   const stats = overallStats(w);
   if(!stats && !w.accuracySpec) return '';
   const rateHtml = stats
-    ? `<span class="collection-card-rate ${stats.avgRate>=0?'good':'bad'}">${fmtRate(stats.avgRate)} s/day</span>`
+    ? `<span class="card-rate ${stats.avgRate>=0?'good':'bad'}">${fmtRate(stats.avgRate)} s/day</span>`
     : '';
-  const specHtml = w.accuracySpec
-    ? `<span class="collection-card-spec">${escapeHtml(w.accuracySpec)}</span>`
+  // The rate right before it already carries the unit, so drop the spec's
+  // own copy rather than printing "s/day" twice on one line.
+  const specText = (w.accuracySpec || '').replace(/\s*s\/day\s*$/i, '');
+  const specHtml = specText
+    ? `<span class="card-spec">${escapeHtml(specText)}</span>`
     : '';
-  return `<div class="collection-card-stats">${rateHtml}${specHtml}</div>`;
+  return `${rateHtml}${specHtml}`;
+}
+
+// The last stretch of a mainspring's travel runs at reduced amplitude, and
+// the rate drifts before the watch actually stops — so the bar marks it as a
+// distinct zone rather than pretending the reserve is uniformly good. A
+// quarter is the rough shape of it across most movements.
+const POWER_RESERVE_LOW_FRACTION = 0.25;
+
+// Hours elapsed since the watch was last marked fully wound, or null when
+// either half of the sum is missing.
+function powerReserveElapsed(w){
+  if(!w.powerReserveHours || !w.lastWoundAt) return null;
+  const wound = new Date(w.lastWoundAt).getTime();
+  if(isNaN(wound)) return null;
+  return (Date.now() - wound) / 3600000;
+}
+
+function formatReserveRemaining(hoursLeft){
+  if(hoursLeft <= 0) return 'wound down';
+  // Round to whole minutes first, then split. Rounding the minutes out of a
+  // fractional hour lets them land on 60 and print "57h 60m".
+  const totalMin = Math.round(hoursLeft * 60);
+  if(totalMin < 60) return `${totalMin} min left`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m ? `${h}h ${m}m left` : `${h}h left`;
+}
+
+// Nothing at all when no reserve has been set: a bar with a guessed capacity
+// would be worse than no bar. Before the first wind it shows an empty track
+// prompting the button rather than a full one, which would be a claim the
+// app has no basis for.
+function buildPowerReserveHtml(w){
+  // The wind button is always there, so the row always says something —
+  // otherwise the button looks like it does nothing.
+  if(!w.powerReserveHours){
+    return `<div class="reserve-row"><span class="reserve-label reserve-hint">set a power reserve to track it</span></div>`;
+  }
+  const elapsed = powerReserveElapsed(w);
+  if(elapsed === null){
+    return `<div class="reserve-row"><div class="reserve-track"></div><span class="reserve-label">not wound yet</span></div>`;
+  }
+  const hoursLeft = Math.max(0, w.powerReserveHours - elapsed);
+  const pct = Math.max(0, Math.min(100, hoursLeft / w.powerReserveHours * 100));
+  const low = pct <= POWER_RESERVE_LOW_FRACTION * 100;
+  return `
+    <div class="reserve-row" data-reserve-for="${w.id}">
+      <div class="reserve-track">
+        ${hoursLeft > 0 ? `<div class="reserve-low-zone" style="width:${(POWER_RESERVE_LOW_FRACTION*100).toFixed(0)}%"></div>` : ''}
+        <div class="reserve-fill${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div>
+      </div>
+      <span class="reserve-label${hoursLeft <= 0 ? ' empty' : low ? ' low' : ''}">${formatReserveRemaining(hoursLeft)}</span>
+    </div>
+  `;
+}
+
+// A mainspring: the thing the button actually refers to. Deliberately not a
+// circular arrow, which every app on the phone already uses for "refresh".
+function windIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12.0,10.1 L12.4,10.0 L12.7,10.0 L13.1,10.1 L13.5,10.2 L13.9,10.4 L14.3,10.7 L14.6,11.1 L14.8,11.5 L14.9,12.0 L15.0,12.6 L15.0,13.1 L14.8,13.7 L14.6,14.2 L14.2,14.7 L13.8,15.2 L13.2,15.5 L12.6,15.8 L11.9,16.0 L11.2,16.0 L10.5,15.9 L9.8,15.7 L9.1,15.3 L8.4,14.9 L7.9,14.2 L7.5,13.5 L7.2,12.7 L7.0,11.9 L7.0,11.0 L7.1,10.1 L7.4,9.2 L7.9,8.4 L8.5,7.6 L9.3,7.0 L10.2,6.5 L11.2,6.1 L12.2,5.9 L13.3,6.0 L14.4,6.2 L15.4,6.6 L16.4,7.2 L17.2,7.9 L18.0,8.9 L18.5,9.9 L18.9,11.1 L19.1,12.3 L19.0,13.6 L18.8,14.8 L18.3,16.0 L17.6,17.1 L16.6,18.1 L15.6,18.9 L14.3,19.6 L13.0,20.0 L11.6,20.1 L10.1,20.0 L8.7,19.7 L7.4,19.1 L6.1,18.3" />
+    <path d="M6.1,18.3 L9.3,17.5" /><path d="M6.1,18.3 L7.2,21.4" />
+  </svg>`;
+}
+
+// --- swipe-to-delete ---------------------------------------------------
+// How far the card slides to reveal the delete panel, and how recently a
+// swipe has to have ended for the click it generates to be ignored.
+const SWIPE_REVEAL = 84;
+let swipeEndedAt = 0;
+
+function closeSwipeRows(except){
+  document.querySelectorAll('.swipe-row.open').forEach(row => {
+    if(row === except) return;
+    row.classList.remove('open');
+    row.classList.add('swiping');
+    setTimeout(() => row.classList.remove('swiping'), 240);
+    const card = row.querySelector('.collection-card');
+    if(card) card.style.transform = '';
+  });
+}
+
+// Pointer events rather than touch events: one code path covers a finger and
+// a mouse, which is also what makes this testable. The card carries
+// touch-action:pan-y, so the browser keeps vertical scrolling for itself and
+// hands us the horizontal movement — no preventDefault needed, so the
+// listeners stay passive.
+function wireCollectionSwipe(){
+  document.querySelectorAll('.swipe-row').forEach(row => {
+    const card = row.querySelector('.collection-card');
+    if(!card) return;
+    let startX = 0, startY = 0, base = 0, dx = 0;
+    let decided = false, dragging = false;
+
+    card.addEventListener('pointerdown', (e) => {
+      // Deliberately not excluding the buttons on the card: a swipe that
+      // happens to start on one still has to work, since you can't be
+      // expected to aim around them. A tap on a button never starts a drag
+      // (it doesn't move), so the two don't collide.
+      startX = e.clientX; startY = e.clientY;
+      base = row.classList.contains('open') ? -SWIPE_REVEAL : 0;
+      dx = base; decided = false; dragging = false;
+      card.style.transition = 'none';
+    });
+
+    card.addEventListener('pointermove', (e) => {
+      if(e.buttons === 0 && e.pointerType === 'mouse') return;
+      const mx = e.clientX - startX, my = e.clientY - startY;
+      if(!decided){
+        // Wait for enough movement to tell a swipe from a scroll or a tap,
+        // then commit — flipping mid-gesture feels broken.
+        if(Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        decided = true;
+        dragging = Math.abs(mx) > Math.abs(my);
+      }
+      if(!dragging) return;
+      row.classList.add('swiping');
+      // Rubber-banding past the reveal width, and no rightward travel beyond
+      // closed — there's nothing to show on that side.
+      dx = Math.min(0, Math.max(-SWIPE_REVEAL - 20, base + mx));
+      card.style.transform = `translateX(${dx}px)`;
+    });
+
+    const finish = () => {
+      card.style.transition = '';
+      if(!dragging) return;
+      dragging = false;
+      const open = dx < -SWIPE_REVEAL / 2;
+      closeSwipeRows(open ? row : null);
+      row.classList.toggle('open', open);
+      card.style.transform = open ? `translateX(${-SWIPE_REVEAL}px)` : '';
+      // While closing, the panel stays visible until the card has finished
+      // sliding back over it — cutting it the instant the finger lifts looks
+      // like the panel vanished rather than was covered.
+      if(open) row.classList.remove('swiping');
+      else setTimeout(() => row.classList.remove('swiping'), 240);
+      swipeEndedAt = Date.now();
+    };
+    card.addEventListener('pointerup', finish);
+    card.addEventListener('pointercancel', finish);
+    card.addEventListener('pointerleave', finish);
+  });
 }
 
 function buildCollectionCard(w){
@@ -83,21 +235,33 @@ function buildCollectionCard(w){
     : `<div class="collection-photo collection-photo-empty">＋</div>`;
   const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
 
+  // The card rides on top of a delete panel that's revealed by swiping it
+  // left, the way a mail list works — so the destructive action isn't sitting
+  // under your thumb on a card you only meant to open.
   return `
-    <div class="collection-card" data-action="viewcollection" data-id="${w.id}">
-      ${photoHtml}
-      <div class="collection-card-body">
-        <div class="collection-card-name">${escapeHtml(w.name)}</div>
-        <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
-        ${w.conditionNotes ? `<div class="collection-card-note">${escapeHtml(w.conditionNotes)}</div>` : ''}
-      </div>
-      ${buildCollectionCardStats(w)}
-      <button type="button" class="collection-delete-btn" data-action="deletecollectionwatch" data-id="${w.id}" aria-label="Delete ${escapeHtml(w.name)}">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <div class="swipe-row" data-swipe-id="${w.id}">
+    <div class="swipe-delete">
+      <button type="button" class="swipe-delete-btn" data-action="deletecollectionwatch" data-id="${w.id}" aria-label="Delete ${escapeHtml(w.name)}">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h16" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
         </svg>
       </button>
     </div>
+    <div class="collection-card" data-action="viewcollection" data-id="${w.id}">
+      ${photoHtml}
+      <div class="collection-card-body">
+        <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${buildCollectionCardStats(w)}</div>
+        <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
+        ${w.conditionNotes ? `<div class="collection-card-note">${escapeHtml(w.conditionNotes)}</div>` : ''}
+        ${buildPowerReserveHtml(w)}
+      </div>
+      <div class="collection-card-actions">
+        <button type="button" class="zoom-btn collection-wind-btn" data-action="markwound" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as fully wound" title="Fully wound now">
+          ${windIconSvg()}
+        </button>
+      </div>
+    </div>
+  </div>
   `;
 }
 
@@ -188,6 +352,7 @@ function buildCollectionDetailHtml(w){
     ['Purchase price', w.purchasePrice ? fmtMoney(w.purchasePrice) : null],
     ['Purchase date', w.purchaseDate ? formatShortDate(w.purchaseDate) : null],
     ['Factory accuracy spec', w.accuracySpec || null],
+    ['Power reserve', w.powerReserveHours ? w.powerReserveHours + ' hours' : null],
     ['Certificates', (w.certifications && w.certifications.length) ? w.certifications.join(', ') : null],
     ['Notes / condition', w.conditionNotes || null]
   ].filter(([, value]) => value);
@@ -283,6 +448,10 @@ function buildCollectionEditForm(w){
         </div>
       </div>
       <div class="field">
+        <label for="colReserve_${w.id}">Power reserve (hours)</label>
+        <input type="number" id="colReserve_${w.id}" step="1" min="0" placeholder="e.g. 70" value="${w.powerReserveHours || ''}" />
+      </div>
+      <div class="field">
         <label>Certificates</label>
         <div class="cert-checkbox-list">
           ${CERTIFICATION_OPTIONS.map(c => `
@@ -314,6 +483,7 @@ async function saveCollectionEdit(watchId){
   const priceEl = document.getElementById('colPrice_'+watchId);
   const dateEl = document.getElementById('colDate_'+watchId);
   const notesEl = document.getElementById('colNotes_'+watchId);
+  const reserveEl = document.getElementById('colReserve_'+watchId);
   const accuracySlowEl = document.getElementById('colAccuracySlow_'+watchId);
   const accuracyFastEl = document.getElementById('colAccuracyFast_'+watchId);
   const certEls = document.querySelectorAll('.colCert_'+watchId+':checked');
@@ -348,11 +518,18 @@ async function saveCollectionEdit(watchId){
     purchase_date: dateEl.value || null,
     condition_notes: (notesEl.value || '').trim() || null,
     accuracy_spec: accuracySpec,
+    power_reserve_hours: reserveEl && reserveEl.value !== '' ? Number(reserveEl.value) : null,
     certifications: certifications.length ? certifications.join(',') : null,
     photo_url: photoUrl || null
   };
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
-  if(error){ saveStatus = 'error'; render(); return; }
+  if(error){
+    saveStatus = 'error';
+    collectionError = error.message || "Couldn't save — the write was rejected.";
+    render();
+    return;
+  }
+  collectionError = '';
 
   w.name = updates.name;
   w.model = updates.model || '';
@@ -361,6 +538,7 @@ async function saveCollectionEdit(watchId){
   w.purchaseDate = updates.purchase_date;
   w.conditionNotes = updates.condition_notes || '';
   w.accuracySpec = updates.accuracy_spec || '';
+  w.powerReserveHours = updates.power_reserve_hours;
   w.certifications = updates.certifications ? updates.certifications.split(',').filter(Boolean) : [];
   w.photoUrl = updates.photo_url || '';
 
@@ -368,6 +546,25 @@ async function saveCollectionEdit(watchId){
   collectionPhotoFile = null;
   saveState();
 }
+
+// Records "I have just fully wound this" — the only input the reserve bar
+// takes. Nothing infers it: an automatic is being wound whenever it's worn,
+// so any guess the app made would be wrong as often as right.
+async function markFullyWound(watchId){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return;
+  const now = new Date().toISOString();
+  const { error } = await sb.from('watches').update({ last_wound_at: now }).eq('id', watchId);
+  if(error){
+    collectionError = error.message || "Couldn't save — the write was rejected.";
+    render();
+    return;
+  }
+  collectionError = '';
+  w.lastWoundAt = now;
+  render();
+}
+
 
 async function addCollectionWatch(name){
   if(!name || !name.trim()) return;
@@ -380,8 +577,16 @@ async function addCollectionWatch(name){
 
 function attachCollectionHandlers(){
   document.querySelectorAll('[data-action="viewcollection"]').forEach(el => {
-    el.onclick = () => { viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null; render(); };
+    el.onclick = () => {
+      // A swipe ends in a click. Ignore that one, and treat a tap on an
+      // already-open card as "put it back" rather than "open me".
+      if(Date.now() - swipeEndedAt < 300) return;
+      const row = el.closest('.swipe-row');
+      if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
+      viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null; render();
+    };
   });
+  wireCollectionSwipe();
   const backBtn = document.querySelector('[data-action="backtocollectionlist"]');
   if(backBtn) backBtn.onclick = () => { viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null; render(); };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
@@ -390,6 +595,15 @@ function attachCollectionHandlers(){
   if(cancelBtn) cancelBtn.onclick = () => { editingCollectionId = null; collectionPhotoFile = null; render(); };
   const saveBtn = document.querySelector('[data-action="savecollection"]');
   if(saveBtn) saveBtn.onclick = () => saveCollectionEdit(saveBtn.dataset.id);
+  document.querySelectorAll('[data-action="markwound"]').forEach(btn => {
+    btn.onclick = (e) => {
+      // The card underneath opens the detail view, so this must not bubble.
+      e.stopPropagation();
+      // A swipe that started on this button ends in a click on it.
+      if(Date.now() - swipeEndedAt < 300) return;
+      markFullyWound(btn.dataset.id);
+    };
+  });
   document.querySelectorAll('[data-action="deletecollectionwatch"]').forEach(deleteBtn => {
     deleteBtn.onclick = (e) => {
       e.stopPropagation();
