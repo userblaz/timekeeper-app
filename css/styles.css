@@ -18,6 +18,12 @@
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
+  /* The browser paints its own translucent blue over whatever clickable
+     element you press. On the collection cards that washed the entire card
+     blue for a moment before the green wind sweep began, reading as a second,
+     unrelated effect. We draw our own press feedback everywhere, so this one
+     is never wanted. */
+  *{-webkit-tap-highlight-color:transparent;}
   button, label, input, .tab{
     -webkit-text-fill-color:currentColor;
   }
@@ -1057,6 +1063,56 @@
     gap:6px;
   }
 
+  /* Confirms a wind: a band of green travelling across the card, left to
+     right, under a green rim that lights and fades. No white flash here —
+     that one belongs to the capture snapshot, and this is a different act.
+     Both layers are pointer-events:none so neither eats a tap mid-animation. */
+  .collection-card.wound-flash::before,
+  .collection-card.wound-flash::after{
+    content:'';
+    position:absolute;
+    inset:0;
+    border-radius:inherit;
+    pointer-events:none;
+    z-index:2;
+  }
+  .collection-card.wound-flash::before{
+    /* The band sits at the middle of an image three times the card's width,
+       so sliding the background from its right third to its left carries the
+       band across from left to right. */
+    background-image:linear-gradient(90deg,
+      rgba(34,197,94,0) 30%,
+      rgba(34,197,94,0.26) 44%,
+      rgba(34,197,94,0.50) 50%,
+      rgba(34,197,94,0.26) 56%,
+      rgba(34,197,94,0) 70%);
+    background-size:300% 100%;
+    background-repeat:no-repeat;
+    animation:wound-sweep 850ms ease-out forwards;
+  }
+  .collection-card.wound-flash::after{
+    box-shadow:
+      inset 0 0 0 2px var(--good),
+      inset 0 0 16px 0 rgba(34,197,94,0.85),
+      inset 0 0 42px 6px rgba(34,197,94,0.5);
+    animation:wound-glow 850ms ease-out forwards;
+  }
+  @keyframes wound-sweep{
+    0%{background-position:100% 0; opacity:1;}
+    80%{opacity:1;}
+    100%{background-position:0% 0; opacity:0;}
+  }
+  @keyframes wound-glow{
+    0%{opacity:0;}
+    12%{opacity:1;}
+    40%{opacity:1;}
+    100%{opacity:0;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .collection-card.wound-flash::before,
+    .collection-card.wound-flash::after{animation:none; opacity:0;}
+  }
+
   /* Swipe to delete. The delete panel is a fixed layer underneath; the card
      is opaque and slides left off it. */
   .swipe-row{
@@ -1120,8 +1176,21 @@
        page and the listeners can stay passive. */
     touch-action:pan-y;
     transition:transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    /* A press that turns into a swipe would otherwise drag-select the card's
+       text, painting a blue selection band across it mid-gesture. */
+    -webkit-user-select:none;
+    user-select:none;
   }
-  .collection-wind-btn:active{color:var(--accent);border-color:var(--accent);}
+  /* Bigger than the chart steppers it borrows its shape from — this one is a
+     primary action on the card, not a nudge control tucked in a header. */
+  .collection-wind-btn{
+    width:36px;
+    height:36px;
+  }
+  .collection-wind-btn svg{
+    width:25px;
+    height:25px;
+  }
 
   /* Power reserve */
   .reserve-row{
@@ -1155,6 +1224,9 @@
     bottom:0;
     border-radius:3px;
     background:var(--good);
+    /* Refills rather than jumping, so winding reads as the bar being filled
+       up. The 30-second tick moves it by a hair, where this is invisible. */
+    transition:width 650ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   .reserve-fill.low{background:#FBBF24;}
   .reserve-fill.empty{background:transparent;}
@@ -1166,17 +1238,6 @@
     font-variant-numeric:tabular-nums;
   }
   .reserve-hint{color:var(--grey-light);}
-  .collection-error{
-    font-family:'Inter',sans-serif;
-    font-size:12px;
-    line-height:1.5;
-    color:var(--bad);
-    background:rgba(248,113,113,0.10);
-    border:1px solid rgba(248,113,113,0.35);
-    border-radius:12px;
-    padding:10px 12px;
-    margin:0 0 12px;
-  }
   .reserve-label.low{color:#FBBF24;}
   .reserve-label.empty{color:var(--bad);}
   .collection-card-edit{
@@ -1250,6 +1311,43 @@
   .card-spec{
     font-weight:500;
     color:var(--accent);
+  }
+
+  /* Transient messages, floating clear of the layout so showing one never
+     shifts anything. Sits just above the bottom dock: 14px gap below the
+     dock + the dock's own 57px + 10px of clearance. */
+  .toast{
+    position:fixed;
+    left:18px;
+    right:18px;
+    bottom:calc(81px + var(--safe-bottom));
+    max-width:444px;
+    margin:0 auto;
+    z-index:40;
+    padding:11px 14px;
+    border-radius:14px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    line-height:1.45;
+    text-align:center;
+    background:var(--surface-2);
+    color:var(--ink);
+    border:1px solid var(--line);
+    box-shadow:0 12px 30px -10px rgba(0,0,0,0.7);
+    opacity:0;
+    transform:translateY(8px);
+    /* Never intercepts a tap, shown or not — it's a notice, not a control. */
+    pointer-events:none;
+    transition:opacity 200ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .toast.show{
+    opacity:1;
+    transform:none;
+  }
+  .toast-error{
+    background:rgba(248,113,113,0.14);
+    border-color:rgba(248,113,113,0.45);
+    color:var(--bad);
   }
 
   /* Phone-sized screens: halve the vertical whitespace around the title so

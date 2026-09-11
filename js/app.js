@@ -107,6 +107,28 @@ document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape') closeAllSelects(null);
 });
 
+// A transient message that floats above the bottom dock, over everything,
+// and takes itself away. It lives outside #root, so a render() can't destroy
+// it mid-life, and showing one never reflows the page underneath.
+let toastTimer = null;
+function showToast(message, kind){
+  if(!message) return;
+  let el = document.getElementById('toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.className = 'toast' + (kind ? ' toast-' + kind : '');
+  el.textContent = message;
+  // A second message while one is still up restarts the clock rather than
+  // inheriting the remainder of the first one's.
+  clearTimeout(toastTimer);
+  requestAnimationFrame(() => el.classList.add('show'));
+  toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+
 function readConditionInputs(prefix){
   const positionEl = document.getElementById(prefix+'Position');
   const wearEl = document.getElementById(prefix+'Wear');

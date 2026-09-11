@@ -7,10 +7,6 @@ let editingCollectionId = null;
 let collectionPhotoFile = null;
 let addingCollectionWatch = false;
 let viewingCollectionId = null;
-// Surfaced at the top of the list when a write fails. The Data tab's status
-// line doesn't render here, so a failed save on this tab was silent — the
-// button simply appeared to do nothing.
-let collectionError = '';
 
 const CERTIFICATION_OPTIONS = [
   'COSC',
@@ -58,7 +54,6 @@ function buildCollectionTabHtml(){
   return `
     <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
       <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
-      ${collectionError ? `<p class="collection-error">${escapeHtml(collectionError)}</p>` : ''}
       <div class="collection-list">
         ${addHtml}
         ${typeof buildDemoWatchButtonHtml === 'function' ? buildDemoWatchButtonHtml() : ''}
@@ -145,8 +140,10 @@ function buildPowerReserveHtml(w){
 // circular arrow, which every app on the phone already uses for "refresh".
 function windIconSvg(){
   return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+   <g transform="rotate(180 12 12)">
     <path d="M12.0,10.1 L12.4,10.0 L12.7,10.0 L13.1,10.1 L13.5,10.2 L13.9,10.4 L14.3,10.7 L14.6,11.1 L14.8,11.5 L14.9,12.0 L15.0,12.6 L15.0,13.1 L14.8,13.7 L14.6,14.2 L14.2,14.7 L13.8,15.2 L13.2,15.5 L12.6,15.8 L11.9,16.0 L11.2,16.0 L10.5,15.9 L9.8,15.7 L9.1,15.3 L8.4,14.9 L7.9,14.2 L7.5,13.5 L7.2,12.7 L7.0,11.9 L7.0,11.0 L7.1,10.1 L7.4,9.2 L7.9,8.4 L8.5,7.6 L9.3,7.0 L10.2,6.5 L11.2,6.1 L12.2,5.9 L13.3,6.0 L14.4,6.2 L15.4,6.6 L16.4,7.2 L17.2,7.9 L18.0,8.9 L18.5,9.9 L18.9,11.1 L19.1,12.3 L19.0,13.6 L18.8,14.8 L18.3,16.0 L17.6,17.1 L16.6,18.1 L15.6,18.9 L14.3,19.6 L13.0,20.0 L11.6,20.1 L10.1,20.0 L8.7,19.7 L7.4,19.1 L6.1,18.3" />
     <path d="M6.1,18.3 L9.3,17.5" /><path d="M6.1,18.3 L7.2,21.4" />
+   </g>
   </svg>`;
 }
 
@@ -228,6 +225,39 @@ function wireCollectionSwipe(){
     card.addEventListener('pointerleave', finish);
   });
 }
+
+// Recomputes the bars from the clock. Used both by the 30-second tick — the
+// bar moves about 0.04% a minute, so there is nothing to animate, it just
+// needs refreshing — and straight after a wind, where keeping the existing
+// elements is what lets the fill's width transition run.
+function updatePowerReserveBars(){
+  document.querySelectorAll('[data-reserve-for]').forEach(row => {
+    const w = state.watches.find(x => x.id === row.dataset.reserveFor);
+    if(!w) return;
+    const elapsed = powerReserveElapsed(w);
+    if(elapsed === null) return;
+    const hoursLeft = Math.max(0, w.powerReserveHours - elapsed);
+    const pct = Math.max(0, Math.min(100, hoursLeft / w.powerReserveHours * 100));
+    const low = pct <= POWER_RESERVE_LOW_FRACTION * 100 && hoursLeft > 0;
+    // Drop the low-zone marker once the reserve runs out — left behind on an
+    // empty track it reads as a quarter still remaining.
+    const zone = row.querySelector('.reserve-low-zone');
+    if(zone) zone.hidden = hoursLeft <= 0;
+    const fill = row.querySelector('.reserve-fill');
+    const label = row.querySelector('.reserve-label');
+    if(fill){
+      fill.style.width = pct.toFixed(1) + '%';
+      fill.classList.toggle('low', low);
+      fill.classList.toggle('empty', hoursLeft <= 0);
+    }
+    if(label){
+      label.textContent = formatReserveRemaining(hoursLeft);
+      label.classList.toggle('low', low);
+      label.classList.toggle('empty', hoursLeft <= 0);
+    }
+  });
+}
+setInterval(updatePowerReserveBars, 30000);
 
 function buildCollectionCard(w){
   const photoHtml = w.photoUrl
@@ -525,11 +555,10 @@ async function saveCollectionEdit(watchId){
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
   if(error){
     saveStatus = 'error';
-    collectionError = error.message || "Couldn't save — the write was rejected.";
+    showToast(error.message || "Couldn't save — the write was rejected.", 'error');
     render();
     return;
   }
-  collectionError = '';
 
   w.name = updates.name;
   w.model = updates.model || '';
@@ -550,19 +579,46 @@ async function saveCollectionEdit(watchId){
 // Records "I have just fully wound this" — the only input the reserve bar
 // takes. Nothing infers it: an automatic is being wound whenever it's worn,
 // so any guess the app made would be wrong as often as right.
+// Records "I have just fully wound this" — the only input the reserve bar
+// takes. Nothing infers it: an automatic is being wound whenever it's worn,
+// so any guess the app made would be wrong as often as right.
 async function markFullyWound(watchId){
   const w = state.watches.find(x => x.id === watchId);
   if(!w) return;
+  const previous = w.lastWoundAt;
   const now = new Date().toISOString();
+
+  // Applied before the write goes out — the feedback belongs to the press,
+  // not to a network round trip. A rejected write rolls it back below.
+  w.lastWoundAt = now;
+
+  // Updated in place rather than through render(). A full re-render rebuilds
+  // the card's <img>, which repaints and made the photo twitch on every
+  // press; keeping the element also lets the bar's width transition run from
+  // where it actually was, with no need to fake a starting value.
+  const card = document.querySelector(`.swipe-row[data-swipe-id="${watchId}"] .collection-card`);
+  if(card && card.querySelector('.reserve-fill')){
+    updatePowerReserveBars();
+    playWoundFlash(card);
+  } else {
+    // First wind on this watch: there's no bar in the DOM yet to update.
+    render();
+    playWoundFlash(document.querySelector(`.swipe-row[data-swipe-id="${watchId}"] .collection-card`));
+  }
+
   const { error } = await sb.from('watches').update({ last_wound_at: now }).eq('id', watchId);
   if(error){
-    collectionError = error.message || "Couldn't save — the write was rejected.";
+    w.lastWoundAt = previous;
     render();
-    return;
+    showToast(error.message || "Couldn't save — the write was rejected.", 'error');
   }
-  collectionError = '';
-  w.lastWoundAt = now;
-  render();
+}
+
+// The green sweep across the card, cleaning up after itself.
+function playWoundFlash(card){
+  if(!card) return;
+  card.classList.add('wound-flash');
+  card.addEventListener('animationend', () => card.classList.remove('wound-flash'), { once:true });
 }
 
 
