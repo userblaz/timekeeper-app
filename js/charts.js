@@ -34,10 +34,16 @@ function buildLineChart(items, opts){
   const plotW = Math.max(minPlotW, (items.length - 1) * pxPerPoint);
   const w = padL + padR + plotW;
   const values = items.map(it => it.value);
+  // What was actually recorded, reported in the summary line.
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  // What the y-axis has to span: the readings, zero, and the factory spec
+  // band when there is one — so the band stays on screen. This is wider than
+  // the data, which is why the two are tracked separately.
   const accuracyRange = opts.accuracyRange || null;
-  if(accuracyRange){ values.push(accuracyRange.min, accuracyRange.max); }
-  let min = Math.min(...values, 0);
-  let max = Math.max(...values, 0);
+  const scaleValues = accuracyRange ? values.concat([accuracyRange.min, accuracyRange.max]) : values;
+  let min = Math.min(...scaleValues, 0);
+  let max = Math.max(...scaleValues, 0);
   if(min === max){ min -= 1; max += 1; }
   const range = max - min;
   const plotH = h - padT - padB;
@@ -99,23 +105,34 @@ function buildLineChart(items, opts){
     ${xLabelsSvg}
   </svg>`;
 
+  // Gain a decimal place when the range is too narrow to distinguish the
+  // gridlines otherwise — five labels all reading "0" or "-1" is useless.
+  const decimals = range < 4 ? Math.max(1, opts.decimals) : opts.decimals;
+  const fmtNum = v => v.toFixed(decimals);
+  const fmtSigned = v => `${v > 0 ? '+' : ''}${v.toFixed(decimals)}`;
+
+  // Axis labels carry no unit — the chart header already names it, and
+  // repeating "s/day" on every gridline wrapped each one onto two lines.
   const yAxisTicksHtml = ticks.map(t => {
     const y = yAt(t);
-    return `<div class="yaxis-tick" style="top:${y.toFixed(1)}px">${opts.formatTick(t)}</div>`;
+    return `<div class="yaxis-tick" style="top:${y.toFixed(1)}px">${fmtNum(t)}</div>`;
   }).join('');
   const yAxisHtml = `<div class="chart-yaxis" style="width:${padL}px;height:${h}px">${yAxisTicksHtml}</div>`;
 
-  let tooltipHtml = '';
+  // Left slot: the tapped reading, or the period summary when nothing is tapped.
+  let leftHtml = '';
   if(selIdx !== null && items[selIdx]){
     const it = items[selIdx];
-    tooltipHtml = `<span class="chart-tooltip">${formatShortDate(it.date)} · ${opts.formatTooltip(it.value)}</span>`;
+    leftHtml = `<span class="chart-tooltip">${formatShortDate(it.date)} · ${fmtSigned(it.value)}${opts.unit}</span>`;
+  } else if(opts.summary !== null && opts.summary !== undefined){
+    leftHtml = `<span class="chart-tooltip">avg ${fmtSigned(opts.summary)}${opts.unit}</span>`;
   }
 
   const dateLabel = items.length > 1
     ? `${formatShortDate(items[0].date)} – ${formatShortDate(items[items.length-1].date)}`
     : formatShortDate(items[0].date);
-  const meta = `<span class="chart-meta">${dateLabel} · ${opts.formatTick(min)} to ${opts.formatTick(max)}</span>`;
-  const bottomRowHtml = `<div class="chart-bottom-row">${tooltipHtml}${meta}</div>`;
+  const meta = `<span class="chart-meta">${dateLabel} · ${fmtNum(dataMin)} to ${fmtNum(dataMax)}${opts.unit}</span>`;
+  const bottomRowHtml = `<div class="chart-bottom-row">${leftHtml}${meta}</div>`;
   const containerHtml = `<div class="chart-container">
     ${yAxisHtml}
     <div class="chart-scroll" id="${opts.chartKey}ChartScroll">${svg}</div>
@@ -131,21 +148,25 @@ function buildOffsetChart(sortedReadings, selectedIndex){
     lineColor: '#6B6B8C',
     selectedIndex,
     emptyMsg: 'Log a reading to see it plotted here.',
-    formatTick: v => `${Math.round(v)}s`,
-    formatTooltip: v => `${v>0?'+':''}${Math.round(v)}s`
+    unit: 's',
+    decimals: 0
   });
 }
 
-function buildChart(ratedReadings, selectedIndex, accuracySpec){
+// avgRate is the watch's overall drift across the period, so the summary
+// matches the figure on the dial rather than re-deriving a slightly
+// different one from the plotted intervals.
+function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate){
   const items = ratedReadings.map(r => ({date: r.date, value: r.rate === null ? 0 : r.rate, isReset: !!r.isReset}));
   return buildLineChart(items, {
     chartKey: 'drift',
     lineColor: '#6B6B8C',
     selectedIndex,
     emptyMsg: 'Log a second reading to see a trend line.',
-    formatTick: v => `${v.toFixed(1)} s/day`,
-    formatTooltip: v => `${v>0?'+':''}${v.toFixed(1)} s/day`,
-    accuracyRange: parseAccuracySpec(accuracySpec)
+    unit: ' s/day',
+    decimals: 1,
+    accuracyRange: parseAccuracySpec(accuracySpec),
+    summary: (avgRate === null || avgRate === undefined) ? null : avgRate
   });
 }
 

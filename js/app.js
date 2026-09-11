@@ -333,7 +333,7 @@ function buildWatchStatsBundle(watch){
           <button type="button" class="zoom-btn" data-action="zoomin">+</button>
         </div>
       </div>
-      ${buildChart(rated, selectedDriftIdx, watch.accuracySpec)}
+      ${buildChart(rated, selectedDriftIdx, watch.accuracySpec, stats ? stats.avgRate : null)}
     </div>
   `;
 
@@ -350,6 +350,31 @@ function buildWatchStatsBundle(watch){
   return { dialHtml, chartsHtml, historySectionHtml };
 }
 
+
+// Scrolls the page so the opened history edit form sits entirely in the gap
+// between the sticky header and the bottom tab bar — both are fixed, so a
+// plain scrollIntoView would happily park the form underneath them. The list
+// itself stops scrolling while editing, so the page is the right axis to move.
+function scrollEditRowIntoView(){
+  const row = document.querySelector('.history-edit-row');
+  if(!row) return;
+  const header = document.getElementById('stickyHeader');
+  const tabs = document.querySelector('.bottom-tabs');
+  const gap = 10;
+  const topLimit = (header ? header.getBoundingClientRect().bottom : 0) + gap;
+  const bottomLimit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - gap;
+  const box = row.getBoundingClientRect();
+
+  let delta = 0;
+  if(box.height > bottomLimit - topLimit){
+    delta = box.top - topLimit;          // too tall to fit — pin its top instead
+  } else if(box.bottom > bottomLimit){
+    delta = box.bottom - bottomLimit;    // hanging below the tab bar
+  } else if(box.top < topLimit){
+    delta = box.top - topLimit;          // tucked under the header
+  }
+  if(Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'smooth' });
+}
 
 // Chart zoom buttons, chart-dot selection, and history-row edit/save/delete
 // — shared by the Data tab and the Collection tab's detail view.
@@ -370,7 +395,14 @@ function attachWatchStatsHandlers(watch){
   });
 
   document.querySelectorAll('[data-action="edithistory"]').forEach(el=>{
-    el.onclick = () => { editingReadingId = el.dataset.id; render(); };
+    el.onclick = () => {
+      editingReadingId = el.dataset.id;
+      render();
+      // The form is far taller than the row it replaced, so it usually opens
+      // running off the bottom of the screen. One frame for layout to settle,
+      // then bring it fully into view.
+      requestAnimationFrame(scrollEditRowIntoView);
+    };
   });
   const cancelEditBtn = document.querySelector('[data-action="canceledit"]');
   if(cancelEditBtn) cancelEditBtn.onclick = () => { editingReadingId = null; render(); };
