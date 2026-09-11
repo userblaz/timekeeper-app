@@ -80,10 +80,17 @@
     overflow-y:hidden;
     -webkit-overflow-scrolling:touch;
     scrollbar-width:none;
-    margin-bottom:8px;
+    /* Matches the 8px margin-top the .section wrapper gives the other tabs'
+       titles, so the watch names land on the same line as those headings. */
+    padding-top:8px;
+    /* No bottom margin: it would sit inside the header (see flow-root there)
+       as a band of background below the rule, which scrolling content
+       disappears behind early — reading as a gap under the line. The header
+       now ends exactly at the rule, and the spacing below it comes from the
+       content's own top margin, which scrolls away with it. */
+    margin-bottom:0;
     border-bottom:1px solid var(--line);
     background:var(--bg);
-    padding-top:0;
     padding-bottom:10px;
   }
   .tabs::-webkit-scrollbar{display:none;}
@@ -103,24 +110,16 @@
   .tab.active{
     color:var(--accent);
   }
-  /* The + that jumps to the Collection tab's add form. Bumped up a little so
-     the glyph's optical weight matches the watch names it sits beside, and
-     nudged down to keep their baselines aligned. */
+  /* The jump to the Collection tab's add form. Inherits .tab wholesale — no
+     size or weight of its own — so it shares one baseline with the watch
+     names instead of stretching the row's line box and lifting them. */
   .tab-add{
-    font-size:19px;
-    font-weight:400;
-    line-height:1;
     color:var(--grey);
-    position:relative;
-    top:1px;
   }
-  /* The spelled-out version on an empty collection — back to heading size,
-     and in the accent colour since it's the only thing to do on the page. */
-  .tab-add-wide{
-    font-size:15px;
-    font-weight:600;
-    color:var(--accent);
-    top:0;
+  /* The glyph alone sits optically low against the caps beside it. */
+  .tab-add-plus{
+    position:relative;
+    top:-1px;
   }
 
   /* Dial */
@@ -128,7 +127,9 @@
     display:flex;
     flex-direction:column;
     align-items:center;
-    padding:0;
+    /* The figure is set at line-height 1, so its digits reach the very top of
+       its box and crowd the rule above. This is that missing leading. */
+    padding:10px 0 0;
   }
   .dial-figure{
     font-family:'Inter',sans-serif;
@@ -160,7 +161,7 @@
 
   /* Chart */
   .chart-box{
-    margin:22px 0 4px;
+    margin:20px 0 4px;
     background:var(--surface);
     border:1px solid var(--line);
     border-radius:20px;
@@ -435,8 +436,8 @@
 
   /* Section */
   .section{
-    margin-top:26px;
-    padding-top:20px;
+    margin-top:23px;
+    padding-top:18px;
     border-top:1px solid var(--line);
   }
   .section-title{
@@ -681,14 +682,16 @@
     border:1px solid var(--line);
     border-radius:20px;
     padding:16px;
-    margin-bottom:16px;
+    margin-bottom:14px;
     box-shadow:0 8px 24px -8px rgba(0,0,0,0.5);
   }
-  /* Shutter flash on the panel that opens when a reading is captured: light
-     rushing in from every edge, then a slow fade out. An overlay rather than
-     a box-shadow on the panel itself, so it can fade independently of the
-     panel's own resting shadow — and pointer-events:none so it never
-     swallows a tap on the fields underneath while it's still fading. */
+  /* Camera-flash on the panel that opens when a reading is captured. Two
+     layers on one overlay: fully white light blown in from the edges, which
+     carries the effect, over a faint white wash across the whole rectangle
+     that lifts it without washing out the content. An overlay rather than a
+     filter on the panel itself, so it fades independently of the panel's own
+     shadow — and pointer-events:none so it never swallows a tap on the
+     fields underneath while it's still fading. */
   .snap-flash{position:relative;}
   .snap-flash::after{
     content:'';
@@ -696,15 +699,24 @@
     inset:0;
     border-radius:inherit;
     pointer-events:none;
-    box-shadow:inset 0 0 30px 2px rgba(255,255,255,0.45);
-    animation:snap-flash 1.25s ease-out forwards;
+    background:rgba(255,255,255,0.15);
+    /* The first shadow has no blur: a hard 2px ring that is literally 100%
+       white at the edge. Blurred shadows never reach full white however
+       bright you make them — the blur averages them against what's behind.
+       The other two feather that ring inwards so it reads as light spilling
+       in rather than as a drawn border. */
+    box-shadow:
+      inset 0 0 0 2px #fff,
+      inset 0 0 16px 0 rgba(255,255,255,0.95),
+      inset 0 0 42px 6px rgba(255,255,255,0.7);
+    animation:snap-flash 1.35s ease-out forwards;
   }
-  /* Holds at full brightness for the first 0.25s (20% of 1.25s) before the
-     1s fade begins, so the flash lands as a pop rather than starting to
-     disappear the instant it arrives. */
+  /* The shape of a real flash firing: 0.1s ramp to fully white (7.4% of
+     1.35s), held there to 0.25s (18.5%), then a one-second fall. */
   @keyframes snap-flash{
-    0%{opacity:1;}
-    20%{opacity:1;}
+    0%{opacity:0;}
+    7.4%{opacity:1;}
+    18.5%{opacity:1;}
     100%{opacity:0;}
   }
   @media (prefers-reduced-motion: reduce){
@@ -742,8 +754,9 @@
     font-size:26px;
     font-weight:600;
     text-align:center;
-    /* Accent, not ink — this is the one frozen reading on a page otherwise
-       full of live white clocks, and the colour is what separates it. */
+    /* Coloured by which side of true time the watch is on, the same green
+       and red the rates use elsewhere — which also sets this frozen reading
+       apart from the live white clocks around it. */
     color:var(--accent);
     margin-bottom:4px;
     /* Plays once when the panel appears — the timestamp snaps down onto the
@@ -760,6 +773,8 @@
   @media (prefers-reduced-motion: reduce){
     .confirm-time{animation:none;}
   }
+  .confirm-time.ahead{color:var(--good);}
+  .confirm-time.behind{color:var(--bad);}
   .confirm-sub{
     font-family:'Inter',sans-serif;
     text-align:center;

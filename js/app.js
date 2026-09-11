@@ -179,11 +179,9 @@ function render(){
     <button class="tab ${w.id===state.activeId?'active':''}" data-action="select" data-id="${w.id}">${escapeHtml(w.name)}</button>
   `).join('');
   // Sits alongside the watch names so adding one is reachable from here
-  // instead of only from the Collection tab. On an empty collection it's the
-  // only thing on the row, so it spells itself out rather than leaving a
-  // bare glyph as the whole page.
-  const addLabel = state.watches.length ? '+' : '+ Add watch';
-  tabsHtml += `<button class="tab tab-add${state.watches.length ? '' : ' tab-add-wide'}" data-action="jumptoaddwatch" title="Add a watch" aria-label="Add a watch">${addLabel}</button>`;
+  // instead of only from the Collection tab. Spelled out rather than a bare
+  // glyph, and in the same type as the names so the row keeps one baseline.
+  tabsHtml += `<button class="tab tab-add" data-action="jumptoaddwatch" aria-label="Add a watch"><span class="tab-add-plus">+</span> Add watch</button>`;
 
   let bodyHtml = '';
 
@@ -381,7 +379,19 @@ function scrollPanelIntoView(el, pinTop){
     // onto whatever content is scrolled behind, which reads as the panel
     // being clipped rather than as space.
     const topGap = pinTop ? 0 : 10;
-    const topLimit = (header ? header.getBoundingClientRect().bottom : 0) + topGap;
+    // Where the header's bottom edge will be once we've scrolled, not where
+    // it is now. It's position:sticky, so until the page has scrolled past
+    // it it's still sitting in flow, lower down — measuring that and then
+    // scrolling makes it rise, which is a second moving target on top of the
+    // collapse. Once stuck it settles at its `top` offset, so take the lower
+    // of the two and the first pass is already the final geometry.
+    let headerBottom = 0;
+    if(header){
+      const rect = header.getBoundingClientRect();
+      const stuckTop = parseFloat(getComputedStyle(header).top) || 0;
+      headerBottom = Math.min(rect.bottom, stuckTop + rect.height);
+    }
+    const topLimit = headerBottom + topGap;
     const bottomLimit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - 10;
     const box = el.getBoundingClientRect();
 
@@ -568,9 +578,17 @@ function buildQuickLogArea(){
 
   const c = quickCaptured.at;
   const timeStr = pad2(c.getHours()) + ':' + pad2(c.getMinutes()) + ':' + pad2(quickCaptured.second);
+  // Seconds the watch is ahead of (+) or behind (-) true time, from the mark
+  // that was tapped against the phone's own seconds. Wrapped into ±30 so a
+  // watch two seconds fast reads as +2 rather than -58. The hour and minute
+  // fields below default to the phone's, so this is the whole of the reading
+  // unless they're overridden.
+  let aheadBy = quickCaptured.second - c.getSeconds();
+  while(aheadBy > 30) aheadBy -= 60;
+  while(aheadBy <= -30) aheadBy += 60;
   return `
     <div class="quick-log-box snap-flash">
-      <div class="confirm-time">${timeStr}</div>
+      <div class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${timeStr}</div>
       <div class="confirm-sub">captured at <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> phone time</div>
       <div class="row2">
         <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
@@ -677,7 +695,10 @@ function attachHandlers(watch){
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       render();
-      requestAnimationFrame(() => scrollPanelIntoView(document.querySelector('.quick-log-box'), true));
+      // Synchronous, in the same task as the render: render() has already
+      // collapsed the header, so the very first measurement is the final
+      // geometry and the page jumps straight there in one paint.
+      scrollPanelIntoView(document.querySelector('.quick-log-box'), true);
     };
   });
 

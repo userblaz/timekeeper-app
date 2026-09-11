@@ -214,7 +214,13 @@ let clockForceCollapsed = false;
 function setClockCollapsed(on){
   if(clockForceCollapsed === on) return;
   clockForceCollapsed = on;
-  clockLastT = -1; // the loop only writes on change, so force the next frame
+  // Applied now, not on the next animation frame: the caller scrolls the
+  // page to sit under this header immediately afterwards, and measuring it
+  // at its old size would land short and then need a second correction —
+  // which is what turned the jump into a visible scroll.
+  if(clockSentinelEl && masterClockBoxEl){
+    applyClockCollapse(on ? 1 : scrollCollapseT());
+  }
 }
 const clockLabelEl = document.getElementById('masterClockLabel');
 const clockDigitsEl = document.getElementById('masterClock');
@@ -226,29 +232,38 @@ function syncHeaderSpacer(){
   // don't error.
 }
 
+// Writes the collapse state for a given t (0 = full, 1 = collapsed). Split
+// out of the loop so it can also be applied synchronously — a caller that
+// then measures the header needs the new geometry in the same task, not one
+// animation frame later.
+function applyClockCollapse(t){
+  if(t === clockLastT) return;
+  clockLastT = t;
+  const padTop = (26 - t*18).toFixed(1);
+  const padSide = (22 - t*4).toFixed(1);
+  const padBottom = (10 - t*2).toFixed(1);
+  masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
+  if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
+  if(clockLabelEl){
+    const labelOpacity = Math.max(0, 1 - t*1.4);
+    clockLabelEl.style.opacity = labelOpacity.toFixed(2);
+    // once it's faded out, let clicks pass through to the pill's own
+    // sound-toggle handler instead of the (now invisible) label
+    // intercepting them for a resync tap.
+    clockLabelEl.style.pointerEvents = labelOpacity < 0.3 ? 'none' : 'auto';
+  }
+  syncHeaderSpacer();
+}
+
+function scrollCollapseT(){
+  const rect = clockSentinelEl.getBoundingClientRect();
+  const distancePast = Math.max(0, -rect.bottom);
+  return Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
+}
+
 function clockCollapseLoop(){
   if(clockSentinelEl && masterClockBoxEl){
-    const rect = clockSentinelEl.getBoundingClientRect(); // single read per frame
-    const distancePast = Math.max(0, -rect.bottom);
-    const t = clockForceCollapsed ? 1
-      : Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
-    if(t !== clockLastT){
-      clockLastT = t;
-      const padTop = (26 - t*18).toFixed(1);
-      const padSide = (22 - t*4).toFixed(1);
-      const padBottom = (10 - t*2).toFixed(1);
-      masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
-      if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
-      if(clockLabelEl){
-        const labelOpacity = Math.max(0, 1 - t*1.4);
-        clockLabelEl.style.opacity = labelOpacity.toFixed(2);
-        // once it's faded out, let clicks pass through to the pill's own
-        // sound-toggle handler instead of the (now invisible) label
-        // intercepting them for a resync tap.
-        clockLabelEl.style.pointerEvents = labelOpacity < 0.3 ? 'none' : 'auto';
-      }
-      syncHeaderSpacer();
-    }
+    applyClockCollapse(clockForceCollapsed ? 1 : scrollCollapseT());
   }
   requestAnimationFrame(clockCollapseLoop);
 }
