@@ -694,6 +694,7 @@ function attachHandlers(watch){
   document.querySelectorAll('[data-action="quicksec"]').forEach(el=>{
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
+      playShutterSound();
       render();
       // Synchronous, in the same task as the render: render() has already
       // collapsed the header, so the very first measurement is the final

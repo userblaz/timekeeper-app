@@ -135,6 +135,48 @@ function playTickSound(){
   osc.stop(t + 0.05);
 }
 
+// A camera shutter for the capture tap: two short band-passed noise bursts
+// 55ms apart — mirror, then shutter — which is what makes a click read as a
+// camera rather than a generic beep. Synthesised rather than loaded, so
+// there's no asset to fetch and nothing to preload. Deliberately quiet; it
+// sits under the flash rather than announcing itself.
+function playShutterSound(){
+  if(!clockAudioCtx) clockAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = clockAudioCtx;
+  // Safe to call: the tap that triggers this is itself the user gesture iOS
+  // requires before a page is allowed to make any sound at all.
+  if(ctx.state === 'suspended') ctx.resume();
+
+  const noise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.08), ctx.sampleRate);
+  const data = noise.getChannelData(0);
+  for(let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const click = (at, level, freq) => {
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = freq;
+    band.Q.value = 1.2;
+    const gain = ctx.createGain();
+    // Exponential ramps, not linear: a linear decay on a click reads as a
+    // soft thud, and exponentialRampToValueAtTime can never touch zero, hence
+    // the 0.0001 floor at both ends.
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(level, at + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.035);
+    src.connect(band);
+    band.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(at);
+    src.stop(at + 0.08);
+  };
+
+  const t = ctx.currentTime + 0.01;
+  click(t, 0.07, 3000);            // mirror up: brighter, the louder of the two
+  click(t + 0.055, 0.05, 2200);    // shutter closing: softer and lower
+}
+
 function scheduleNextTick(){
   if(!clockTickEnabled) return;
   const now = trueNow();
