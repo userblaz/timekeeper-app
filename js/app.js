@@ -341,7 +341,7 @@ function buildWatchStatsBundle(watch){
     <div class="section">
       <h2 class="section-title">History</h2>
       <div class="history-wrap">
-        <div class="history-scroll" id="historyScroll">${historyHtml}</div>
+        <div class="history-scroll${editingReadingId ? ' editing' : ''}" id="historyScroll">${historyHtml}</div>
         <div class="history-scrollbar-track custom-scrollbar-track" id="historyScrollTrack"><div class="history-scrollbar-thumb custom-scrollbar-thumb" id="historyScrollThumb"></div></div>
       </div>
     </div>

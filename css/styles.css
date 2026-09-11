@@ -706,13 +706,22 @@
     position:relative;
   }
   .history-scroll{
-    max-height:200px;
+    max-height:340px;
     overflow-y:auto;
     overflow-x:hidden;
     -webkit-overflow-scrolling:touch;
     padding-right:14px;
     scrollbar-width:none;
     -ms-overflow-style:none;
+  }
+  /* While a row is open for editing the list grows to fit it, so the form is
+     never trapped inside a scrolling box — the page scrolls instead. */
+  .history-scroll.editing{
+    max-height:none;
+    overflow:visible;
+  }
+  .history-scroll.editing + .history-scrollbar-track{
+    display:none;
   }
   .history-scroll::-webkit-scrollbar{
     display:none;
@@ -727,7 +736,8 @@
     top:0;
     right:0;
     width:4px;
-    height:200px;
+    /* follows the list's height rather than repeating its max-height */
+    height:100%;
     pointer-events:none;
   }
   .custom-scrollbar-thumb{
@@ -1018,4 +1028,14 @@
     border-radius:999px;
     flex-shrink:0;
     white-space:nowrap;
+  }
+
+  /* Phone-sized screens: halve the vertical whitespace around the title so
+     the clock starts higher. The notch inset itself is untouched — that's
+     physical clearance, not padding. */
+  @media (max-width:480px){
+    .app{padding-top:calc(var(--safe-top) + 7px);}
+    .app-title{margin-top:5px;margin-bottom:4px;}
+    .signout-btn{margin-top:3px;}
+    #stickyHeader{padding-top:7px;}
   }
