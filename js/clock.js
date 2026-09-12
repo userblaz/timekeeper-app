@@ -240,7 +240,7 @@ const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
 // it back. Doesn't affect clockForceCollapsed below, which is a separate,
 // functional behavior (holding the header collapsed while the capture
 // panel is open) rather than a decorative scroll animation.
-const CLOCK_SCROLL_COLLAPSE_ENABLED = false;
+const CLOCK_SCROLL_COLLAPSE_ENABLED = true;
 
 // Discrete toggle at a single threshold, checked once per animation frame
 // but only WRITING to the DOM when the state actually changes — so the
