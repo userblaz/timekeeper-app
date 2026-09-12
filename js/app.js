@@ -254,7 +254,7 @@ function render(){
 // the group's border instead (see buildDataWatchGroupHtml). `selected` is
 // the plain case — this watch is the one a snap will apply to, but no
 // pop-up is open yet — so it just gets its own blue stroke.
-function buildDataWatchCardHtml(w, connected, selected){
+function buildDataWatchCardHtml(w, connected, selected, locked){
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
     : `<div class="collection-photo collection-photo-empty">＋</div>`;
@@ -268,7 +268,7 @@ function buildDataWatchCardHtml(w, connected, selected){
     : '';
   const stateClass = connected ? ' connected' : selected ? ' selected' : '';
   return `
-    <div class="collection-card data-watch-card${stateClass}" data-action="select" data-id="${w.id}">
+    <div class="collection-card data-watch-card${stateClass}${locked ? ' locked' : ''}" data-action="select" data-id="${w.id}">
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${rateHtml}</div>
@@ -328,7 +328,7 @@ function buildDataWatchListHtml(){
   const cardsHtml = watchesInOrder.map(w => {
     const isActive = w.id === state.activeId;
     if(isActive && popupOpen) return buildDataWatchGroupHtml(w);
-    return buildDataWatchCardHtml(w, false, isActive);
+    return buildDataWatchCardHtml(w, false, isActive, popupOpen);
   }).join('');
   return `
     <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
@@ -721,7 +721,7 @@ function updateHistoryScrollbar(){
 function buildSnapTriggerHtml(){
   return `
     <div class="quick-log-box">
-      <p class="hint">Watch your mechanical watch's second hand against the clock above. The instant it crosses a mark, tap it:</p>
+      <p class="hint">Snap when your second hand hits a mark:</p>
       <div class="quick-btns">
         <button type="button" class="quick-btn" data-action="quicksec" data-sec="0">:00</button>
         <button type="button" class="quick-btn" data-action="quicksec" data-sec="15">:15</button>
@@ -786,7 +786,7 @@ function buildSnapPopupHtml(){
       </div>
       <input type="text" id="qNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
       <div class="row2" style="margin-top:12px;">
-        <button type="button" class="btn-secondary" data-action="quickcancel">Cancel</button>
+        <button type="button" class="btn-secondary" data-action="quickcancel" style="flex:1">Cancel</button>
         <button type="button" class="btn-primary" data-action="quickconfirm" style="flex:1">Log</button>
       </div>
     </div>
@@ -827,6 +827,10 @@ function buildManualForm(){
 function attachHandlers(watch){
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => {
+      // A snap in progress is scoped to one watch — switching away mid-snap
+      // would strand the open pop-up against the wrong card, so selecting a
+      // different watch is blocked until it's logged or cancelled.
+      if(quickCaptured || manualMode) return;
       if(tgListening) tgAbort();
       state.activeId = el.dataset.id; selectedOffsetIdx=null; selectedDriftIdx=null; offsetScrollLeft=null; driftScrollLeft=null; editingReadingId=null;
       render();
