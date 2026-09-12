@@ -192,38 +192,66 @@ function playShutterSound(){
   click(t + 0.055, 0.05, 2200);    // shutter closing: softer and lower
 }
 
+// Generated once and reused, not regenerated per press — a fresh random
+// buffer each time is exactly what made an earlier version of this sound
+// come out a little different take to take.
+let windNoiseBuffer = null;
+function getWindNoiseBuffer(ctx){
+  if(!windNoiseBuffer){
+    windNoiseBuffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.02), ctx.sampleRate);
+    const data = windNoiseBuffer.getChannelData(0);
+    for(let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return windNoiseBuffer;
+}
+
 // A crown-winding ratchet for "mark as fully wound" — five sharp, snappy
-// ticks rising in pitch. A square wave with a near-instant attack and a
-// decay of just ~12ms, not the noise-through-a-filter texture
-// playShutterSound uses — that read as a soft scratch/click rather than a
-// crisp mechanical tick, and varied a little take to take even with a fixed
-// noise buffer. A plain oscillator tone is both crisper and exactly
-// reproducible every time.
+// ticks rising in pitch. Each one layers two things at once: a square-wave
+// tone for the pitch (so the rise up the ratchet is actually audible) and a
+// very short burst of the noise buffer above, highpass-filtered so it
+// reads as a hard mechanical edge rather than adding any low-end mush —
+// that transient is what a pure tone alone was missing.
 function playWindSound(){
   if(!clockAudioCtx) clockAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const ctx = clockAudioCtx;
   if(ctx.state === 'suspended') ctx.resume();
+  const noise = getWindNoiseBuffer(ctx);
 
   const tick = (at, freq, level) => {
     const osc = ctx.createOscillator();
     osc.type = 'square';
     osc.frequency.value = freq;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(level, at + 0.001);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.012);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.0001, at);
+    oscGain.gain.exponentialRampToValueAtTime(level, at + 0.001);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, at + 0.012);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
     osc.start(at);
     osc.stop(at + 0.02);
+
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 4300;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, at);
+    noiseGain.gain.exponentialRampToValueAtTime(level * 1.4, at + 0.001);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, at + 0.008);
+    src.connect(hp);
+    hp.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    src.start(at);
+    src.stop(at + 0.02);
   };
 
   const t = ctx.currentTime + 0.01;
   const clicks = 5;
   for(let i = 0; i < clicks; i++){
     const at = t + i * 0.04;
-    const level = 0.05 - i * 0.002;
-    const freq = 1400 + i * 180;
+    const level = 0.036 - i * 0.0014;
+    const freq = 1150 + i * 180;
     tick(at, freq, level);
   }
 }
@@ -350,9 +378,14 @@ function syncHeaderSpacer(){
 function applyClockCollapse(t){
   if(t === clockLastT) return;
   clockLastT = t;
-  const padTop = (20 - t*18).toFixed(1);
+  // Same rest-state values as before (t=0: 20/6), but the collapse target
+  // is now 3/3 at full collapse instead of 2/4 — that had more room below
+  // the digits than above, sitting them visibly above center in the
+  // collapsed pill. Combined padding is still 6px either way, so the
+  // pill's own height doesn't change.
+  const padTop = (20 - t*17).toFixed(1);
   const padSide = (22 - t*4).toFixed(1);
-  const padBottom = (6 - t*2).toFixed(1);
+  const padBottom = (6 - t*3).toFixed(1);
   masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
   if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
   if(clockLabelEl){
