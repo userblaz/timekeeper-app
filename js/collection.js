@@ -112,13 +112,11 @@ function powerReserveElapsed(w){
 
 function formatReserveRemaining(hoursLeft){
   if(hoursLeft <= 0) return 'wound down';
-  // Round to whole minutes first, then split. Rounding the minutes out of a
-  // fractional hour lets them land on 60 and print "57h 60m".
-  const totalMin = Math.round(hoursLeft * 60);
-  if(totalMin < 60) return `${totalMin} min left`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m ? `${h}h ${m}m left` : `${h}h left`;
+  // Whole hours only, no minutes and no "left" — keeps the row short on the
+  // Data tab's cards, where it sits next to a name, a rate badge and now a
+  // third action button. Rounded up rather than to nearest, so a sliver of
+  // reserve still reads as "1h" instead of a misleading "0h".
+  return `${Math.max(1, Math.ceil(hoursLeft))}h`;
 }
 
 // Nothing at all when no reserve has been set: a bar with a guessed capacity
@@ -160,12 +158,26 @@ function windIconSvg(){
   </svg>`;
 }
 
-// A plain checkmark for the "worn today" toggle — reads instantly as "done
-// today" and, unlike a wristwatch glyph, doesn't compete visually with the
-// wind icon or the app's own watch imagery.
+// A calendar with a checked-off day for the "worn today" toggle — reads as
+// "today, marked" rather than a generic checkmark, and stays legible at the
+// same small size as the wind icon beside it.
 function wornIconSvg(){
-  return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+    <path d="M3.5 9.5h17" />
+    <path d="M8 3v3" /><path d="M16 3v3" />
+    <path d="M8.5 14.7l2 2 4.5-4.5" />
+  </svg>`;
+}
+
+// Three dots: jumps straight to this watch's Collection detail page — full
+// specs, charts, history, the wear calendar — everything the Data tab's
+// trimmed-down card leaves out.
+function menuIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="none">
+    <circle cx="12" cy="5.5" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="12" cy="18.5" r="1.8" />
   </svg>`;
 }
 
@@ -396,16 +408,16 @@ function buildConditionInsightsHtml(watch){
 const WEAR_CALENDAR_MONTH_LABELS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEAR_CALENDAR_WEEKDAY_LABELS = ['S','M','T','W','T','F','S'];
 
-// Which month the wear calendar carousel is scrolled to — a module-level
-// variable rather than per-render state, so it survives a re-render caused
-// by something unrelated (toggling a day, a scroll-driven clock collapse)
-// without snapping back to the current month underneath the user. Reset to
-// the current month only when a watch's detail page is freshly opened (see
-// collectionDetailJustOpened's set site).
-let wearCalendarMonthIndex = new Date().getMonth();
+// Which month/year the wear calendar is currently showing — module-level
+// state, not per-render, so it survives a re-render caused by something
+// unrelated (toggling a day, a scroll-driven clock collapse) without
+// snapping back to the current month underneath the user. Reset to the
+// real current month/year only when a watch's detail page is freshly
+// opened (see collectionDetailJustOpened's set site).
+let wearCalendarYear = new Date().getFullYear();
+let wearCalendarMonth = new Date().getMonth();
 
-// One real calendar month — weekday-aligned with leading blanks — used as
-// one page of the horizontal, swipeable carousel below.
+// One real calendar month — weekday-aligned with leading blanks.
 function buildWearMonthPageHtml(w, year, m, todayStr){
   const daysInMonth = new Date(year, m + 1, 0).getDate();
   const firstWeekday = new Date(year, m, 1).getDay();
@@ -418,59 +430,85 @@ function buildWearMonthPageHtml(w, year, m, todayStr){
     cells += `<button type="button" class="wear-day${filled ? ' filled' : ''}${isFuture ? ' future' : ''}" data-action="togglewearday" data-id="${w.id}" data-date="${dateStr}" ${isFuture ? 'disabled' : ''} aria-label="${dateStr}${filled ? ', worn' : ''}">${d}</button>`;
   }
   return `
-    <div class="wear-month-page" data-month-index="${m}">
-      <div class="wear-month-label">${WEAR_CALENDAR_MONTH_LABELS[m]} ${year}</div>
+    <div class="wear-month-page">
       <div class="wear-weekday-row">${WEAR_CALENDAR_WEEKDAY_LABELS.map(x => `<span>${x}</span>`).join('')}</div>
       <div class="wear-days-grid">${cells}</div>
     </div>
   `;
 }
 
-// A year-at-a-glance wear tracker: one real month visible at a time, swiped
-// or arrow-stepped between (see attachWearCalendarHandlers) — a square is
-// filled when the day was tapped on directly or a reading that day was
-// logged "Worn on wrist" (see isDayWorn in data.js); future days are dimmed
-// and not tappable.
+// A wear tracker for one real month at a time, with unbounded month/year
+// navigation — arrows step by one month and roll over into the next or
+// previous year rather than stopping at Dec/Jan, and the two dropdowns
+// jump straight to any month or year without stepping through everything
+// in between. A square is filled when the day was tapped on directly or a
+// reading that day was logged "Worn on wrist" (see isDayWorn in data.js);
+// future days are dimmed and not tappable.
 function buildWearCalendarHtml(w){
-  const year = new Date().getFullYear();
+  const year = wearCalendarYear;
+  const m = wearCalendarMonth;
   const todayStr = new Date().toISOString().slice(0, 10);
-  const monthsHtml = WEAR_CALENDAR_MONTH_LABELS.map((_, m) => buildWearMonthPageHtml(w, year, m, todayStr)).join('');
+  const monthHtml = buildWearMonthPageHtml(w, year, m, todayStr);
   const chevron = (d) => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" /></svg>`;
+
+  // A generous but bounded range rather than a truly infinite picker — far
+  // enough back to cover a watch's whole ownership history, far enough
+  // forward that a slightly-wrong system clock doesn't clip the year you
+  // actually want.
+  const nowYear = new Date().getFullYear();
+  const yearOptions = [];
+  for(let y = nowYear - 15; y <= nowYear + 3; y++) yearOptions.push([String(y), String(y)]);
+  const monthOptions = WEAR_CALENDAR_MONTH_LABELS.map((label, i) => [String(i), label]);
 
   return `
     <div class="section" style="margin-top:20px;padding-top:16px;">
-      <h2 class="section-title">Worn in ${year}</h2>
-      <p class="hint" style="margin-bottom:12px;">Swipe to change month, tap a day to mark or unmark it as worn.</p>
-      <div class="wear-calendar-wrap">
+      <h2 class="section-title">Worn calendar</h2>
+      <p class="hint" style="margin-bottom:12px;">Pick any month and year, or tap a day to mark or unmark it as worn.</p>
+      <div class="wear-calendar-controls">
         <button type="button" class="zoom-btn wear-nav-btn" data-action="wearcalnav" data-dir="-1" aria-label="Previous month">${chevron('M15 18l-6-6 6-6')}</button>
-        <div class="wear-calendar-scroll" id="wearCalendarScroll">${monthsHtml}</div>
+        <div class="wear-calendar-select-slot">${buildSelect('wearCalMonthSelect', monthOptions, String(m))}</div>
+        <div class="wear-calendar-select-slot">${buildSelect('wearCalYearSelect', yearOptions, String(year))}</div>
         <button type="button" class="zoom-btn wear-nav-btn" data-action="wearcalnav" data-dir="1" aria-label="Next month">${chevron('M9 6l6 6-6 6')}</button>
+      </div>
+      <div class="wear-calendar-wrap">
+        ${monthHtml}
       </div>
     </div>
   `;
 }
 
-// Restores the carousel's scroll position after a re-render (instant — the
-// element was just recreated, so there's nothing to animate from), and wires
-// swipe tracking plus the two nav buttons for a smooth, JS-driven scroll.
+// Wires the two direct-jump dropdowns and the prev/next arrows. Arrows roll
+// over into the neighbouring year at Jan/Dec rather than stopping there —
+// that rollover is the actual fix for the old "locked to one year" issue.
 function attachWearCalendarHandlers(){
-  const scrollEl = document.getElementById('wearCalendarScroll');
-  if(!scrollEl) return;
-  scrollEl.scrollLeft = wearCalendarMonthIndex * scrollEl.clientWidth;
-  scrollEl.onscroll = () => {
-    clearTimeout(scrollEl._wearScrollTimer);
-    scrollEl._wearScrollTimer = setTimeout(() => {
-      wearCalendarMonthIndex = Math.round(scrollEl.scrollLeft / scrollEl.clientWidth);
-    }, 120);
-  };
+  // These two need to apply the instant an option is tapped, unlike every
+  // other buildSelect() field in the app, which only gets read later when
+  // its form's own Save button is clicked — the calendar has no save step,
+  // so waiting would just mean the tap visibly did nothing.
+  const monthInput = document.getElementById('wearCalMonthSelect');
+  const monthWrap = monthInput && monthInput.closest('.select-wrap');
+  if(monthWrap){
+    monthWrap.querySelectorAll('.select-option').forEach(opt => {
+      opt.addEventListener('click', () => { wearCalendarMonth = Number(opt.dataset.value); render(); });
+    });
+  }
+  const yearInput = document.getElementById('wearCalYearSelect');
+  const yearWrap = yearInput && yearInput.closest('.select-wrap');
+  if(yearWrap){
+    yearWrap.querySelectorAll('.select-option').forEach(opt => {
+      opt.addEventListener('click', () => { wearCalendarYear = Number(opt.dataset.value); render(); });
+    });
+  }
   document.querySelectorAll('[data-action="wearcalnav"]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      const width = scrollEl.clientWidth;
-      const current = Math.round(scrollEl.scrollLeft / width);
-      const next = Math.min(11, Math.max(0, current + Number(btn.dataset.dir)));
-      wearCalendarMonthIndex = next;
-      scrollEl.scrollTo({ left: next * width, behavior: 'smooth' });
+      let m = wearCalendarMonth + Number(btn.dataset.dir);
+      let y = wearCalendarYear;
+      if(m < 0){ m = 11; y -= 1; }
+      else if(m > 11){ m = 0; y += 1; }
+      wearCalendarMonth = m;
+      wearCalendarYear = y;
+      render();
     };
   });
 }
@@ -787,7 +825,8 @@ function attachCollectionHandlers(){
       if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
       viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null;
       collectionDetailJustOpened = true;
-      wearCalendarMonthIndex = new Date().getMonth();
+      wearCalendarYear = new Date().getFullYear();
+      wearCalendarMonth = new Date().getMonth();
       render();
     };
   });
