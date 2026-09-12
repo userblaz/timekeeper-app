@@ -134,11 +134,15 @@ function computeReadingRates(watch){
   // a reset point (post-service regulation) starts a fresh baseline, like i===0
   const readings = [...watch.readings].sort((a,b)=> a.date.localeCompare(b.date));
   return readings.map((r, i) => {
-    if(i === 0 || r.isReset) return {...r, rate:null, days:null};
+    if(i === 0 || r.isReset) return {...r, rate:null, deltaOffset:null, days:null, isBaseline:true};
     const prev = readings[i-1];
     const days = daysBetween(prev.date, r.date);
-    const rate = days > 0 ? (r.offset - prev.offset) / days : null;
-    return {...r, rate, days};
+    const deltaOffset = r.offset - prev.offset;
+    // Same date as the previous reading: shown as an ordinary reading like
+    // any other, using the raw offset change since there's no elapsed time
+    // to divide it by.
+    const rate = days > 0 ? deltaOffset / days : deltaOffset;
+    return {...r, rate, deltaOffset, days, isBaseline:false};
   });
 }
 
