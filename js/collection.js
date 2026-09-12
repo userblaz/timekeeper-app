@@ -68,9 +68,9 @@ function buildCollectionTabHtml(){
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
       <div class="collection-list">
+        ${watchesHtml}
         ${addHtml}
         ${typeof buildDemoWatchButtonHtml === 'function' ? buildDemoWatchButtonHtml() : ''}
-        ${watchesHtml}
       </div>
     </div>
   `;
