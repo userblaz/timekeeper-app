@@ -1073,7 +1073,33 @@
     align-items:baseline;
     gap:12px;
   }
-  .history-item:last-child{border-bottom:none;}
+  /* Each row is now its own .swipe-row (see the History markup in app.js),
+     so .history-item is never actually the scroll list's last child even
+     when its row is — the border has to come off based on the row instead. */
+  .swipe-row:last-child .history-item{border-bottom:none;}
+  /* .history-scroll reserves 14px on the right for its scrollbar thumb
+     (below), which used to leave every row's own border-bottom — and the
+     red delete panel — stopping 14px short of the width every other section
+     on the page uses. Bleeding the row out by that same 14px and pushing it
+     back in as padding on the sliding card keeps the border/panel flush
+     with everything else while still keeping the row's text clear of the
+     thumb. */
+  .swipe-row{
+    margin-right:-14px;
+  }
+  /* Slides left off the delete panel underneath it, the same swipe-to-delete
+     interaction as the Collection tab's cards (see wireCollectionSwipe in
+     collection.js, reused here for history rows too). */
+  .swipe-row .history-item{
+    position:relative;
+    z-index:1;
+    padding-right:14px;
+    background:var(--bg);
+    touch-action:pan-y;
+    transition:transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    -webkit-user-select:none;
+    user-select:none;
+  }
   .history-item.history-edit-row{
     display:block;
     cursor:default;
@@ -1327,17 +1353,23 @@
     justify-content:flex-end;
     background:var(--bad);
     border-radius:18px;
-    /* Hidden until a swipe actually starts. Sitting there permanently, it
-       showed as a red hairline along the card's rounded edge where the
-       antialiased curves didn't quite meet. */
+    /* Hidden until a swipe actually starts. opacity alone still paints this
+       layer, and antialiasing along its rounded corner can then let a sliver
+       of red bleed through the card's own rounded clip at rest — visibility
+       removes it from painting entirely instead of just making it
+       transparent, which a mere opacity of 0 doesn't. The transition is
+       delayed on the way out so closing still fades rather than snapping. */
     opacity:0;
+    visibility:hidden;
     pointer-events:none;
-    transition:opacity 140ms linear;
+    transition:opacity 140ms linear, visibility 0s linear 140ms;
   }
   .swipe-row.swiping .swipe-delete,
   .swipe-row.open .swipe-delete{
     opacity:1;
+    visibility:visible;
     pointer-events:auto;
+    transition:opacity 140ms linear;
   }
   /* The icon grows into place as the panel is revealed, so the panel doesn't
      just appear fully formed the instant the card moves a pixel. */
@@ -1362,6 +1394,27 @@
     align-items:center;
     justify-content:center;
     padding:0;
+  }
+  /* History's version of the same full-bleed red panel, just a bit narrower
+     than the Collection tab's. */
+  .history-swipe-row .swipe-delete-btn{
+    width:70px;
+  }
+  /* .swipe-row's 18px corner radius (below) is sized for the Collection
+     tab's much taller cards — on History's ~40px-tall rows that same radius
+     eats a large share of the row's edge, both bending the divider line
+     where it meets the rounded corner and letting a sliver of the red panel
+     show through the curve. History's rows were always flat list items, not
+     cards, so there's no shape to preserve here — just square them off. */
+  .history-swipe-row{
+    border-radius:0;
+  }
+  /* The red panel itself (not the row, which stays a flat rectangle so the
+     divider lines are unaffected) rounds only its two right corners —
+     matching the Collection tab's card shape there, at the row's own right
+     edge, without rounding the left corners that sit inside the row. */
+  .history-swipe-row .swipe-delete{
+    border-radius:0 18px 18px 0;
   }
   .swipe-row .collection-card{
     position:relative;

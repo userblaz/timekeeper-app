@@ -349,12 +349,24 @@ function buildWatchStatsBundle(watch){
       // than two lines — the full text is still there when the row is tapped
       // open for editing.
       const metaLine = [conditionLabels, r.note].filter(Boolean).join(' · ');
-      return `<div class="history-item" data-action="edithistory" data-id="${r.id}">
-        <div class="hist-main">
-          <span class="hist-date">${r.date} · offset ${r.offset>0?'+':''}${r.offset}s</span>
-          ${rateHtml}
+      // Swipe left to reveal delete, the same interaction as the Collection
+      // tab's cards (see wireCollectionSwipe in collection.js), just a
+      // narrower reveal.
+      return `<div class="swipe-row history-swipe-row" data-swipe-id="${r.id}">
+        <div class="swipe-delete">
+          <button type="button" class="swipe-delete-btn" data-action="deletereadingswipe" data-id="${r.id}" aria-label="Delete this reading">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h16" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+            </svg>
+          </button>
         </div>
-        ${metaLine ? `<div class="hist-note">${escapeHtml(metaLine)}</div>` : ''}
+        <div class="history-item" data-action="edithistory" data-id="${r.id}">
+          <div class="hist-main">
+            <span class="hist-date">${r.date} · offset ${r.offset>0?'+':''}${r.offset}s</span>
+            ${rateHtml}
+          </div>
+          ${metaLine ? `<div class="hist-note">${escapeHtml(metaLine)}</div>` : ''}
+        </div>
       </div>`;
     }).join('');
 
@@ -474,6 +486,10 @@ function scrollPanelIntoView(el, pinTop){
 // bring it fully into view when it genuinely doesn't fit (a smaller phone,
 // or a taller panel), the same fallback scrollEditRowIntoView already
 // relies on — it only stops being automatic about *always* moving the page.
+// A bit narrower than the Collection tab's SWIPE_REVEAL (collection.js) —
+// matches the narrower .history-swipe-row button width in styles.css.
+const HISTORY_SWIPE_REVEAL = 70;
+
 function pinCapturePanel(){
   if(!quickCaptured || manualMode || activeTab !== 'data') return;
   scrollPanelIntoView(document.querySelector('.quick-log-box'), false);
@@ -534,12 +550,25 @@ function attachWatchStatsHandlers(watch){
 
   document.querySelectorAll('[data-action="edithistory"]').forEach(el=>{
     el.onclick = () => {
+      // A swipe ends in a click on whatever's underneath the finger — ignore
+      // that one, and treat a tap on an already-open row as "put it back"
+      // rather than "open me", same as the Collection tab's cards.
+      if(Date.now() - swipeEndedAt < 300) return;
+      const row = el.closest('.swipe-row');
+      if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
       editingReadingId = el.dataset.id;
       render();
       // The form is far taller than the row it replaced, so it usually opens
       // running off the bottom of the screen. One frame for layout to settle,
       // then bring it fully into view.
       requestAnimationFrame(scrollEditRowIntoView);
+    };
+  });
+  wireCollectionSwipe('.history-item', HISTORY_SWIPE_REVEAL);
+  document.querySelectorAll('[data-action="deletereadingswipe"]').forEach(el=>{
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if(confirm('Delete this reading?')) deleteReading(watch.id, el.dataset.id);
     };
   });
   const cancelEditBtn = document.querySelector('[data-action="canceledit"]');
@@ -892,64 +921,6 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
 // the next or previous dock icon — an alternative to reaching down to the
 // bar, not a replacement for it.
 //
-// Pointer events rather than touch events: several existing interactions
-// (the collection cards' swipe-to-delete, the history/chart scrollbar
-// thumbs) already use pointer events and call stopPropagation on them, but
-// a phone's browser dispatches touch events on a separate, parallel channel
-// that stopPropagation on a pointer event never touches — a document-level
-// touch listener would still see every one of those gestures too. Matching
-// the same event type those already use, and simply excluding their
-// elements below, avoids that collision entirely rather than fighting it.
-//
-// Restricted to pointerType 'touch': a mouse drag (selecting text, dragging
-// a scrollbar thumb on desktop) is a completely different gesture that only
-// coincidentally shares "horizontal movement" with a swipe.
-const TAB_SWIPE_MIN_DIST = 70;      // px — well past an accidental wobble
-const TAB_SWIPE_MAX_OFF_AXIS = 0.7; // vertical drift allowed, as a fraction of the horizontal distance
-const TAB_SWIPE_EDGE_GUARD = 24;    // px from either screen edge — iOS's own back/forward swipe lives here
-
-// Elements with their own horizontal drag or native horizontal scroll — a
-// swipe that starts inside one of these belongs to it, not to switching
-// tabs. Also the dock itself: swiping across the tab bar should not also
-// count as a page-content swipe on top of whatever it does natively.
-const TAB_SWIPE_EXCLUDED_SELECTOR = '.swipe-row, .custom-scrollbar-thumb, .tabs, .chart-scroll, .select-wrap, .bottom-tabs, input, textarea';
-
-let tabSwipeState = null;
-
-function tabSwipeOrder(){
-  return Array.from(document.querySelectorAll('.bottom-tab'))
-    .filter(b => getComputedStyle(b).display !== 'none')
-    .map(b => b.dataset.tab);
-}
-
-document.addEventListener('pointerdown', (e) => {
-  if(e.pointerType !== 'touch') return;
-  if(e.target.closest(TAB_SWIPE_EXCLUDED_SELECTOR)) return;
-  if(e.clientX < TAB_SWIPE_EDGE_GUARD || e.clientX > window.innerWidth - TAB_SWIPE_EDGE_GUARD) return;
-  tabSwipeState = { startX: e.clientX, startY: e.clientY, id: e.pointerId };
-}, { passive: true });
-
-document.addEventListener('pointerup', (e) => {
-  if(!tabSwipeState || e.pointerId !== tabSwipeState.id) return;
-  const dx = e.clientX - tabSwipeState.startX;
-  const dy = e.clientY - tabSwipeState.startY;
-  tabSwipeState = null;
-  if(Math.abs(dx) < TAB_SWIPE_MIN_DIST) return;
-  if(Math.abs(dy) > Math.abs(dx) * TAB_SWIPE_MAX_OFF_AXIS) return;
-  const order = tabSwipeOrder();
-  const i = order.indexOf(activeTab);
-  if(i === -1) return;
-  // Swiping left brings the next tab in from the right, same as it would
-  // for a page or a photo — so it moves forward through the dock's order;
-  // swiping right goes back. Clamped rather than wrapping: overshooting past
-  // either end of the dock just stays put, the same way the dock itself has
-  // no way to "tap past" its first or last icon.
-  const next = order[dx < 0 ? i + 1 : i - 1];
-  if(next) switchToTab(next);
-}, { passive: true });
-
-document.addEventListener('pointercancel', () => { tabSwipeState = null; }, { passive: true });
-
 // --- bootstrap ---
 // loadState()/syncTrueTime() are no longer called from here. Since the app
 // is now gated behind login, js/auth.js triggers them once a session is

@@ -161,13 +161,17 @@ function windIconSvg(){
 const SWIPE_REVEAL = 84;
 let swipeEndedAt = 0;
 
+// Shared by every swipeable row in the app (Collection cards, History rows)
+// — whichever of these the row actually contains is the element that slides.
+const SWIPE_CARD_SELECTOR = '.collection-card, .history-item';
+
 function closeSwipeRows(except){
   document.querySelectorAll('.swipe-row.open').forEach(row => {
     if(row === except) return;
     row.classList.remove('open');
     row.classList.add('swiping');
     setTimeout(() => row.classList.remove('swiping'), 240);
-    const card = row.querySelector('.collection-card');
+    const card = row.querySelector(SWIPE_CARD_SELECTOR);
     if(card) card.style.transform = '';
   });
 }
@@ -177,9 +181,14 @@ function closeSwipeRows(except){
 // touch-action:pan-y, so the browser keeps vertical scrolling for itself and
 // hands us the horizontal movement — no preventDefault needed, so the
 // listeners stay passive.
-function wireCollectionSwipe(){
+//
+// cardSelector defaults to the Collection tab's own card, but any swipeable
+// row (e.g. History's) can reuse this same gesture logic by passing its own.
+// revealPx likewise defaults to the Collection tab's own reveal width, but a
+// narrower delete button (History's) should only need to slide open that far.
+function wireCollectionSwipe(cardSelector = '.collection-card', revealPx = SWIPE_REVEAL){
   document.querySelectorAll('.swipe-row').forEach(row => {
-    const card = row.querySelector('.collection-card');
+    const card = row.querySelector(cardSelector);
     if(!card) return;
     let startX = 0, startY = 0, base = 0, dx = 0;
     let decided = false, dragging = false;
@@ -190,7 +199,7 @@ function wireCollectionSwipe(){
       // expected to aim around them. A tap on a button never starts a drag
       // (it doesn't move), so the two don't collide.
       startX = e.clientX; startY = e.clientY;
-      base = row.classList.contains('open') ? -SWIPE_REVEAL : 0;
+      base = row.classList.contains('open') ? -revealPx : 0;
       dx = base; decided = false; dragging = false;
       card.style.transition = 'none';
     });
@@ -209,7 +218,7 @@ function wireCollectionSwipe(){
       row.classList.add('swiping');
       // Rubber-banding past the reveal width, and no rightward travel beyond
       // closed — there's nothing to show on that side.
-      dx = Math.min(0, Math.max(-SWIPE_REVEAL - 20, base + mx));
+      dx = Math.min(0, Math.max(-revealPx - 20, base + mx));
       card.style.transform = `translateX(${dx}px)`;
     });
 
@@ -217,10 +226,10 @@ function wireCollectionSwipe(){
       card.style.transition = '';
       if(!dragging) return;
       dragging = false;
-      const open = dx < -SWIPE_REVEAL / 2;
+      const open = dx < -revealPx / 2;
       closeSwipeRows(open ? row : null);
       row.classList.toggle('open', open);
-      card.style.transform = open ? `translateX(${-SWIPE_REVEAL}px)` : '';
+      card.style.transform = open ? `translateX(${-revealPx}px)` : '';
       // While closing, the panel stays visible until the card has finished
       // sliding back over it — cutting it the instant the finger lifts looks
       // like the panel vanished rather than was covered.
