@@ -13,17 +13,37 @@ function parseAccuracySpec(spec){
   return { min: Math.min(...nums), max: Math.max(...nums) };
 }
 
+// How wide the chart can be drawn before it needs to scroll. Measured from a
+// chart already on the page when there is one; on the very first render there
+// isn't, so fall back to #root minus the chart box's own padding and border.
+function availableChartWidth(){
+  const existing = document.querySelector('.chart-scroll');
+  if(existing && existing.clientWidth) return existing.clientWidth;
+  const root = document.getElementById('root');
+  if(root && root.clientWidth) return root.clientWidth - 34;
+  return 240;
+}
+
 function buildLineChart(items, opts){
   if(items.length === 0) return `<div class="empty-note">${opts.emptyMsg}</div>`;
   const pxPerPoint = 46 * chartZoom;
   const h = 160, padL = 34, padR = 16, padT = 10, padB = 18;
-  const plotW = Math.max(240, (items.length - 1) * pxPerPoint);
+  // Always fill the container, so a chart with one or two readings still
+  // spans the full width instead of stopping short of the zoom buttons.
+  const minPlotW = Math.max(240, availableChartWidth() - padL - padR);
+  const plotW = Math.max(minPlotW, (items.length - 1) * pxPerPoint);
   const w = padL + padR + plotW;
   const values = items.map(it => it.value);
+  // What was actually recorded, reported in the summary line.
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  // What the y-axis has to span: the readings, zero, and the factory spec
+  // band when there is one — so the band stays on screen. This is wider than
+  // the data, which is why the two are tracked separately.
   const accuracyRange = opts.accuracyRange || null;
-  if(accuracyRange){ values.push(accuracyRange.min, accuracyRange.max); }
-  let min = Math.min(...values, 0);
-  let max = Math.max(...values, 0);
+  const scaleValues = accuracyRange ? values.concat([accuracyRange.min, accuracyRange.max]) : values;
+  let min = Math.min(...scaleValues, 0);
+  let max = Math.max(...scaleValues, 0);
   if(min === max){ min -= 1; max += 1; }
   const range = max - min;
   const plotH = h - padT - padB;
@@ -41,18 +61,21 @@ function buildLineChart(items, opts){
   }).join('');
 
   const xLabelsSvg = items.map((it,i) => {
-    return `<text x="${xAt(i).toFixed(1)}" y="${h-6}" text-anchor="middle" font-size="9" font-family="'Inter',sans-serif" fill="#A1A1AA">${formatShortDate(it.date)}</text>`;
+    // the first and last labels sit on the plot edges, so centring them would
+    // push half the text outside the chart
+    const anchor = i === 0 ? 'start' : (i === items.length-1 ? 'end' : 'middle');
+    return `<text x="${xAt(i).toFixed(1)}" y="${h-6}" text-anchor="${anchor}" font-size="9" font-family="'Inter',sans-serif" fill="var(--grey)">${formatShortDate(it.date)}</text>`;
   }).join('');
 
   const selIdx = opts.selectedIndex;
   const dotsSvg = pts.map((p,i) => {
     const positive = items[i].value >= 0;
-    const color = positive ? '#22C55E' : '#F87171';
+    const color = positive ? 'var(--good)' : 'var(--bad)';
     const isSel = selIdx === i;
     const isReset = !!items[i].isReset;
     const ring = isSel ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="7" fill="none" stroke="${color}" stroke-width="1.5" />` : '';
-    const resetMarker = isReset ? `<line x1="${p[0].toFixed(1)}" y1="${padT}" x2="${p[0].toFixed(1)}" y2="${h-padB}" stroke="#9C9AB5" stroke-width="1" stroke-dasharray="2,2" /><text x="${p[0].toFixed(1)}" y="${padT-4}" text-anchor="middle" font-size="8" font-family="'Inter',sans-serif" fill="#9C9AB5">svc</text>` : '';
-    const dotColor = isReset ? '#9C9AB5' : color;
+    const resetMarker = isReset ? `<line x1="${p[0].toFixed(1)}" y1="${padT}" x2="${p[0].toFixed(1)}" y2="${h-padB}" stroke="var(--grey)" stroke-width="1" stroke-dasharray="2,2" /><text x="${p[0].toFixed(1)}" y="${padT-4}" text-anchor="middle" font-size="8" font-family="'Inter',sans-serif" fill="var(--grey)">svc</text>` : '';
+    const dotColor = isReset ? 'var(--grey)' : color;
     return `<g class="chart-dot" data-chart="${opts.chartKey}" data-idx="${i}">
       ${resetMarker}
       <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="11" fill="transparent" />
@@ -67,9 +90,9 @@ function buildLineChart(items, opts){
     const yBottom = yAt(accuracyRange.min);
     accuracyBandSvg = `
       <rect x="${padL}" y="${yTop.toFixed(1)}" width="${plotW}" height="${(yBottom-yTop).toFixed(1)}" fill="rgba(59,130,246,0.08)" />
-      <line x1="${padL}" y1="${yTop.toFixed(1)}" x2="${w-padR}" y2="${yTop.toFixed(1)}" stroke="#3B82F6" stroke-width="1" stroke-dasharray="4,3" />
-      <line x1="${padL}" y1="${yBottom.toFixed(1)}" x2="${w-padR}" y2="${yBottom.toFixed(1)}" stroke="#3B82F6" stroke-width="1" stroke-dasharray="4,3" />
-      <text x="${w-padR-4}" y="${(yTop-4).toFixed(1)}" text-anchor="end" font-size="8.5" font-family="'Inter',sans-serif" fill="#3B82F6">factory spec</text>
+      <line x1="${padL}" y1="${yTop.toFixed(1)}" x2="${w-padR}" y2="${yTop.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4,3" />
+      <line x1="${padL}" y1="${yBottom.toFixed(1)}" x2="${w-padR}" y2="${yBottom.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4,3" />
+      <text x="${w-padR-4}" y="${(yTop-4).toFixed(1)}" text-anchor="end" font-size="8.5" font-family="'Inter',sans-serif" fill="var(--accent)">factory spec</text>
     `;
   }
 
@@ -82,23 +105,41 @@ function buildLineChart(items, opts){
     ${xLabelsSvg}
   </svg>`;
 
+  // Gain a decimal place when the range is too narrow to distinguish the
+  // gridlines otherwise — five labels all reading "0" or "-1" is useless.
+  const decimals = range < 4 ? Math.max(1, opts.decimals) : opts.decimals;
+  const fmtNum = v => v.toFixed(decimals);
+  const fmtSigned = v => `${v > 0 ? '+' : ''}${v.toFixed(decimals)}`;
+
+  // Axis labels carry no unit — the chart header already names it, and
+  // repeating "s/day" on every gridline wrapped each one onto two lines.
   const yAxisTicksHtml = ticks.map(t => {
     const y = yAt(t);
-    return `<div class="yaxis-tick" style="top:${y.toFixed(1)}px">${opts.formatTick(t)}</div>`;
+    return `<div class="yaxis-tick" style="top:${y.toFixed(1)}px">${fmtNum(t)}</div>`;
   }).join('');
   const yAxisHtml = `<div class="chart-yaxis" style="width:${padL}px;height:${h}px">${yAxisTicksHtml}</div>`;
 
-  let tooltipHtml = '';
+  // Colour the reading and its unit as one figure, leaving only the date in
+  // the label's own colour — and use the same sign rule the dots use, so a
+  // tapped reading reads out in the colour of the dot you just tapped.
+  const colorFor = v => v >= 0 ? 'var(--good)' : 'var(--bad)';
+  const colored = (v, color) => `<b style="color:${color};font-weight:600">${fmtSigned(v)}${opts.unit}</b>`;
+
+  // Left slot: the tapped reading, or the period summary when nothing is tapped.
+  let leftHtml = '';
   if(selIdx !== null && items[selIdx]){
     const it = items[selIdx];
-    tooltipHtml = `<span class="chart-tooltip">${formatShortDate(it.date)} · ${opts.formatTooltip(it.value)}</span>`;
+    const color = it.isReset ? 'var(--grey)' : colorFor(it.value);
+    leftHtml = `<span class="chart-tooltip">${formatShortDate(it.date)} · ${colored(it.value, color)}</span>`;
+  } else if(opts.summary !== null && opts.summary !== undefined){
+    leftHtml = `<span class="chart-tooltip">avg ${colored(opts.summary, colorFor(opts.summary))}</span>`;
   }
 
   const dateLabel = items.length > 1
     ? `${formatShortDate(items[0].date)} – ${formatShortDate(items[items.length-1].date)}`
     : formatShortDate(items[0].date);
-  const meta = `<span class="chart-meta">${dateLabel} · ${opts.formatTick(min)} to ${opts.formatTick(max)}</span>`;
-  const bottomRowHtml = `<div class="chart-bottom-row">${tooltipHtml}${meta}</div>`;
+  const meta = `<span class="chart-meta">${dateLabel} · ${fmtNum(dataMin)} to ${fmtNum(dataMax)}${opts.unit}</span>`;
+  const bottomRowHtml = `<div class="chart-bottom-row">${leftHtml}${meta}</div>`;
   const containerHtml = `<div class="chart-container">
     ${yAxisHtml}
     <div class="chart-scroll" id="${opts.chartKey}ChartScroll">${svg}</div>
@@ -111,24 +152,27 @@ function buildOffsetChart(sortedReadings, selectedIndex){
   const items = sortedReadings.map(r => ({date: r.date, value: r.offset, isReset: !!r.isReset}));
   return buildLineChart(items, {
     chartKey: 'offset',
-    lineColor: '#6B6B8C',
+    lineColor: 'var(--chart-line)',
     selectedIndex,
     emptyMsg: 'Log a reading to see it plotted here.',
-    formatTick: v => `${Math.round(v)}s`,
-    formatTooltip: v => `${v>0?'+':''}${Math.round(v)}s`
+    unit: 's',
+    decimals: 0
   });
 }
 
-function buildChart(ratedReadings, selectedIndex, accuracySpec){
+// avgRate is the watch's overall drift across the period, so the summary
+// matches the figure on the dial rather than re-deriving a slightly
+// different one from the plotted intervals.
+function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate){
   const items = ratedReadings.map(r => ({date: r.date, value: r.rate === null ? 0 : r.rate, isReset: !!r.isReset}));
   return buildLineChart(items, {
     chartKey: 'drift',
-    lineColor: '#6B6B8C',
+    lineColor: 'var(--chart-line)',
     selectedIndex,
     emptyMsg: 'Log a second reading to see a trend line.',
-    formatTick: v => `${v.toFixed(1)} s/day`,
-    formatTooltip: v => `${v>0?'+':''}${v.toFixed(1)} s/day`,
-    accuracyRange: parseAccuracySpec(accuracySpec)
+    unit: ' s/day',
+    decimals: 1,
+    accuracyRange: parseAccuracySpec(accuracySpec),
+    summary: (avgRate === null || avgRate === undefined) ? null : avgRate
   });
 }
-

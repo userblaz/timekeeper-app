@@ -10,9 +10,55 @@
     --hero-bg:#0A0A10;
     --good:#22C55E;
     --bad:#F87171;
+    --chart-line:#6B6B8C;
+    --shadow-a:rgba(0,0,0,0.4);
+    --shadow-b:rgba(0,0,0,0.5);
+    --shadow-c:rgba(0,0,0,0.6);
+    --shadow-d:rgba(0,0,0,0.7);
+    --shadow-e:rgba(0,0,0,0.8);
+    /* Single source of truth for the notch insets — the page top padding and
+       the sticky header both need them, and applying env() in both places
+       double-counted the notch, leaving a dead gap under the title. */
+    --safe-top:env(safe-area-inset-top);
+    --safe-bottom:env(safe-area-inset-bottom);
     color-scheme: dark;
   }
+  /* Light theme: same variable names, different values — everything that
+     already references var(--bg)/var(--ink)/etc. (which is nearly the
+     whole stylesheet) picks this up automatically with no further changes
+     needed there. --hero-bg (the big digital reference-clock display) and
+     the analog clock face in clock.js are deliberately left dark/white
+     respectively in BOTH themes — they're meant to look like a real
+     clock's display regardless of the app's own chrome. */
+  :root[data-theme="light"]{
+    --bg:#F7F7FA;
+    --surface:#FFFFFF;
+    --surface-2:#F0F0F5;
+    --ink:#14141C;
+    --grey:#6B6B85;
+    --grey-light:#9C9AB5;
+    --line:#E1E1E8;
+    --good:#16A34A;
+    --bad:#DC2626;
+    --chart-line:#52526B;
+    /* Shadows tuned for dark backgrounds read as harsh, floating black
+       smudges on a white page — much lighter and less opaque here, using
+       the page's own ink color rather than pure black so they blend
+       rather than looking like a separate dark layer. */
+    --shadow-a:rgba(20,20,28,0.08);
+    --shadow-b:rgba(20,20,28,0.10);
+    --shadow-c:rgba(20,20,28,0.12);
+    --shadow-d:rgba(20,20,28,0.14);
+    --shadow-e:rgba(20,20,28,0.18);
+    color-scheme: light;
+  }
   *{box-sizing:border-box;}
+  /* The browser paints its own translucent blue over whatever clickable
+     element you press. On the collection cards that washed the entire card
+     blue for a moment before the green wind sweep began, reading as a second,
+     unrelated effect. We draw our own press feedback everywhere, so this one
+     is never wanted. */
+  *{-webkit-tap-highlight-color:transparent;}
   button, label, input, .tab{
     -webkit-text-fill-color:currentColor;
   }
@@ -23,7 +69,7 @@
     overflow-anchor:none;
   }
   html{
-    background:#14141C;
+    background:var(--bg);
     color-scheme:dark;
   }
   body{
@@ -36,10 +82,15 @@
   .app{
     max-width:480px;
     margin:0 auto;
-    padding:calc(env(safe-area-inset-top) + 14px) 18px calc(96px + env(safe-area-inset-bottom));
+    padding:calc(var(--safe-top) + 14px) 18px calc(96px + var(--safe-bottom));
     background:var(--bg);
-    min-height:100vh;
-    min-height:100dvh;
+    /* Always taller than the viewport by a fixed margin, regardless of how
+       much a given tab actually contains — guarantees real, consistent
+       scroll room on every tab (even an empty one), so the browser's own
+       address-bar show/hide behaves the same everywhere instead of only
+       working on tabs that happen to have enough content. */
+    min-height:calc(100vh + 120px);
+    min-height:calc(100dvh + 120px);
   }
   .app-title{
     margin-top:10px;
@@ -75,30 +126,46 @@
     overflow-y:hidden;
     -webkit-overflow-scrolling:touch;
     scrollbar-width:none;
-    margin-bottom:8px;
+    /* Matches the 8px margin-top the .section wrapper gives the other tabs'
+       titles, so the watch names land on the same line as those headings. */
+    padding-top:8px;
+    /* No bottom margin: it would sit inside the header (see flow-root there)
+       as a band of background below the rule, which scrolling content
+       disappears behind early — reading as a gap under the line. The header
+       now ends exactly at the rule, and the spacing below it comes from the
+       content's own top margin, which scrolls away with it. */
+    margin-bottom:0;
     border-bottom:1px solid var(--line);
     background:var(--bg);
-    padding-top:8px;
-    padding-bottom:12px;
+    padding-bottom:10px;
   }
   .tabs::-webkit-scrollbar{display:none;}
   .tab{
     font-family:'Inter',sans-serif;
-    font-size:14px;
-    font-weight:500;
-    padding:0 0 11px;
+    /* matches .section-title so the watch name reads as this tab's heading */
+    font-size:15px;
+    font-weight:600;
+    padding:0;
     border:none;
-    border-bottom:2px solid transparent;
     background:transparent;
     color:var(--grey);
     cursor:pointer;
-    margin-bottom:-1px;
     flex-shrink:0;
     white-space:nowrap;
   }
   .tab.active{
     color:var(--accent);
-    border-bottom-color:var(--accent);
+  }
+  /* The jump to the Collection tab's add form. Inherits .tab wholesale — no
+     size or weight of its own — so it shares one baseline with the watch
+     names instead of stretching the row's line box and lifting them. */
+  .tab-add{
+    color:var(--grey);
+  }
+  /* The glyph alone sits optically low against the caps beside it. */
+  .tab-add-plus{
+    position:relative;
+    top:-1px;
   }
 
   /* Dial */
@@ -106,7 +173,9 @@
     display:flex;
     flex-direction:column;
     align-items:center;
-    padding:0;
+    /* The figure is set at line-height 1, so its digits reach the very top of
+       its box and crowd the rule above. This is that missing leading. */
+    padding:10px 0 0;
   }
   .dial-figure{
     font-family:'Inter',sans-serif;
@@ -138,12 +207,12 @@
 
   /* Chart */
   .chart-box{
-    margin:22px 0 4px;
+    margin:20px 0 4px;
     background:var(--surface);
     border:1px solid var(--line);
     border-radius:20px;
     padding:16px 16px 8px;
-    box-shadow:0 8px 24px -8px rgba(0,0,0,0.5);
+    box-shadow:0 8px 24px -8px var(--shadow-b);
   }
   .chart-header{
     display:flex;
@@ -180,7 +249,7 @@
     background:var(--accent);
     border:2px solid #fff;
     cursor:pointer;
-    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+    box-shadow:0 2px 6px var(--shadow-a);
   }
   .tg-sens-slider::-moz-range-thumb{
     width:18px;
@@ -189,7 +258,7 @@
     background:var(--accent);
     border:2px solid #fff;
     cursor:pointer;
-    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+    box-shadow:0 2px 6px var(--shadow-a);
   }
   .zoom-btn{
     width:30px;
@@ -313,16 +382,18 @@
     position:fixed;
     left:18px;
     right:18px;
-    bottom:calc(14px + env(safe-area-inset-bottom));
+    bottom:calc(14px + var(--safe-bottom));
     max-width:444px;
     margin:0 auto;
     z-index:30;
     display:flex;
-    background:var(--surface);
+    background:rgba(255,255,255,0.08);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    backdrop-filter:blur(20px) saturate(180%);
     border:1px solid var(--line);
     border-radius:999px;
-    padding:8px 6px;
-    box-shadow:0 12px 30px -10px rgba(0,0,0,0.6);
+    padding:5px 6px;
+    box-shadow:0 12px 30px -10px var(--shadow-c);
     -webkit-transform:translateZ(0);
     transform:translateZ(0);
     will-change:transform;
@@ -336,7 +407,7 @@
     background:none;
     border:none;
     border-radius:999px;
-    padding:8px 4px 7px;
+    padding:5px 4px 4px;
     font-family:'Inter',sans-serif;
     font-size:10.5px;
     font-weight:500;
@@ -344,12 +415,25 @@
   }
   .bottom-tab.active{
     color:var(--accent);
-    background:var(--surface-2);
+    background:rgba(255,255,255,0.14);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.2);
   }
   .bottom-tab-icon{
     display:flex;
     align-items:center;
     justify-content:center;
+    /* Springs back slower than it presses in, which is what makes a button
+       feel physical rather than just rescaled. */
+    transition:transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .bottom-tab:active .bottom-tab-icon, .bottom-tab.pressed .bottom-tab-icon{
+    transform:scale(0.84);
+    transition-duration:90ms;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .bottom-tab-icon,
+    .bottom-tab:active .bottom-tab-icon,
+    .bottom-tab.pressed .bottom-tab-icon{transition:none; transform:none;}
   }
 
   .analog-clock-wrap{
@@ -359,7 +443,7 @@
     background:var(--surface);
     border:1px solid var(--line);
     border-radius:24px;
-    box-shadow:0 8px 24px -8px rgba(0,0,0,0.5);
+    box-shadow:0 8px 24px -8px var(--shadow-b);
   }
   svg.analog-clock{
     width:100%;
@@ -410,8 +494,8 @@
 
   /* Section */
   .section{
-    margin-top:26px;
-    padding-top:20px;
+    margin-top:23px;
+    padding-top:18px;
     border-top:1px solid var(--line);
   }
   .section-title{
@@ -469,8 +553,29 @@
     align-items:flex-start;
     gap:10px;
   }
-  .row2 .field{flex:1;}
-  input[type="date"], input[type="number"], input[type="text"], input[type="email"]{
+  .row2 .field{flex:1;min-width:0;}
+  .row3{
+    display:flex;
+    gap:8px;
+  }
+  .row3 .field{flex:1;min-width:0;}
+  .row3 .condition-select{
+    font-size:12px;
+    padding:10px 8px;
+  }
+  .price-currency-row{
+    display:flex;
+    gap:6px;
+    align-items:stretch;
+  }
+  .price-currency-row input[type="number"]{flex:1;min-width:0;}
+  .price-currency-row .select-wrap{flex:1;min-width:0;}
+  .price-currency-row .condition-select{
+    font-size:12px;
+    padding:11px 8px;
+    height:100%;
+  }
+  input[type="date"]{
     font-family:'Inter',sans-serif;
     font-size:14px;
     padding:11px 13px;
@@ -479,6 +584,31 @@
     background:var(--surface-2);
     color:var(--ink);
     width:100%;
+    min-width:0;
+    min-height:44px;
+    box-sizing:border-box;
+    overflow:hidden;
+    -webkit-appearance:none;
+    appearance:none;
+  }
+  /* Just the calendar icon: iOS/Safari draw it dark-on-dark by default,
+     which is what made the field look broken/empty in the first place.
+     Inverting only the icon (not the whole control) keeps it visible
+     without needing -webkit-appearance left at its native value, which is
+     what caused the oversized pill rendering on iOS specifically. */
+  input[type="date"]::-webkit-calendar-picker-indicator{
+    filter:invert(1);
+  }
+  input[type="number"], input[type="text"], input[type="email"], input[type="password"], input[type="tel"]{
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    padding:11px 13px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface-2);
+    color:var(--ink);
+    width:100%;
+    box-sizing:border-box;
     -webkit-appearance:none;
     appearance:none;
   }
@@ -498,6 +628,12 @@
     gap:10px;
     text-align:left;
   }
+  .select-value{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    min-width:0;
+  }
   .condition-select.placeholder .select-value{color:var(--grey);}
   .select-chevron{
     flex-shrink:0;
@@ -513,8 +649,12 @@
     border:1px solid var(--line);
     border-radius:12px;
     background:var(--surface-2);
-    box-shadow:0 14px 32px -10px rgba(0,0,0,0.8);
-    max-height:246px;
+    box-shadow:0 14px 32px -10px var(--shadow-e);
+    /* Capped and scrollable rather than growing to fit every option — a
+       short list (Position, Wear state) still looks exactly as before,
+       but a long one (currencies) scrolls in place instead of needing so
+       much room that it triggers the drop-up fallback below. */
+    max-height:220px;
     overflow-y:auto;
   }
   .select-menu.drop-up{
@@ -568,10 +708,9 @@
     padding:13px;
     font-size:14px;
     font-weight:600;
-    box-shadow:0 6px 18px -4px rgba(59,130,246,0.55);
   }
   .btn-primary:active{background:#2563EB;}
-  .btn-primary:disabled{opacity:0.5;box-shadow:none;}
+  .btn-primary:disabled{opacity:0.5;}
   .btn-secondary{
     flex:1;
     background:var(--surface-2);
@@ -583,12 +722,32 @@
     font-weight:500;
   }
 
+  /* Covers the notch strip so content scrolling underneath isn't visible
+     behind the translucent status bar. Invisible at rest. */
+  body::before{
+    content:'';
+    position:fixed;
+    top:0;
+    left:0;
+    right:0;
+    height:var(--safe-top);
+    background:var(--bg);
+    z-index:25;
+    pointer-events:none;
+  }
   #stickyHeader{
     position:sticky;
-    top:0;
+    /* Sticks below the notch rather than padding itself past it — the page's
+       own top padding already clears the notch at rest. */
+    top:var(--safe-top);
     z-index:20;
     background:var(--bg);
-    padding-top:calc(env(safe-area-inset-top) + 14px);
+    padding-top:14px;
+    /* Contains the last child's bottom margin. Without it that margin
+       collapses out through the header's bottom edge, leaving an 8px strip
+       below the header that the header's own background doesn't paint — so
+       scrolling content showed through it as a sliver above the first card. */
+    display:flow-root;
     /* This box's height is animated on every scroll-driven rAF frame (see
        clockCollapseLoop in clock.js). Without this, the browser's scroll
        anchoring "corrects" scrollY to compensate for that self-inflicted
@@ -601,9 +760,20 @@
     color:#fff;
     border-radius:20px;
     padding:26px 22px 10px;
-    margin-bottom:12px;
-    border:1px solid var(--line);
-    box-shadow:0 10px 30px -10px rgba(0,0,0,0.7);
+    /* Constant, not part of the collapse animation — it's the gap above the
+       watch-tab row, which must stay equal to the gap below it. */
+    margin-bottom:10px;
+    /* Fixed, not var(--line): this box stays dark in both themes (see the
+       note on --hero-bg above), so a theme-reactive border would turn
+       light-grey in light mode and read as a bright ring around an
+       otherwise-dark box — wrong regardless of the surrounding page. */
+    border:1px solid rgba(255,255,255,0.08);
+    /* Theme-reactive, unlike the box's own fixed-dark background/border
+       above: a shadow tuned for a dark page reads as a harsh black smudge
+       on a light one, especially where it fades across the tab row right
+       below it. The box stays a "dark display" either way; the shadow it
+       casts onto the page around it shouldn't. */
+    box-shadow:0 10px 30px -10px var(--shadow-d);
     cursor:pointer;
     position:relative;
   }
@@ -637,8 +807,45 @@
     border:1px solid var(--line);
     border-radius:20px;
     padding:16px;
-    margin-bottom:16px;
-    box-shadow:0 8px 24px -8px rgba(0,0,0,0.5);
+    margin-bottom:14px;
+    box-shadow:0 8px 24px -8px var(--shadow-b);
+  }
+  /* Camera-flash on the panel that opens when a reading is captured. Two
+     layers on one overlay: fully white light blown in from the edges, which
+     carries the effect, over a faint white wash across the whole rectangle
+     that lifts it without washing out the content. An overlay rather than a
+     filter on the panel itself, so it fades independently of the panel's own
+     shadow — and pointer-events:none so it never swallows a tap on the
+     fields underneath while it's still fading. */
+  .snap-flash{position:relative;}
+  .snap-flash::after{
+    content:'';
+    position:absolute;
+    inset:0;
+    border-radius:inherit;
+    pointer-events:none;
+    background:rgba(255,255,255,0.15);
+    /* The first shadow has no blur: a hard 2px ring that is literally 100%
+       white at the edge. Blurred shadows never reach full white however
+       bright you make them — the blur averages them against what's behind.
+       The other two feather that ring inwards so it reads as light spilling
+       in rather than as a drawn border. */
+    box-shadow:
+      inset 0 0 0 2px #fff,
+      inset 0 0 16px 0 rgba(255,255,255,0.95),
+      inset 0 0 42px 6px rgba(255,255,255,0.7);
+    animation:snap-flash 1.35s ease-out forwards;
+  }
+  /* The shape of a real flash firing: 0.1s ramp to fully white (7.4% of
+     1.35s), held there to 0.25s (18.5%), then a one-second fall. */
+  @keyframes snap-flash{
+    0%{opacity:0;}
+    7.4%{opacity:1;}
+    18.5%{opacity:1;}
+    100%{opacity:0;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .snap-flash::after{animation:none; opacity:0;}
   }
   .quick-log-box .hint{margin-top:0;margin-bottom:12px;text-align:center;}
   .quick-btns{
@@ -672,9 +879,30 @@
     font-size:26px;
     font-weight:600;
     text-align:center;
-    color:var(--ink);
+    /* Coloured by which side of true time the watch is on, the same green
+       and red the rates use elsewhere — which also sets this frozen reading
+       apart from the live white clocks around it. */
+    color:var(--accent);
     margin-bottom:4px;
+    /* Plays once when the panel appears — the timestamp snaps down onto the
+       panel like a shutter closing on the moment it just froze. Ease-out
+       expo: almost all of the travel happens in the first third, so it
+       reads as a snap landing rather than a slow zoom. */
+    animation:confirm-snap 280ms cubic-bezier(0.16, 1, 0.3, 1);
   }
+  @keyframes confirm-snap{
+    0%{transform:scale(1.5); opacity:0;}
+    45%{opacity:1;}
+    100%{transform:scale(1); opacity:1;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .confirm-time{animation:none;}
+  }
+  .confirm-time.ahead,
+  .confirm-offset.ahead{color:var(--good);}
+  .confirm-time.behind,
+  .confirm-offset.behind{color:var(--bad);}
+  .confirm-offset{font-weight:600;}
   .confirm-sub{
     font-family:'Inter',sans-serif;
     text-align:center;
@@ -682,19 +910,35 @@
     color:var(--grey);
     margin-bottom:14px;
   }
+  /* The timestamp itself carries the information; "captured at … phone time"
+     is just the sentence around it, so only the figure is lifted out. */
+  .confirm-sub b{
+    color:var(--ink);
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
 
   /* History */
   .history-wrap{
     position:relative;
   }
   .history-scroll{
-    max-height:200px;
+    max-height:340px;
     overflow-y:auto;
     overflow-x:hidden;
     -webkit-overflow-scrolling:touch;
     padding-right:14px;
     scrollbar-width:none;
     -ms-overflow-style:none;
+  }
+  /* While a row is open for editing the list grows to fit it, so the form is
+     never trapped inside a scrolling box — the page scrolls instead. */
+  .history-scroll.editing{
+    max-height:none;
+    overflow:visible;
+  }
+  .history-scroll.editing + .history-scrollbar-track{
+    display:none;
   }
   .history-scroll::-webkit-scrollbar{
     display:none;
@@ -709,7 +953,8 @@
     top:0;
     right:0;
     width:4px;
-    height:200px;
+    /* follows the list's height rather than repeating its max-height */
+    height:100%;
     pointer-events:none;
   }
   .custom-scrollbar-thumb{
@@ -737,13 +982,17 @@
     margin-top:6px;
   }
   .history-item{
-    display:flex;
-    justify-content:space-between;
-    align-items:baseline;
+    display:block;
     padding:12px 0;
     border-bottom:1px solid var(--line);
     font-size:13px;
     cursor:pointer;
+  }
+  .hist-main{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:12px;
   }
   .history-item:last-child{border-bottom:none;}
   .history-item.history-edit-row{
@@ -766,16 +1015,31 @@
     margin-top:2px;
     flex-shrink:0;
   }
-  .hist-date{font-family:'Inter',sans-serif;color:var(--grey);font-size:12px;}
-  .hist-rate{font-family:'Inter',sans-serif;font-weight:600;font-size:13px;}
+  .hist-date{
+    font-family:'Inter',sans-serif;
+    color:var(--grey);
+    font-size:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .hist-rate{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:13px;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
   .hist-rate.fast{color:var(--bad);}
   .hist-rate.slow{color:var(--good);}
   .hist-note{
     font-family:'Inter',sans-serif;
     font-size:11.5px;
     color:var(--grey);
-    flex-basis:100%;
-    margin-top:2px;
+    margin-top:3px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   .empty-note{
     font-family:'Inter',sans-serif;
@@ -783,7 +1047,6 @@
     color:var(--grey);
     padding:6px 0 0;
   }
-
   .footer-row{
     margin-top:30px;
     display:flex;
@@ -798,6 +1061,14 @@
     border:none;
     text-decoration:underline;
     padding:0;
+  }
+  /* The back link sits where a heading would and reads as this view's first
+     line, so it takes .section-title's size and weight. It keeps the grey of
+     a secondary control rather than the ink of a real title — it's a way out
+     of the view, not a name for it. */
+  .reset-link.back-link{
+    font-size:15px;
+    font-weight:600;
   }
   .status{
     font-family:'Inter',sans-serif;
@@ -900,19 +1171,191 @@
     padding:12px;
     cursor:pointer;
   }
-  .collection-delete-btn{
+  .collection-card-actions{
     flex-shrink:0;
-    width:30px;
-    height:30px;
-    border-radius:50%;
+    align-self:center;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+
+  /* Confirms a wind: a band of green travelling across the card, left to
+     right, under a green rim that lights and fades. No white flash here —
+     that one belongs to the capture snapshot, and this is a different act.
+     Both layers are pointer-events:none so neither eats a tap mid-animation. */
+  .collection-card.wound-flash::before,
+  .collection-card.wound-flash::after{
+    content:'';
+    position:absolute;
+    inset:0;
+    border-radius:inherit;
+    pointer-events:none;
+    z-index:2;
+  }
+  .collection-card.wound-flash::before{
+    /* The band sits at the middle of an image three times the card's width,
+       so sliding the background from its right third to its left carries the
+       band across from left to right. */
+    background-image:linear-gradient(90deg,
+      rgba(34,197,94,0) 30%,
+      rgba(34,197,94,0.26) 44%,
+      rgba(34,197,94,0.50) 50%,
+      rgba(34,197,94,0.26) 56%,
+      rgba(34,197,94,0) 70%);
+    background-size:300% 100%;
+    background-repeat:no-repeat;
+    animation:wound-sweep 850ms ease-out forwards;
+  }
+  .collection-card.wound-flash::after{
+    box-shadow:
+      inset 0 0 0 2px var(--good),
+      inset 0 0 16px 0 rgba(34,197,94,0.85),
+      inset 0 0 42px 6px rgba(34,197,94,0.5);
+    animation:wound-glow 850ms ease-out forwards;
+  }
+  @keyframes wound-sweep{
+    0%{background-position:100% 0; opacity:1;}
+    80%{opacity:1;}
+    100%{background-position:0% 0; opacity:0;}
+  }
+  @keyframes wound-glow{
+    0%{opacity:0;}
+    12%{opacity:1;}
+    40%{opacity:1;}
+    100%{opacity:0;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .collection-card.wound-flash::before,
+    .collection-card.wound-flash::after{animation:none; opacity:0;}
+  }
+
+  /* Swipe to delete. The delete panel is a fixed layer underneath; the card
+     is opaque and slides left off it. */
+  .swipe-row{
+    position:relative;
+    border-radius:18px;
+    overflow:hidden;
+  }
+  /* Spans the whole row, not just the strip the swipe reveals — the card's
+     own 18px corner arc leaves a notch at each end, and with the panel
+     starting exactly at the card's edge that notch had nothing behind it and
+     read as a dark gap. Underlapping the card fills it with red instead. */
+  .swipe-delete{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    background:var(--bad);
+    border-radius:18px;
+    /* Hidden until a swipe actually starts. Sitting there permanently, it
+       showed as a red hairline along the card's rounded edge where the
+       antialiased curves didn't quite meet. */
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 140ms linear;
+  }
+  .swipe-row.swiping .swipe-delete,
+  .swipe-row.open .swipe-delete{
+    opacity:1;
+    pointer-events:auto;
+  }
+  /* The icon grows into place as the panel is revealed, so the panel doesn't
+     just appear fully formed the instant the card moves a pixel. */
+  .swipe-delete-btn svg{
+    transform:scale(0.55);
+    opacity:0.7;
+    transition:transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms linear;
+  }
+  .swipe-row.open .swipe-delete-btn svg{
+    transform:scale(1);
+    opacity:1;
+  }
+  .swipe-delete-btn{
+    /* Only as wide as the strip the swipe actually reveals, so the tap target
+       matches what you can see rather than the whole hidden panel. */
+    width:84px;
+    height:100%;
     border:none;
     background:none;
-    color:var(--grey);
+    color:#fff;
     display:flex;
     align-items:center;
     justify-content:center;
+    padding:0;
   }
-  .collection-delete-btn:active{color:var(--bad);}
+  .swipe-row .collection-card{
+    position:relative;
+    z-index:1;
+    /* pan-y hands vertical scrolling back to the browser and keeps the
+       horizontal movement for the swipe, so the gesture never fights the
+       page and the listeners can stay passive. */
+    touch-action:pan-y;
+    transition:transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    /* A press that turns into a swipe would otherwise drag-select the card's
+       text, painting a blue selection band across it mid-gesture. */
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  /* Bigger than the chart steppers it borrows its shape from — this one is a
+     primary action on the card, not a nudge control tucked in a header. */
+  .collection-wind-btn{
+    width:36px;
+    height:36px;
+  }
+  .collection-wind-btn svg{
+    width:25px;
+    height:25px;
+  }
+
+  /* Power reserve */
+  .reserve-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-top:6px;
+  }
+  .reserve-track{
+    position:relative;
+    flex:1;
+    min-width:0;
+    height:5px;
+    border-radius:3px;
+    background:var(--surface-2);
+    overflow:hidden;
+  }
+  /* The low-amplitude tail, drawn under the fill so it only shows once the
+     fill has retreated into it — a standing marker, not a warning. */
+  .reserve-low-zone{
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    background:rgba(248,113,113,0.22);
+  }
+  .reserve-fill{
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    border-radius:3px;
+    background:var(--good);
+    /* Refills rather than jumping, so winding reads as the bar being filled
+       up. The 30-second tick moves it by a hair, where this is invisible. */
+    transition:width 650ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .reserve-fill.low{background:#FBBF24;}
+  .reserve-fill.empty{background:transparent;}
+  .reserve-label{
+    flex-shrink:0;
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    color:var(--grey);
+    font-variant-numeric:tabular-nums;
+  }
+  .reserve-hint{color:var(--grey-light);}
+  .reserve-label.low{color:#FBBF24;}
+  .reserve-label.empty{color:var(--bad);}
   .collection-card-edit{
     flex-direction:column;
     align-items:stretch;
@@ -939,6 +1382,15 @@
     font-family:'Inter',sans-serif;
     font-size:14px;
     font-weight:600;
+    display:flex;
+    align-items:baseline;
+    min-width:0;
+  }
+  /* The name is the only part that gives way. It needs to be its own element
+     to do that: ellipsis doesn't apply to a bare text node inside a flex
+     container, so a long name would overflow instead of truncating. */
+  .card-name-text{
+    min-width:0;
     white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
@@ -958,14 +1410,253 @@
     overflow:hidden;
     text-overflow:ellipsis;
   }
-  .collection-card-spec{
+  /* Rate and spec sit inline after the name, small — the name can shrink
+     and ellipsise, but these two never do: a truncated "-1.0 s/d…" would be
+     worse than a shorter name. */
+  .card-rate,
+  .card-spec{
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    font-weight:600;
+    white-space:nowrap;
+    flex-shrink:0;
+    margin-left:7px;
+  }
+  .card-rate.good{color:var(--good);}
+  .card-rate.bad{color:var(--bad);}
+  .card-spec{
+    font-weight:500;
+    color:var(--accent);
+  }
+
+  /* Transient messages, floating clear of the layout so showing one never
+     shifts anything. Sits just above the bottom dock: 14px gap below the
+     dock + the dock's own 57px + 10px of clearance. */
+  .toast{
+    position:fixed;
+    left:18px;
+    right:18px;
+    bottom:calc(81px + var(--safe-bottom));
+    max-width:444px;
+    margin:0 auto;
+    z-index:40;
+    padding:11px 14px;
+    border-radius:14px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    line-height:1.45;
+    text-align:center;
+    background:var(--surface-2);
+    color:var(--ink);
+    border:1px solid var(--line);
+    box-shadow:0 12px 30px -10px var(--shadow-d);
+    opacity:0;
+    transform:translateY(8px);
+    /* Never intercepts a tap, shown or not — it's a notice, not a control. */
+    pointer-events:none;
+    transition:opacity 200ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .toast.show{
+    opacity:1;
+    transform:none;
+  }
+  .toast-error{
+    background:rgba(248,113,113,0.14);
+    border-color:rgba(248,113,113,0.45);
+    color:var(--bad);
+  }
+
+  /* Phone-sized screens: halve the vertical whitespace around the title so
+     the clock starts higher. The notch inset itself is untouched — that's
+     physical clearance, not padding. */
+  @media (max-width:480px){
+    .app{padding-top:calc(var(--safe-top) + 7px);}
+    .app-title{margin-top:5px;margin-bottom:4px;}
+    .signout-btn{margin-top:3px;}
+    #stickyHeader{padding-top:7px;}
+  }
+
+
+  /* --- profile tab: a normal tab now (see js/profile.js), not an overlay.
+     Just a centered title convention and a small "back to menu" link for
+     its sub-views (Account/FAQ/About aren't reachable from the bottom bar
+     directly, so they still need a way back to the top-level menu). --- */
+  .profile-centered-title{
+    text-align:center;
+  }
+  .profile-back-btn{
+    font-size:30px;
+    width:36px;
+    height:36px;
+  }
+  .profile-section-label{
     font-family:'Inter',sans-serif;
     font-size:11px;
-    font-weight:600;
-    color:var(--accent);
-    background:rgba(59,130,246,0.12);
-    padding:5px 9px;
-    border-radius:999px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--grey);
+    margin:20px 0 10px;
+  }
+  .profile-section-label:first-of-type{
+    margin-top:4px;
+  }
+  .profile-subtab-row{
+    display:flex;
+    gap:6px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:4px;
+    margin-bottom:16px;
+  }
+  .profile-subtab-btn{
+    flex:1;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    color:var(--grey);
+    background:none;
+    border:none;
+    border-radius:9px;
+    padding:9px 6px;
+  }
+  .profile-subtab-btn.active{
+    color:var(--ink);
+    background:var(--surface-2);
+  }
+  .profile-field-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .profile-field-view label{
+    display:block;
+    font-family:'Inter',sans-serif;
+    font-size:11.5px;
+    color:var(--grey);
+    margin-bottom:3px;
+  }
+  .profile-field-value{
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .profile-edit-icon-btn{
     flex-shrink:0;
-    white-space:nowrap;
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    border:1px solid var(--line);
+    background:var(--surface-2);
+    color:var(--grey);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .profile-edit-icon-btn.active{
+    color:var(--accent);
+    border-color:var(--accent);
+  }
+  input[disabled]{
+    opacity:0.6;
+  }
+
+
+  /* --- profile menu list + FAQ (see js/profile.js) --- */
+  .profile-menu-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .profile-theme-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    font-weight:500;
+    color:var(--ink);
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px 16px;
+  }
+  .profile-switch{
+    position:relative;
+    display:inline-block;
+    width:44px;
+    height:26px;
+    flex-shrink:0;
+  }
+  .profile-switch input{
+    position:absolute;
+    opacity:0;
+    width:100%;
+    height:100%;
+    margin:0;
+    cursor:pointer;
+  }
+  .profile-switch-track{
+    position:absolute;
+    inset:0;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:999px;
+    transition:background 0.15s ease;
+  }
+  .profile-switch-thumb{
+    position:absolute;
+    top:2px;
+    left:2px;
+    width:20px;
+    height:20px;
+    border-radius:50%;
+    background:var(--grey);
+    transition:transform 0.15s ease, background 0.15s ease;
+  }
+  .profile-switch input:checked + .profile-switch-track{
+    background:var(--accent);
+    border-color:var(--accent);
+  }
+  .profile-switch input:checked + .profile-switch-track .profile-switch-thumb{
+    transform:translateX(18px);
+    background:#FFFFFF;
+  }
+  .profile-menu-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    width:100%;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    font-weight:500;
+    color:var(--ink);
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px 16px;
+  }
+  .profile-menu-chevron{
+    color:var(--grey);
+    font-size:16px;
+  }
+  .profile-faq-list{
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+  .profile-faq-q{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink);
+    margin-bottom:4px;
+  }
+  .profile-faq-a{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--grey);
+    line-height:1.5;
   }

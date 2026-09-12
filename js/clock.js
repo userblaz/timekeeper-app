@@ -135,6 +135,48 @@ function playTickSound(){
   osc.stop(t + 0.05);
 }
 
+// A camera shutter for the capture tap: two short band-passed noise bursts
+// 55ms apart — mirror, then shutter — which is what makes a click read as a
+// camera rather than a generic beep. Synthesised rather than loaded, so
+// there's no asset to fetch and nothing to preload. Deliberately quiet; it
+// sits under the flash rather than announcing itself.
+function playShutterSound(){
+  if(!clockAudioCtx) clockAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = clockAudioCtx;
+  // Safe to call: the tap that triggers this is itself the user gesture iOS
+  // requires before a page is allowed to make any sound at all.
+  if(ctx.state === 'suspended') ctx.resume();
+
+  const noise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.08), ctx.sampleRate);
+  const data = noise.getChannelData(0);
+  for(let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const click = (at, level, freq) => {
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = freq;
+    band.Q.value = 1.2;
+    const gain = ctx.createGain();
+    // Exponential ramps, not linear: a linear decay on a click reads as a
+    // soft thud, and exponentialRampToValueAtTime can never touch zero, hence
+    // the 0.0001 floor at both ends.
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(level, at + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.035);
+    src.connect(band);
+    band.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(at);
+    src.stop(at + 0.08);
+  };
+
+  const t = ctx.currentTime + 0.01;
+  click(t, 0.07, 3000);            // mirror up: brighter, the louder of the two
+  click(t + 0.055, 0.05, 2200);    // shutter closing: softer and lower
+}
+
 function scheduleNextTick(){
   if(!clockTickEnabled) return;
   const now = trueNow();
@@ -194,6 +236,11 @@ function updateClockCollapse(){
 const clockSentinelEl = document.getElementById('clockSentinel');
 const masterClockBoxEl = document.getElementById('masterClockBox');
 const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
+// Toggle for the scroll-shrink effect specifically — set to true to bring
+// it back. Doesn't affect clockForceCollapsed below, which is a separate,
+// functional behavior (holding the header collapsed while the capture
+// panel is open) rather than a decorative scroll animation.
+const CLOCK_SCROLL_COLLAPSE_ENABLED = false;
 
 // Discrete toggle at a single threshold, checked once per animation frame
 // but only WRITING to the DOM when the state actually changes — so the
@@ -204,6 +251,30 @@ const CLOCK_COLLAPSE_RANGE = 70; // px of scroll over which it fully collapses
 // it's now a normal flow child of the same #stickyHeader wrapper as the
 // clock, so there's no seam between them for content to show through.)
 let clockLastT = -1; // -1 forces the first frame to always write
+
+// Holds the header collapsed regardless of scroll position. Used while the
+// capture panel is open: that panel has to sit entirely below the header,
+// and scrolling far enough to collapse the clock the normal way would drag
+// the panel's own top up underneath it. Nothing is lost — the big reference
+// clock has already done its job by the time the reading is captured.
+//
+// Toggle for this specific behavior — set to true to bring it back. app.js
+// still calls setClockCollapsed() on every capture as before; this just
+// makes the call a no-op while off, so nothing else needs to change.
+const CLOCK_FORCE_COLLAPSE_ENABLED = false;
+let clockForceCollapsed = false;
+function setClockCollapsed(on){
+  if(!CLOCK_FORCE_COLLAPSE_ENABLED) return;
+  if(clockForceCollapsed === on) return;
+  clockForceCollapsed = on;
+  // Applied now, not on the next animation frame: the caller scrolls the
+  // page to sit under this header immediately afterwards, and measuring it
+  // at its old size would land short and then need a second correction —
+  // which is what turned the jump into a visible scroll.
+  if(clockSentinelEl && masterClockBoxEl){
+    applyClockCollapse(on ? 1 : scrollCollapseT());
+  }
+}
 const clockLabelEl = document.getElementById('masterClockLabel');
 const clockDigitsEl = document.getElementById('masterClock');
 const stickyHeaderEl = document.getElementById('stickyHeader');
@@ -214,29 +285,39 @@ function syncHeaderSpacer(){
   // don't error.
 }
 
+// Writes the collapse state for a given t (0 = full, 1 = collapsed). Split
+// out of the loop so it can also be applied synchronously — a caller that
+// then measures the header needs the new geometry in the same task, not one
+// animation frame later.
+function applyClockCollapse(t){
+  if(t === clockLastT) return;
+  clockLastT = t;
+  const padTop = (26 - t*18).toFixed(1);
+  const padSide = (22 - t*4).toFixed(1);
+  const padBottom = (10 - t*2).toFixed(1);
+  masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
+  if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
+  if(clockLabelEl){
+    const labelOpacity = Math.max(0, 1 - t*1.4);
+    clockLabelEl.style.opacity = labelOpacity.toFixed(2);
+    // once it's faded out, let clicks pass through to the pill's own
+    // sound-toggle handler instead of the (now invisible) label
+    // intercepting them for a resync tap.
+    clockLabelEl.style.pointerEvents = labelOpacity < 0.3 ? 'none' : 'auto';
+  }
+  syncHeaderSpacer();
+}
+
+function scrollCollapseT(){
+  if(!CLOCK_SCROLL_COLLAPSE_ENABLED) return 0;
+  const rect = clockSentinelEl.getBoundingClientRect();
+  const distancePast = Math.max(0, -rect.bottom);
+  return Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
+}
+
 function clockCollapseLoop(){
   if(clockSentinelEl && masterClockBoxEl){
-    const rect = clockSentinelEl.getBoundingClientRect(); // single read per frame
-    const distancePast = Math.max(0, -rect.bottom);
-    const t = Math.round(Math.min(1, distancePast / CLOCK_COLLAPSE_RANGE) * 100) / 100; // 2dp: skips imperceptible sub-1% writes
-    if(t !== clockLastT){
-      clockLastT = t;
-      const padTop = (26 - t*18).toFixed(1);
-      const padSide = (22 - t*4).toFixed(1);
-      const padBottom = (10 - t*2).toFixed(1);
-      masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
-      masterClockBoxEl.style.marginBottom = (12 - t*10).toFixed(1) + 'px';
-      if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
-      if(clockLabelEl){
-        const labelOpacity = Math.max(0, 1 - t*1.4);
-        clockLabelEl.style.opacity = labelOpacity.toFixed(2);
-        // once it's faded out, let clicks pass through to the pill's own
-        // sound-toggle handler instead of the (now invisible) label
-        // intercepting them for a resync tap.
-        clockLabelEl.style.pointerEvents = labelOpacity < 0.3 ? 'none' : 'auto';
-      }
-      syncHeaderSpacer();
-    }
+    applyClockCollapse(clockForceCollapsed ? 1 : scrollCollapseT());
   }
   requestAnimationFrame(clockCollapseLoop);
 }
