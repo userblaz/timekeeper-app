@@ -73,7 +73,7 @@ function buildProfileTabHtml(){
 
 function buildMenuViewHtml(){
   return `
-    <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
+    <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <h2 class="section-title profile-centered-title">Profile</h2>
       <div class="profile-menu-list">
         <div class="profile-theme-row">
@@ -101,7 +101,7 @@ function buildMenuViewHtml(){
 
 function buildSubViewShellHtml(title, innerHtml){
   return `
-    <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
+    <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <button type="button" class="zoom-btn profile-back-btn" data-action="profilemenu" aria-label="Back to Profile">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 6 9 12 15 18" />

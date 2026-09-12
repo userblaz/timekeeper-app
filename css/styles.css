@@ -126,9 +126,12 @@
     overflow-y:hidden;
     -webkit-overflow-scrolling:touch;
     scrollbar-width:none;
-    /* Matches the 8px margin-top the .section wrapper gives the other tabs'
-       titles, so the watch names land on the same line as those headings. */
-    padding-top:8px;
+    /* Matches the (lack of) margin-top the .section wrapper gives the other
+       tabs' titles, so the watch names land on the same line as those
+       headings — this used to be 8px on both sides, which combined with the
+       clock box's own 10px margin-bottom read as a much bigger gap above
+       the watch names than the 10px below them to the dial. */
+    padding-top:0;
     /* No bottom margin: it would sit inside the header (see flow-root there)
        as a band of background below the rule, which scrolling content
        disappears behind early — reading as a gap under the line. The header
@@ -808,7 +811,7 @@
     background:var(--hero-bg);
     color:#fff;
     border-radius:20px;
-    padding:26px 22px 10px;
+    padding:20px 22px 6px;
     /* Constant, not part of the collapse animation — it's the gap above the
        watch-tab row, which must stay equal to the gap below it. */
     margin-bottom:10px;
@@ -843,12 +846,30 @@
     font-family:'Inter',sans-serif;
     font-size:56px;
     font-weight:600;
-    letter-spacing:0.5px;
-    font-variant-numeric:tabular-nums;
+    /* letter-spacing has no effect here — see the note on .clock-digit
+       below, which does the equivalent job instead. */
+    /* No tabular-nums here on purpose: Inter's tabular "1" carries a flat
+       base serif to hold its column width even with other digits, which
+       reads as a different typeface next to the plain "1" the rest of the
+       app uses. Ticking every second can shift the digits' width by a
+       hair as a result, but that's the tradeoff for matching the page. */
     display:block;
     flex:1;
     text-align:center;
     line-height:1;
+  }
+  /* Sized in em so it scales with the collapse animation's own font-size
+     shrink — 0.7em comfortably fits the widest digit ("4"/"0") at this
+     weight without needing to change alongside it. Being inline-block
+     makes the parent's letter-spacing a no-op between these boxes (Chrome
+     doesn't apply it at an inline-block boundary), so the negative margin
+     here does that job instead — pulling the boxes' fixed-width padding
+     back in without touching the actual digit widths. */
+  .clock-digit{
+    display:inline-block;
+    width:0.7em;
+    margin-right:-2px;
+    text-align:center;
   }
 
   .quick-log-box{
@@ -1084,7 +1105,7 @@
      back in as padding on the sliding card keeps the border/panel flush
      with everything else while still keeping the row's text clear of the
      thumb. */
-  .swipe-row{
+  .history-swipe-row{
     margin-right:-14px;
   }
   /* Slides left off the delete panel underneath it, the same swipe-to-delete

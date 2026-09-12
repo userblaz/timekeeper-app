@@ -174,7 +174,7 @@ function tgSensitivityControlHtml(){
 
 function buildTimegrapherTabHtml(){
   return `
-    <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
+    <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <h2 class="section-title">Timegrapher <span style="font-weight:400;color:var(--grey);font-size:11px;">(experimental, mic-based)</span></h2>
       ${buildTimegrapherPanel()}
     </div>

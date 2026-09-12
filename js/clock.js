@@ -63,7 +63,7 @@ function updateAnalogClock(){
 
 function buildClockTabHtml(){
   return `
-    <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
+    <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <h2 class="section-title">Set your watch</h2>
       <p class="hint" style="text-align:center;margin-bottom:10px;">Match your watch's hands to this dial — synced to true time.</p>
       <div class="analog-clock-wrap">
@@ -219,7 +219,14 @@ setInterval(() => {
   const el = document.getElementById('masterClock');
   if(el){
     const n = trueNow();
-    el.textContent = pad2(n.getHours()) + ':' + pad2(n.getMinutes()) + ':' + pad2(n.getSeconds());
+    const str = pad2(n.getHours()) + ':' + pad2(n.getMinutes()) + ':' + pad2(n.getSeconds());
+    // Each digit sits in its own fixed-width box instead of using the font's
+    // own tabular-nums figures — those carry a different "1" glyph (a flat
+    // base serif) than the rest of the app uses. This keeps the same width
+    // stability tabular-nums gives (the "1" is naturally narrower than every
+    // other digit, so ticking through one would otherwise nudge the whole
+    // string sideways) while keeping the plain "1" everywhere else uses.
+    el.innerHTML = str.split('').map(ch => /\d/.test(ch) ? `<span class="clock-digit">${ch}</span>` : ch).join('');
   }
   updateAnalogClock();
 }, 60);
@@ -292,9 +299,9 @@ function syncHeaderSpacer(){
 function applyClockCollapse(t){
   if(t === clockLastT) return;
   clockLastT = t;
-  const padTop = (26 - t*18).toFixed(1);
+  const padTop = (20 - t*18).toFixed(1);
   const padSide = (22 - t*4).toFixed(1);
-  const padBottom = (10 - t*2).toFixed(1);
+  const padBottom = (6 - t*2).toFixed(1);
   masterClockBoxEl.style.padding = `${padTop}px ${padSide}px ${padBottom}px`;
   if(clockDigitsEl) clockDigitsEl.style.fontSize = (56 - t*34).toFixed(1) + 'px';
   if(clockLabelEl){
