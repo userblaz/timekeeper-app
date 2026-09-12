@@ -325,6 +325,7 @@ function buildDataWatchListHtml(){
     <div class="data-watch-scroll" id="dataWatchScroll">
       <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
       <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
+      <div id="dataWatchScrollSpacer"></div>
     </div>
   `;
 }
@@ -344,6 +345,15 @@ function sizeDataWatchScroll(){
   const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
   const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
   scrollEl.style.height = height + 'px';
+  // A trailing spacer, sized to the container itself, guarantees there's
+  // always at least a full screen's worth of scroll room below the real
+  // content — without it, a short list (e.g. 2-3 watches) fits entirely
+  // inside the container with nothing to scroll, so bringing a snapped card
+  // up to the top silently no-ops instead of paging the ones above it away.
+  // Only needed while a snap pop-up is actually open; kept at 0 otherwise so
+  // plain browsing never shows dead scroll space at the bottom of the list.
+  const spacer = document.getElementById('dataWatchScrollSpacer');
+  if(spacer) spacer.style.height = (document.querySelector('.data-watch-group') ? height : 0) + 'px';
 }
 window.addEventListener('resize', sizeDataWatchScroll);
 
