@@ -170,6 +170,31 @@
     position:relative;
     top:-1px;
   }
+  /* Collection detail view: replaces the watch-tabs row with the watch's
+     own full-width card (back button where the wind button sits on the
+     list view's card), so it stays pinned under the clock like the tabs
+     row does, instead of scrolling away with the rest of the detail page. */
+  .collection-watch-bar{
+    overflow:visible;
+    padding-bottom:12px;
+  }
+  .collection-watch-bar .collection-card{
+    width:100%;
+  }
+  /* Plays once when a watch's detail page opens — a small rise-and-settle so
+     the page reads as sliding into place rather than snapping in instantly.
+     Same start and end state as with no animation at all, just motion
+     in between. */
+  .collection-detail-enter{
+    animation:collection-detail-enter 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes collection-detail-enter{
+    0%{transform:translateY(10px); opacity:0;}
+    100%{transform:translateY(0); opacity:1;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .collection-detail-enter{animation:none;}
+  }
 
   /* Dial */
   .dial-wrap{
@@ -883,6 +908,24 @@
     margin-bottom:14px;
     box-shadow:0 8px 24px -8px var(--shadow-b);
   }
+  /* The snap cluster: fixed above the bottom dock on the Snap tab so it's
+     always reachable without scrolling, whatever the watch-list content
+     above does. Same "clear the dock" offset the toast (below) already
+     uses: the dock's own 14px + 57px + 10px of breathing room. */
+  #snapDock{
+    position:fixed;
+    left:8px;
+    right:8px;
+    bottom:calc(81px + var(--safe-bottom));
+    max-width:444px;
+    margin:0 auto;
+    z-index:29;
+  }
+  #snapDock .quick-log-box{
+    margin-bottom:0;
+    max-height:calc(100vh - 220px);
+    overflow-y:auto;
+  }
   /* Camera-flash on the panel that opens when a reading is captured. Two
      layers on one overlay: fully white light blown in from the edges, which
      carries the effect, over a faint white wash across the whole rectangle
@@ -890,13 +933,6 @@
      filter on the panel itself, so it fades independently of the panel's own
      shadow — and pointer-events:none so it never swallows a tap on the
      fields underneath while it's still fading. */
-  /* See animateQuickLogGrowth in app.js: applied only while the confirm
-     panel's height is being animated in, so the transition never fires on
-     unrelated layout changes (a chart zoom, a window resize) that also
-     touch this element's height. */
-  #quickLogSection.growing{
-    transition:height 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
   .snap-flash{position:relative;}
   .snap-flash::after{
     content:'';
@@ -936,7 +972,7 @@
   .quick-btn{
     background:var(--surface-2);
     border:1px solid var(--line);
-    color:var(--ink);
+    color:var(--accent);
     border-radius:16px;
     padding:16px 0;
     font-family:'Inter',sans-serif;
@@ -1290,7 +1326,13 @@
     font-weight:500;
     color:var(--accent);
   }
+  /* The Snap tab's own "+ Add watch", styled quieter than the Collection
+     tab's — it's a secondary way in from here, not this page's main action. */
+  .data-add-watch-btn{
+    color:var(--grey);
+  }
   .collection-card{
+    position:relative;
     display:flex;
     align-items:center;
     gap:14px;
@@ -1299,6 +1341,88 @@
     border-radius:18px;
     padding:12px;
     cursor:pointer;
+  }
+
+  /* Year-at-a-glance wear tracker on the Collection detail page: one real,
+     weekday-aligned month at a time, swiped or arrow-stepped between (see
+     attachWearCalendarHandlers in collection.js). scroll-snap plus native
+     touch scrolling gives the swipe its own smoothness for free; the nav
+     buttons drive the same scroller with scrollTo({behavior:'smooth'}). */
+  .wear-calendar-wrap{
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
+  .wear-nav-btn{
+    flex-shrink:0;
+  }
+  .wear-calendar-scroll{
+    display:flex;
+    flex:1;
+    min-width:0;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .wear-calendar-scroll::-webkit-scrollbar{display:none;}
+  .wear-month-page{
+    flex:0 0 100%;
+    scroll-snap-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  .wear-month-label{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink);
+    margin-bottom:10px;
+  }
+  .wear-weekday-row{
+    display:grid;
+    grid-template-columns:repeat(7, 1fr);
+    width:100%;
+    max-width:280px;
+    margin-bottom:6px;
+  }
+  .wear-weekday-row span{
+    font-family:'Inter',sans-serif;
+    font-size:10px;
+    color:var(--grey);
+    text-align:center;
+  }
+  .wear-days-grid{
+    display:grid;
+    grid-template-columns:repeat(7, 1fr);
+    gap:5px;
+    width:100%;
+    max-width:280px;
+  }
+  .wear-day{
+    aspect-ratio:1;
+    width:100%;
+    padding:0;
+    border:none;
+    border-radius:8px;
+    background:var(--surface-2);
+    color:var(--grey);
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+    font-weight:500;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+  }
+  .wear-day.filled{
+    background:var(--accent);
+    color:#fff;
+  }
+  .wear-day.future{
+    opacity:0.35;
+    cursor:default;
   }
   .collection-card-actions{
     flex-shrink:0;
@@ -1462,6 +1586,36 @@
   .collection-wind-btn svg{
     width:25px;
     height:25px;
+  }
+  .data-worn-btn{
+    width:36px;
+    height:36px;
+  }
+  .data-worn-btn svg{
+    width:20px;
+    height:20px;
+  }
+  .data-worn-btn.active{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:#fff;
+  }
+  /* Wind and worn-today sit side by side on the Data tab card, rather than
+     stacked the way a single action (the wind button alone) sits on the
+     Collection list's cards. */
+  .data-watch-card-actions{
+    flex-direction:row;
+  }
+  /* Marks whichever watch on the Data tab is selected to receive the next
+     snapped reading — just the stroke, no glow. */
+  .data-watch-card.selected{
+    border-color:var(--accent);
+  }
+  /* No model/reference line here (see buildDataWatchCardHtml), so the card
+     doesn't need as much vertical room as the Collection list's. */
+  .data-watch-card{
+    padding-top:9px;
+    padding-bottom:9px;
   }
 
   /* Power reserve */

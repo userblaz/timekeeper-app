@@ -20,6 +20,18 @@ async function loadState(){
       .from('readings').select('*').order('date', { ascending: true });
     if(rErr) throw rErr;
 
+    // Its own try/catch: this table is newer than the rest of the schema, so
+    // an install that hasn't run its migration yet shouldn't lose every
+    // watch and reading just because this one query 404s.
+    let wearRows = [];
+    try{
+      const { data: wearData, error: wearErr } = await sb.from('wear_days').select('watch_id, date');
+      if(wearErr) throw wearErr;
+      wearRows = wearData || [];
+    }catch(e){
+      wearRows = [];
+    }
+
     state.watches = (watchRows || []).map(w => ({
       id: w.id,
       name: w.name,
@@ -35,6 +47,7 @@ async function loadState(){
       powerReserveHours: w.power_reserve_hours === null || w.power_reserve_hours === undefined ? null : Number(w.power_reserve_hours),
       lastWoundAt: w.last_wound_at || null,
       certifications: w.certifications ? w.certifications.split(',').filter(Boolean) : [],
+      wornDates: new Set(wearRows.filter(r => r.watch_id === w.id).map(r => r.date)),
       readings: (readingRows || [])
         .filter(r => r.watch_id === w.id)
         .map(r => ({
@@ -172,6 +185,7 @@ async function addWatch(name){
     shareStats: !!data.share_stats,
     purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
     accuracySpec: '', powerReserveHours: null, lastWoundAt: null, certifications: [],
+    wornDates: new Set(),
     readings: []
   };
   state.watches.push(w);
@@ -251,6 +265,32 @@ async function deleteReading(watchId, id){
   w.readings = w.readings.filter(x => x.id !== id);
   editingReadingId = null;
   saveState();
+}
+
+// A day counts as worn either because it was tapped on directly in the
+// wear calendar, or because a timing reading was logged that day with
+// "Worn on wrist" as its condition — the calendar just reflects both, it
+// only ever writes the explicit kind.
+async function toggleWearDay(watchId, date){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return;
+  const isWorn = w.wornDates.has(date);
+  saveStatus = 'saving'; render();
+  if(isWorn){
+    const { error } = await sb.from('wear_days').delete().eq('watch_id', watchId).eq('date', date);
+    if(error){ saveStatus = 'error'; render(); return; }
+    w.wornDates.delete(date);
+  } else {
+    const { error } = await sb.from('wear_days').insert({ watch_id: watchId, date });
+    if(error){ saveStatus = 'error'; render(); return; }
+    w.wornDates.add(date);
+  }
+  saveState();
+}
+
+function isDayWorn(w, dateStr){
+  if(w.wornDates.has(dateStr)) return true;
+  return w.readings.some(r => r.date === dateStr && r.wearState === 'worn');
 }
 
 async function deleteWatch(watchId){

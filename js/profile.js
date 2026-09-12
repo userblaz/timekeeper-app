@@ -72,6 +72,12 @@ function buildProfileTabHtml(){
 }
 
 function buildMenuViewHtml(){
+  // Nothing to say when idle — the status line only appears while a save is
+  // in flight, has failed, or a backup was just exported.
+  const statusText = saveStatus === 'saving' ? 'saving…'
+    : saveStatus === 'error' ? 'save failed — storage may be full or blocked'
+    : lastExportAt ? 'backed up ' + lastExportAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+    : '';
   return `
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <h2 class="section-title profile-centered-title">Profile</h2>
@@ -93,6 +99,18 @@ function buildMenuViewHtml(){
           <span>About Timekeeper</span><span class="profile-menu-chevron">›</span>
         </button>
       </div>
+      <div class="section" style="margin-top:20px;padding-top:16px;">
+        <h2 class="section-title" style="font-size:14px;">Backup</h2>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button type="button" class="btn-secondary" data-action="export" style="flex:1;font-size:12px;padding:10px;">Export backup (.json)</button>
+          <label class="btn-secondary" style="flex:1;font-size:12px;padding:10px;text-align:center;cursor:pointer;">
+            Import backup
+            <input type="file" id="importFile" accept="application/json" style="display:none;" />
+          </label>
+        </div>
+        ${statusText ? `<span class="status ${saveStatus==='error'?'err':''}" style="display:block;text-align:center;margin-top:8px;">${statusText}</span>` : ''}
+      </div>
+
       <p class="hint" style="text-align:center;margin-top:18px;">${currentUser ? escapeHtml(currentUser.email || '') : ''}</p>
       <button type="button" class="btn-secondary" id="profileSignOutBtn" style="width:100%;margin-top:6px;">Sign out</button>
     </div>
@@ -230,6 +248,13 @@ function attachProfileHandlers(){
   document.querySelectorAll('[data-action="profilemenu"]').forEach(el => {
     el.onclick = () => { profileView = 'menu'; render(); };
   });
+  const exportBtn = document.querySelector('[data-action="export"]');
+  if(exportBtn) exportBtn.onclick = () => exportData();
+  const importInput = document.getElementById('importFile');
+  if(importInput) importInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if(file) importData(file);
+  };
   document.querySelectorAll('[data-action="profilenav"]').forEach(el => {
     el.onclick = () => { profileView = el.dataset.view; render(); };
   });

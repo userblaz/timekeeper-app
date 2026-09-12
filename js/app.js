@@ -169,6 +169,26 @@ function render(){
   const watch = activeWatch();
   const tabsSlotEl0 = document.getElementById('tabsSlot');
 
+  // The snap cluster lives outside #root entirely, fixed above the bottom
+  // dock, so it's always reachable without scrolling on the Snap tab — set
+  // here, before any tab branches below, so every one of them (including the
+  // early returns) leaves it in the right state.
+  const snapDockEl = document.getElementById('snapDock');
+  if(snapDockEl){
+    if(activeTab === 'data' && watch){
+      snapDockEl.innerHTML = buildQuickLogArea();
+      snapDockEl.style.display = '';
+      // So the watch list can scroll clear of the dock instead of ending up
+      // hidden underneath it — re-measured every render since the panel's
+      // own height varies a lot between the tap buttons and the confirm form.
+      root.style.paddingBottom = (snapDockEl.offsetHeight + 24) + 'px';
+    } else {
+      snapDockEl.innerHTML = '';
+      snapDockEl.style.display = 'none';
+      root.style.paddingBottom = '';
+    }
+  }
+
   if(activeTab === 'clock'){
     if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
     root.innerHTML = buildClockTabHtml();
@@ -185,11 +205,19 @@ function render(){
     return;
   }
   if(activeTab === 'collection'){
-    if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
     root.innerHTML = buildCollectionTabHtml();
-    attachCollectionHandlers();
     const viewedWatch = state.watches.find(w => w.id === viewingCollectionId);
-    if(viewedWatch && editingCollectionId !== viewedWatch.id){
+    const showWatchBar = viewedWatch && editingCollectionId !== viewedWatch.id;
+    if(tabsSlotEl0) tabsSlotEl0.innerHTML = showWatchBar ? buildCollectionWatchBarHtml(viewedWatch) : '';
+    if(showWatchBar && collectionDetailJustOpened){
+      const barCard = tabsSlotEl0 && tabsSlotEl0.querySelector('.collection-card');
+      const detailBody = root.querySelector('.collection-detail-body');
+      if(barCard) barCard.classList.add('collection-detail-enter');
+      if(detailBody) detailBody.classList.add('collection-detail-enter');
+    }
+    collectionDetailJustOpened = false;
+    attachCollectionHandlers();
+    if(showWatchBar){
       attachWatchStatsHandlers(viewedWatch);
       wireChartAndHistoryScroll();
     }
@@ -204,63 +232,69 @@ function render(){
     return;
   }
 
-  let tabsHtml = state.watches.map(w => `
-    <button class="tab ${w.id===state.activeId?'active':''}" data-action="select" data-id="${w.id}">${escapeHtml(w.name)}</button>
-  `).join('');
-  // Sits alongside the watch names so adding one is reachable from here
-  // instead of only from the Collection tab. Spelled out rather than a bare
-  // glyph, and in the same type as the names so the row keeps one baseline.
-  tabsHtml += `<button class="tab tab-add" data-action="jumptoaddwatch" aria-label="Add a watch"><span class="tab-add-plus">+</span> Add watch</button>`;
+  // The Data ("Snap") tab is now a watch picker feeding a single snap panel,
+  // not a per-watch page — no watch-tabs bar under the clock, no rate
+  // figure, charts or history here (those live only in the Collection
+  // detail view), and the snap panel itself lives in #snapDock, fixed above
+  // the bottom dock, rather than inline in this scrolling body.
+  if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
 
-  let bodyHtml = '';
-
-  if(!watch){
-    bodyHtml = '';
-  } else {
-    const bundle = buildWatchStatsBundle(watch);
-
-    bodyHtml = `
-      <div class="dial-wrap">
-        ${bundle.dialHtml}
-      </div>
-
-      <div class="section" id="quickLogSection" style="margin-top:8px;padding-top:0;border-top:none;">
-        ${buildQuickLogArea()}
-      </div>
-
-      ${bundle.chartsHtml}
-
-      ${bundle.historySectionHtml}
-    `;
-  }
-
-  // Nothing to say when idle — the status line only appears while a save is
-  // in flight, has failed, or a backup was just exported.
-  const statusText = saveStatus === 'saving' ? 'saving…'
-    : saveStatus === 'error' ? 'save failed — storage may be full or blocked'
-    : lastExportAt ? 'backed up ' + lastExportAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
-    : '';
-
-  root.innerHTML = `
-    ${bodyHtml}
-    <div class="footer-row" style="flex-direction:column;align-items:stretch;gap:10px;">
-      <div style="display:flex;gap:8px;">
-        <button class="btn-secondary" data-action="export" style="flex:1;font-size:12px;padding:10px;">Export backup (.json)</button>
-        <label class="btn-secondary" style="flex:1;font-size:12px;padding:10px;text-align:center;cursor:pointer;">
-          Import backup
-          <input type="file" id="importFile" accept="application/json" style="display:none;" />
-        </label>
-      </div>
-      ${statusText ? `<span class="status ${saveStatus==='error'?'err':''}">${statusText}</span>` : ''}
-    </div>
-  `;
-
-  const tabsSlotEl = document.getElementById('tabsSlot');
-  if(tabsSlotEl) tabsSlotEl.innerHTML = `<div class="tabs">${tabsHtml}</div>`;
+  root.innerHTML = buildDataWatchListHtml();
 
   attachHandlers(watch);
-  wireChartAndHistoryScroll();
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
+}
+
+// One watch's picker card on the Data tab: a trimmed-down version of the
+// Collection list's card — no condition notes, no model/reference line, no
+// swipe-to-delete (deleting stays a Collection-only action) — with a blue
+// stroke marking whichever watch is currently selected to receive the next
+// snapped reading.
+function buildDataWatchCardHtml(w){
+  const photoHtml = w.photoUrl
+    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
+    : `<div class="collection-photo collection-photo-empty">＋</div>`;
+  const isSelected = w.id === state.activeId;
+  const wornToday = isDayWorn(w, todayStr());
+  // Just the measured rate here, not the factory spec badge alongside it
+  // (buildCollectionCardStats shows both) — this card is about how the
+  // watch is actually running, not what it's rated to.
+  const stats = overallStats(w);
+  const rateHtml = stats
+    ? `<span class="card-rate ${stats.avgRate >= 0 ? 'good' : 'bad'}">${fmtRate(stats.avgRate)} s/day</span>`
+    : '';
+  return `
+    <div class="collection-card data-watch-card${isSelected ? ' selected' : ''}" data-action="select" data-id="${w.id}">
+      ${photoHtml}
+      <div class="collection-card-body">
+        <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${rateHtml}</div>
+        ${buildPowerReserveHtml(w)}
+      </div>
+      <div class="collection-card-actions data-watch-card-actions">
+        <button type="button" class="zoom-btn collection-wind-btn" data-action="markwound" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as fully wound" title="Fully wound now">
+          ${windIconSvg()}
+        </button>
+        <button type="button" class="zoom-btn data-worn-btn${wornToday ? ' active' : ''}" data-action="toggleworntoday" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as worn today" title="Worn today">
+          ${wornIconSvg()}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function buildDataWatchListHtml(){
+  if(state.watches.length === 0){
+    return `
+      <div class="section" style="margin-top:20px;">
+        <p class="empty-note">No watches yet.</p>
+        <button type="button" class="btn-secondary" data-action="jumptoaddwatch" style="margin-top:10px;width:100%;">+ Add your first watch</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="collection-list" style="margin-top:14px;">${state.watches.map(buildDataWatchCardHtml).join('')}</div>
+    <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
+  `;
 }
 
 
@@ -468,63 +502,9 @@ function scrollPanelIntoView(el, pinTop){
 }
 
 
-// Puts the open capture panel back where it belongs. Call it straight after
-// a render(), synchronously: render() has already collapsed the header, so
-// the first measurement is the final geometry and the page arrives in one
-// paint rather than converging over several frames.
-//
-// Needed on returning to the Data tab as well as on capture. The other tabs
-// are shorter pages, so switching away clamps the scroll position to fit
-// them, and the browser has no memory of where this tab was — coming back
-// left the panel open but the page at the top, no longer pinned.
-//
-// Not pinned to the top unconditionally any more: with the panel this
-// compact and the title area trimmed, it already fits in view from wherever
-// the page happens to be sitting most of the time — forcing a scroll on
-// every capture just to land somewhere it was already going to be visible
-// read as an unwanted jump. `false` here still scrolls exactly enough to
-// bring it fully into view when it genuinely doesn't fit (a smaller phone,
-// or a taller panel), the same fallback scrollEditRowIntoView already
-// relies on — it only stops being automatic about *always* moving the page.
 // A bit narrower than the Collection tab's SWIPE_REVEAL (collection.js) —
 // matches the narrower .history-swipe-row button width in styles.css.
 const HISTORY_SWIPE_REVEAL = 70;
-
-function pinCapturePanel(){
-  if(!quickCaptured || manualMode || activeTab !== 'data') return;
-  scrollPanelIntoView(document.querySelector('.quick-log-box'), false);
-}
-
-// Wraps a render (that swaps the four tap-second buttons for the much
-// taller confirm form) so the page's height grows smoothly instead of in
-// one instant jump. That jump is what a mobile browser's dynamic toolbar
-// (the address bar that hides/shows as the page's scrollable height
-// changes) reacts to — animating the growth over a couple hundred ms keeps
-// the dock from visibly jumping as the toolbar chases it.
-function animateQuickLogGrowth(rerender){
-  const before = document.getElementById('quickLogSection');
-  const fromHeight = before ? before.getBoundingClientRect().height : 0;
-  rerender();
-  const section = document.getElementById('quickLogSection');
-  if(!before || !section) return;
-  const toHeight = section.getBoundingClientRect().height;
-  if(Math.abs(toHeight - fromHeight) < 1) return;
-  section.style.height = fromHeight + 'px';
-  section.style.overflow = 'hidden';
-  section.classList.add('growing');
-  void section.offsetHeight; // force layout before starting the transition
-  requestAnimationFrame(() => {
-    section.style.height = toHeight + 'px';
-  });
-  const clear = () => {
-    section.classList.remove('growing');
-    section.style.height = '';
-    section.style.overflow = '';
-    section.removeEventListener('transitionend', clear);
-  };
-  section.addEventListener('transitionend', clear);
-}
-
 
 function scrollEditRowIntoView(){
   scrollPanelIntoView(document.querySelector('.history-edit-row'), false);
@@ -767,6 +747,16 @@ function attachHandlers(watch){
     el.onclick = () => { if(tgListening) tgAbort(); state.activeId = el.dataset.id; selectedOffsetIdx=null; selectedDriftIdx=null; offsetScrollLeft=null; driftScrollLeft=null; editingReadingId=null; render(); };
   });
 
+  // Wind and worn-today act on their own card without selecting it, so both
+  // stop the click from bubbling up to the "select" handler on the card
+  // beneath them.
+  document.querySelectorAll('[data-action="markwound"]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); markFullyWound(btn.dataset.id); };
+  });
+  document.querySelectorAll('[data-action="toggleworntoday"]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); toggleWearDay(btn.dataset.id, todayStr()); };
+  });
+
   // The + beside the watch names. Rather than duplicate the add form here,
   // it opens the Collection tab in exactly the state the tab's own "+ Add
   // watch" button would leave it in, then puts the cursor in the name field.
@@ -818,10 +808,7 @@ function attachHandlers(watch){
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       playShutterSound();
-      animateQuickLogGrowth(() => {
-        render();
-        pinCapturePanel();
-      });
+      render();
     };
   });
 
@@ -854,15 +841,6 @@ function attachHandlers(watch){
     const conditions = readConditionInputs('q');
     quickCaptured = null;
     addReading(watch.id, date, diff, note, conditions);
-  };
-
-  const exportBtn = document.querySelector('[data-action="export"]');
-  if(exportBtn) exportBtn.onclick = () => exportData();
-
-  const importInput = document.getElementById('importFile');
-  if(importInput) importInput.onchange = (e) => {
-    const file = e.target.files[0];
-    if(file) importData(file);
   };
 }
 
@@ -901,7 +879,6 @@ function switchToTab(tab){
   editingCollectionId = null;
   viewingCollectionId = null;
   render();
-  pinCapturePanel();
 }
 
 document.querySelectorAll('.bottom-tab').forEach(btn => {

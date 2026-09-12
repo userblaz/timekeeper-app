@@ -7,6 +7,11 @@ let editingCollectionId = null;
 let collectionPhotoFile = null;
 let addingCollectionWatch = false;
 let viewingCollectionId = null;
+// Set right before the render() that first shows a watch's detail page, and
+// consumed by that one render — so the opening animation plays exactly once
+// per open, not on every later re-render while the detail page is up (an
+// edit save, a scroll-driven clock collapse, etc).
+let collectionDetailJustOpened = false;
 
 const CERTIFICATION_OPTIONS = [
   'COSC',
@@ -152,6 +157,15 @@ function windIconSvg(){
     <path d="M12.0,10.1 L12.4,10.0 L12.7,10.0 L13.1,10.1 L13.5,10.2 L13.9,10.4 L14.3,10.7 L14.6,11.1 L14.8,11.5 L14.9,12.0 L15.0,12.6 L15.0,13.1 L14.8,13.7 L14.6,14.2 L14.2,14.7 L13.8,15.2 L13.2,15.5 L12.6,15.8 L11.9,16.0 L11.2,16.0 L10.5,15.9 L9.8,15.7 L9.1,15.3 L8.4,14.9 L7.9,14.2 L7.5,13.5 L7.2,12.7 L7.0,11.9 L7.0,11.0 L7.1,10.1 L7.4,9.2 L7.9,8.4 L8.5,7.6 L9.3,7.0 L10.2,6.5 L11.2,6.1 L12.2,5.9 L13.3,6.0 L14.4,6.2 L15.4,6.6 L16.4,7.2 L17.2,7.9 L18.0,8.9 L18.5,9.9 L18.9,11.1 L19.1,12.3 L19.0,13.6 L18.8,14.8 L18.3,16.0 L17.6,17.1 L16.6,18.1 L15.6,18.9 L14.3,19.6 L13.0,20.0 L11.6,20.1 L10.1,20.0 L8.7,19.7 L7.4,19.1 L6.1,18.3" />
     <path d="M6.1,18.3 L9.3,17.5" /><path d="M6.1,18.3 L7.2,21.4" />
    </g>
+  </svg>`;
+}
+
+// A plain checkmark for the "worn today" toggle — reads instantly as "done
+// today" and, unlike a wristwatch glyph, doesn't compete visually with the
+// wind icon or the app's own watch imagery.
+function wornIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
   </svg>`;
 }
 
@@ -379,6 +393,88 @@ function buildConditionInsightsHtml(watch){
   `;
 }
 
+const WEAR_CALENDAR_MONTH_LABELS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const WEAR_CALENDAR_WEEKDAY_LABELS = ['S','M','T','W','T','F','S'];
+
+// Which month the wear calendar carousel is scrolled to — a module-level
+// variable rather than per-render state, so it survives a re-render caused
+// by something unrelated (toggling a day, a scroll-driven clock collapse)
+// without snapping back to the current month underneath the user. Reset to
+// the current month only when a watch's detail page is freshly opened (see
+// collectionDetailJustOpened's set site).
+let wearCalendarMonthIndex = new Date().getMonth();
+
+// One real calendar month — weekday-aligned with leading blanks — used as
+// one page of the horizontal, swipeable carousel below.
+function buildWearMonthPageHtml(w, year, m, todayStr){
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  const firstWeekday = new Date(year, m, 1).getDay();
+  let cells = '';
+  for(let i = 0; i < firstWeekday; i++) cells += `<div class="wear-day-blank"></div>`;
+  for(let d = 1; d <= daysInMonth; d++){
+    const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isFuture = dateStr > todayStr;
+    const filled = !isFuture && isDayWorn(w, dateStr);
+    cells += `<button type="button" class="wear-day${filled ? ' filled' : ''}${isFuture ? ' future' : ''}" data-action="togglewearday" data-id="${w.id}" data-date="${dateStr}" ${isFuture ? 'disabled' : ''} aria-label="${dateStr}${filled ? ', worn' : ''}">${d}</button>`;
+  }
+  return `
+    <div class="wear-month-page" data-month-index="${m}">
+      <div class="wear-month-label">${WEAR_CALENDAR_MONTH_LABELS[m]} ${year}</div>
+      <div class="wear-weekday-row">${WEAR_CALENDAR_WEEKDAY_LABELS.map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="wear-days-grid">${cells}</div>
+    </div>
+  `;
+}
+
+// A year-at-a-glance wear tracker: one real month visible at a time, swiped
+// or arrow-stepped between (see attachWearCalendarHandlers) — a square is
+// filled when the day was tapped on directly or a reading that day was
+// logged "Worn on wrist" (see isDayWorn in data.js); future days are dimmed
+// and not tappable.
+function buildWearCalendarHtml(w){
+  const year = new Date().getFullYear();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const monthsHtml = WEAR_CALENDAR_MONTH_LABELS.map((_, m) => buildWearMonthPageHtml(w, year, m, todayStr)).join('');
+  const chevron = (d) => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" /></svg>`;
+
+  return `
+    <div class="section" style="margin-top:20px;padding-top:16px;">
+      <h2 class="section-title">Worn in ${year}</h2>
+      <p class="hint" style="margin-bottom:12px;">Swipe to change month, tap a day to mark or unmark it as worn.</p>
+      <div class="wear-calendar-wrap">
+        <button type="button" class="zoom-btn wear-nav-btn" data-action="wearcalnav" data-dir="-1" aria-label="Previous month">${chevron('M15 18l-6-6 6-6')}</button>
+        <div class="wear-calendar-scroll" id="wearCalendarScroll">${monthsHtml}</div>
+        <button type="button" class="zoom-btn wear-nav-btn" data-action="wearcalnav" data-dir="1" aria-label="Next month">${chevron('M9 6l6 6-6 6')}</button>
+      </div>
+    </div>
+  `;
+}
+
+// Restores the carousel's scroll position after a re-render (instant — the
+// element was just recreated, so there's nothing to animate from), and wires
+// swipe tracking plus the two nav buttons for a smooth, JS-driven scroll.
+function attachWearCalendarHandlers(){
+  const scrollEl = document.getElementById('wearCalendarScroll');
+  if(!scrollEl) return;
+  scrollEl.scrollLeft = wearCalendarMonthIndex * scrollEl.clientWidth;
+  scrollEl.onscroll = () => {
+    clearTimeout(scrollEl._wearScrollTimer);
+    scrollEl._wearScrollTimer = setTimeout(() => {
+      wearCalendarMonthIndex = Math.round(scrollEl.scrollLeft / scrollEl.clientWidth);
+    }, 120);
+  };
+  document.querySelectorAll('[data-action="wearcalnav"]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const width = scrollEl.clientWidth;
+      const current = Math.round(scrollEl.scrollLeft / width);
+      const next = Math.min(11, Math.max(0, current + Number(btn.dataset.dir)));
+      wearCalendarMonthIndex = next;
+      scrollEl.scrollTo({ left: next * width, behavior: 'smooth' });
+    };
+  });
+}
+
 function buildCollectionDetailHtml(w){
   if(editingCollectionId === w.id){
     return `
@@ -387,11 +483,11 @@ function buildCollectionDetailHtml(w){
     `;
   }
 
-  const photoHtml = w.photoUrl
-    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
-    : `<div class="collection-photo collection-photo-empty">＋</div>`;
   const bundle = buildWatchStatsBundle(w);
-  const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
+  // A brand-new watch has no rate to show yet — rather than a "log two
+  // readings" placeholder sitting up top, the dial is left out entirely and
+  // the details below simply move up to fill the gap.
+  const hasStats = !!overallStats(w);
 
   const detailRows = [
     ['Brand & model', w.model || null],
@@ -412,29 +508,49 @@ function buildCollectionDetailHtml(w){
   `;
 
   return `
-    <button type="button" class="reset-link back-link" data-action="backtocollectionlist" style="margin:22px 0 14px;">‹ Back to collection</button>
+    <div class="collection-detail-body">
+      ${hasStats ? `<div class="dial-wrap">${bundle.dialHtml}</div>` : ''}
 
-    <div class="collection-card" style="cursor:default;">
-      ${photoHtml}
-      <div class="collection-card-body">
-        <div class="collection-card-name">${escapeHtml(w.name)}</div>
-        <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
+      ${detailsListHtml}
+
+      <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit details</button>
+
+      ${buildWearCalendarHtml(w)}
+
+      ${buildConditionInsightsHtml(w)}
+
+      ${bundle.chartsHtml}
+
+      ${bundle.historySectionHtml}
+    </div>
+  `;
+}
+
+// The sticky bar shown under the clock while viewing one watch's detail
+// page — the watch's own card (photo, name, model/reference), with a
+// circular back button beside it — replacing the row of watch-name tabs
+// the Data tab puts there, so the card stays pinned under the clock as the
+// rest of the detail page scrolls up underneath it.
+function buildCollectionWatchBarHtml(w){
+  const photoHtml = w.photoUrl
+    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
+    : `<div class="collection-photo collection-photo-empty">＋</div>`;
+  const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
+  return `
+    <div class="tabs collection-watch-bar">
+      <div class="collection-card" style="cursor:default;">
+        ${photoHtml}
+        <div class="collection-card-body">
+          <div class="collection-card-name">${escapeHtml(w.name)}</div>
+          <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
+        </div>
+        <div class="collection-card-actions">
+          <button type="button" class="zoom-btn collection-back-btn" data-action="backtocollectionlist" aria-label="Back to collection">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          </button>
+        </div>
       </div>
     </div>
-
-    ${detailsListHtml}
-
-    <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit details</button>
-
-    <div class="dial-wrap" style="margin-top:26px;">
-      ${bundle.dialHtml}
-    </div>
-
-    ${buildConditionInsightsHtml(w)}
-
-    ${bundle.chartsHtml}
-
-    ${bundle.historySectionHtml}
   `;
 }
 
@@ -619,15 +735,21 @@ async function markFullyWound(watchId){
   // Updated in place rather than through render(). A full re-render rebuilds
   // the card's <img>, which repaints and made the photo twitch on every
   // press; keeping the element also lets the bar's width transition run from
-  // where it actually was, with no need to fake a starting value.
-  const card = document.querySelector(`.swipe-row[data-swipe-id="${watchId}"] .collection-card`);
+  // where it actually was, with no need to fake a starting value. Found via
+  // the wind button rather than a swipe-row wrapper, since the same card
+  // markup now also appears unwrapped in the Data tab's watch list.
+  const findCard = () => {
+    const btn = document.querySelector(`[data-action="markwound"][data-id="${watchId}"]`);
+    return btn ? btn.closest('.collection-card') : null;
+  };
+  const card = findCard();
   if(card && card.querySelector('.reserve-fill')){
     updatePowerReserveBars();
     playWoundFlash(card);
   } else {
     // First wind on this watch: there's no bar in the DOM yet to update.
     render();
-    playWoundFlash(document.querySelector(`.swipe-row[data-swipe-id="${watchId}"] .collection-card`));
+    playWoundFlash(findCard());
   }
 
   const { error } = await sb.from('watches').update({ last_wound_at: now }).eq('id', watchId);
@@ -663,7 +785,10 @@ function attachCollectionHandlers(){
       if(Date.now() - swipeEndedAt < 300) return;
       const row = el.closest('.swipe-row');
       if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
-      viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null; render();
+      viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null;
+      collectionDetailJustOpened = true;
+      wearCalendarMonthIndex = new Date().getMonth();
+      render();
     };
   });
   wireCollectionSwipe();
@@ -684,6 +809,14 @@ function attachCollectionHandlers(){
       markFullyWound(btn.dataset.id);
     };
   });
+  document.querySelectorAll('[data-action="togglewearday"]').forEach(btn => {
+    if(btn.disabled) return;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      toggleWearDay(btn.dataset.id, btn.dataset.date);
+    };
+  });
+  attachWearCalendarHandlers();
   document.querySelectorAll('[data-action="deletecollectionwatch"]').forEach(deleteBtn => {
     deleteBtn.onclick = (e) => {
       e.stopPropagation();
