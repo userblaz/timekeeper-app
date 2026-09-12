@@ -912,10 +912,12 @@
     margin-bottom:14px;
     box-shadow:0 8px 24px -8px var(--shadow-b);
   }
-  /* The snap cluster: fixed above the bottom dock on the Snap tab so it's
-     always reachable without scrolling, whatever the watch-list content
-     above does. Same "clear the dock" offset the toast (below) already
-     uses: the dock's own 14px + 57px + 10px of breathing room. */
+  /* The snap trigger: fixed above the bottom dock on the Snap tab so it's
+     always reachable without scrolling. Same "clear the dock" offset the
+     toast (below) already uses: the dock's own 14px + 57px + 10px of
+     breathing room. Its own content is constant (see buildSnapTriggerHtml),
+     so unlike the old fixed panel this never needs to grow — the confirm
+     and manual forms open against the selected watch's card instead. */
   #snapDock{
     position:fixed;
     left:8px;
@@ -927,8 +929,14 @@
   }
   #snapDock .quick-log-box{
     margin-bottom:0;
-    max-height:calc(100vh - 220px);
-    overflow-y:auto;
+    background:var(--accent);
+    border-color:var(--accent);
+  }
+  #snapDock .quick-log-box .hint{
+    color:rgba(255,255,255,0.85);
+  }
+  #snapDock .manual-link{
+    color:#fff;
   }
   /* Camera-flash on the panel that opens when a reading is captured. Two
      layers on one overlay: fully white light blown in from the edges, which
@@ -984,6 +992,9 @@
     font-weight:600;
   }
   .quick-btn:active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  /* On the blue snap-menu background, the buttons' own accent-blue numbers
+     would barely show — white keeps them readable against it. */
+  #snapDock .quick-btn{color:#fff;}
   .manual-link{
     background:none;
     border:none;
@@ -1352,37 +1363,35 @@
      attachWearCalendarHandlers in collection.js). scroll-snap plus native
      touch scrolling gives the swipe its own smoothness for free; the nav
      buttons drive the same scroller with scrollTo({behavior:'smooth'}). */
-  .wear-calendar-wrap{
+  .wear-calendar-controls{
     display:flex;
     align-items:center;
-    gap:4px;
+    gap:6px;
+    margin-bottom:14px;
   }
   .wear-nav-btn{
     flex-shrink:0;
   }
-  .wear-calendar-scroll{
-    display:flex;
+  .wear-calendar-select-slot{
     flex:1;
     min-width:0;
-    overflow-x:auto;
-    scroll-snap-type:x mandatory;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
   }
-  .wear-calendar-scroll::-webkit-scrollbar{display:none;}
-  .wear-month-page{
-    flex:0 0 100%;
-    scroll-snap-align:center;
+  .wear-calendar-select-slot .select-wrap{
+    width:100%;
+  }
+  .wear-calendar-select-slot .condition-select{
+    width:100%;
+  }
+  .wear-calendar-wrap{
     display:flex;
     flex-direction:column;
     align-items:center;
   }
-  .wear-month-label{
-    font-family:'Inter',sans-serif;
-    font-size:13px;
-    font-weight:600;
-    color:var(--ink);
-    margin-bottom:10px;
+  .wear-month-page{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    width:100%;
   }
   .wear-weekday-row{
     display:grid;
@@ -1596,13 +1605,21 @@
     height:36px;
   }
   .data-worn-btn svg{
-    width:20px;
-    height:20px;
+    width:22px;
+    height:22px;
   }
   .data-worn-btn.active{
     background:var(--accent);
     border-color:var(--accent);
     color:#fff;
+  }
+  .data-menu-btn{
+    width:36px;
+    height:36px;
+  }
+  .data-menu-btn svg{
+    width:16px;
+    height:16px;
   }
   /* Wind and worn-today sit side by side on the Data tab card, rather than
      stacked the way a single action (the wind button alone) sits on the
@@ -1610,16 +1627,45 @@
   .data-watch-card-actions{
     flex-direction:row;
   }
-  /* Marks whichever watch on the Data tab is selected to receive the next
-     snapped reading — just the stroke, no glow. */
-  .data-watch-card.selected{
-    border-color:var(--accent);
-  }
   /* No model/reference line here (see buildDataWatchCardHtml), so the card
      doesn't need as much vertical room as the Collection list's. */
   .data-watch-card{
     padding-top:9px;
     padding-bottom:9px;
+  }
+  /* The plain "this is who a snap will apply to" state — no pop-up open,
+     just the card's own stroke. */
+  .data-watch-card.selected{
+    border-color:var(--accent);
+  }
+
+  /* Once a snap is under way, the selected watch's card + its pop-up panel
+     wrap as one connected, blue-stroked block (see buildDataWatchGroupHtml
+     in app.js) — the border lives on the group, not the card, so the shared
+     edge between the two reads as one continuous shape instead of two
+     stacked boxes. */
+  .data-watch-group{
+    position:relative;
+    border:1.5px solid var(--accent);
+    border-radius:18px;
+    overflow:hidden;
+  }
+  .data-watch-card.connected{
+    border:none;
+    border-radius:0;
+  }
+  .data-watch-snap-panel{
+    border-top:1px solid var(--line);
+    padding:14px;
+    background:var(--surface);
+  }
+  .data-watch-snap-panel .quick-log-box{
+    background:none;
+    border:none;
+    border-radius:0;
+    padding:0;
+    margin-bottom:0;
+    box-shadow:none;
   }
 
   /* Power reserve */
