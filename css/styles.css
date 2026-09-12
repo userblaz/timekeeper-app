@@ -1371,6 +1371,20 @@
     flex-direction:column;
     gap:12px;
   }
+  /* The Data tab's own scroll region (see sizeDataWatchScroll in app.js) —
+     its height is set inline in JS, so only the scroll mechanics live here.
+     Scrolling this instead of the page keeps the big reference clock above
+     it fully expanded, since window scroll never moves. */
+  .data-watch-scroll{
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+  }
+  .data-watch-scroll::-webkit-scrollbar{
+    display:none;
+  }
   .collection-add-btn{
     display:block;
     width:100%;
@@ -1686,7 +1700,7 @@
      is inert — dimmed and unclickable — so it reads as unavailable rather
      than just quietly ignoring taps. */
   .data-watch-card.locked{
-    opacity:0.45;
+    opacity:0.2;
     pointer-events:none;
   }
 

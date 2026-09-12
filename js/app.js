@@ -182,11 +182,9 @@ function render(){
     if(activeTab === 'data' && watch){
       snapDockEl.innerHTML = buildSnapTriggerHtml();
       snapDockEl.style.display = '';
-      root.style.paddingBottom = (snapDockEl.offsetHeight + 24) + 'px';
     } else {
       snapDockEl.innerHTML = '';
       snapDockEl.style.display = 'none';
-      root.style.paddingBottom = '';
     }
   }
 
@@ -241,6 +239,7 @@ function render(){
   if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
 
   root.innerHTML = buildDataWatchListHtml();
+  sizeDataWatchScroll();
 
   attachHandlers(watch);
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
@@ -313,38 +312,47 @@ function buildDataWatchListHtml(){
     `;
   }
   const popupOpen = !!quickCaptured || manualMode;
-  // While a snap's pop-up is open, the active watch always renders first —
-  // paired with resetting scroll to the very top (see scrollToPageTop),
-  // that's what lands it right under the header without having to measure
-  // and animate to its actual position in the list, which was never quite
-  // right once the clock had partly collapsed or the page was scrolled
-  // somewhere else first. The rest keep their normal relative order below
-  // it either way.
-  let watchesInOrder = state.watches;
-  if(popupOpen){
-    const active = state.watches.find(w => w.id === state.activeId);
-    if(active) watchesInOrder = [active, ...state.watches.filter(w => w.id !== state.activeId)];
-  }
-  const cardsHtml = watchesInOrder.map(w => {
+  // The list keeps its natural order even while a snap pop-up is open —
+  // watches above the active one scroll off above instead of jumping out
+  // of place, and the rest are still reachable below (see
+  // scrollWatchCardToTop, called right after this renders).
+  const cardsHtml = state.watches.map(w => {
     const isActive = w.id === state.activeId;
     if(isActive && popupOpen) return buildDataWatchGroupHtml(w);
     return buildDataWatchCardHtml(w, false, isActive, popupOpen);
   }).join('');
   return `
-    <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
-    <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
+    <div class="data-watch-scroll" id="dataWatchScroll">
+      <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
+      <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
+    </div>
   `;
 }
+
+// The Data tab's own list scrolls internally instead of the page — the big
+// reference clock above it stays fully expanded rather than collapsing away
+// as the list is browsed, since window scroll never moves. Sized to fill
+// exactly what's left between the sticky header and the fixed snap dock at
+// the bottom; re-measured on every render and on resize since both of those
+// can change height (e.g. the dock hiding when a watch has no readings yet).
+function sizeDataWatchScroll(){
+  const scrollEl = document.getElementById('dataWatchScroll');
+  if(!scrollEl) return;
+  const header = document.getElementById('stickyHeader');
+  const dock = document.getElementById('snapDock');
+  const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+  const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
+  const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
+  scrollEl.style.height = height + 'px';
+}
+window.addEventListener('resize', sizeDataWatchScroll);
 
 // Resets scroll to the very top over exactly `duration`ms — a fixed,
 // deterministic target rather than measuring a card's position and
 // animating to that, which was never quite right once the clock had partly
 // collapsed or the page started somewhere other than the top: the header's
 // height kept changing mid-scroll, and the target computed at the start
-// went stale by the end. Y=0 is always the same "page load" geometry,
-// which is also why buildDataWatchListHtml puts the active watch first
-// while its pop-up is open — that's what actually lands it under the
-// header, not this scroll on its own. No-ops if already there.
+// went stale by the end. No-ops if already there.
 function scrollToPageTop(duration){
   if(window.scrollY < 2) return;
   const startY = window.scrollY;
@@ -353,6 +361,33 @@ function scrollToPageTop(duration){
     const t = Math.min(1, (now - startTime) / duration);
     const eased = 1 - Math.pow(1 - t, 3);
     window.scrollTo(0, startY * (1 - eased));
+    if(t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// Scrolls the Data tab's own internal list (see sizeDataWatchScroll) so the
+// given watch's card — or its snap group, once the pop-up is open — lands at
+// the same spot the very first card sits at on a fresh load, leaving any
+// cards above it scrolled out of view and the rest still reachable further
+// down. The page itself never scrolls here, so the big reference clock above
+// the list stays fully expanded throughout. The list keeps its natural order
+// (see buildDataWatchListHtml) instead of jumping the active watch to the
+// front.
+function scrollWatchCardToTop(watchId, duration){
+  const container = document.getElementById('dataWatchScroll');
+  const el = document.querySelector(`.data-watch-group[data-id="${watchId}"]`) ||
+    document.querySelector(`.data-watch-card[data-id="${watchId}"]`);
+  if(!container || !el) return;
+  const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  const targetTop = Math.max(0, container.scrollTop + delta);
+  const startTop = container.scrollTop;
+  if(Math.abs(targetTop - startTop) < 2) return;
+  const startTime = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - startTime) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    container.scrollTop = startTop + (targetTop - startTop) * eased;
     if(t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -895,7 +930,7 @@ function attachHandlers(watch){
   if(toggleBtn) toggleBtn.onclick = () => {
     manualMode = true; quickCaptured = null; quickMinuteValue = null;
     render();
-    scrollToPageTop(250);
+    if(watch) scrollWatchCardToTop(watch.id, 250);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
@@ -922,7 +957,7 @@ function attachHandlers(watch){
       quickMinuteValue = quickCaptured.at.getMinutes();
       playShutterSound();
       render();
-      scrollToPageTop(250);
+      if(watch) scrollWatchCardToTop(watch.id, 250);
     };
   });
 
