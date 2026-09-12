@@ -338,7 +338,7 @@ function buildWatchStatsBundle(watch){
       const rateHtml = r.rate === null
         ? (r.isReset
             ? `<span class="hist-rate" style="color:var(--grey)">⟲ reset</span>`
-            : `<span class="hist-rate slow">reference</span>`)
+            : `<span class="hist-rate" style="color:var(--grey)">reference</span>`)
         : `<span class="hist-rate ${r.rate>=0?'slow':'fast'}">${fmtRate(r.rate)} s/day</span>`;
       const conditionLabels = [
         r.position ? POSITION_OPTIONS.find(([v])=>v===r.position)?.[1] : null,

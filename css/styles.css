@@ -205,7 +205,10 @@
     font-size:14px;
     color:var(--grey);
     text-align:center;
-    padding:26px 10px 6px;
+    /* Same total vertical padding as before (32px), just split evenly so
+       the text centers in the field's own height instead of sitting low
+       in it. */
+    padding:16px 10px;
   }
 
   /* Chart */
