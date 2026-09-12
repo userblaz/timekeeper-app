@@ -380,8 +380,13 @@
 
   .bottom-tabs{
     position:fixed;
-    left:10px;
-    right:10px;
+    /* Was 10px. Five equal columns with a label as long as "Timegrapher"
+       genuinely doesn't leave much room to spare on a real phone — measured
+       against the actual rendered font, not estimated, every extra pixel
+       reclaimed here goes straight into the pill actually looking like a
+       pill instead of a label with barely any margin around it. */
+    left:8px;
+    right:8px;
     bottom:calc(14px + var(--safe-bottom));
     max-width:444px;
     margin:0 auto;
@@ -392,29 +397,73 @@
     backdrop-filter:blur(20px) saturate(180%);
     border:1px solid var(--line);
     border-radius:999px;
-    padding:5px 6px;
+    padding:5px 5px;
     box-shadow:0 12px 30px -10px var(--shadow-c);
     -webkit-transform:translateZ(0);
     transform:translateZ(0);
     will-change:transform;
   }
   .bottom-tab{
+    /* Equal-width tap targets — five even columns across the bar. The
+       active highlight below no longer has to fill this whole column, so
+       widening it here never makes one tab's target bigger than another's. */
     flex:1;
+    /* A flex item's default minimum width is its content's natural size, not
+       zero — so a fixed-width child taller than the item's own flex:1 share
+       stopped the item shrinking to fit, which stopped the whole row
+       shrinking to fit, which pushed the fifth tab out past the bar's own
+       background. This is what actually let that happen. */
+    min-width:0;
     display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:2px;
+    justify-content:center;
     background:none;
     border:none;
-    border-radius:999px;
-    padding:5px 2px 4px;
+    padding:0;
     font-family:'Inter',sans-serif;
-    font-size:9.5px;
+    /* Was 9.5px. "Timegrapher" measured 58px wide at that size against a
+       real column of only 68-79px on an actual phone — there was nowhere
+       for padding to come from. Measured again at 8px: 49px, which is what
+       finally leaves the pill genuine room on every side rather than a
+       fraction of a pixel of it. */
+    font-size:8px;
     font-weight:500;
     color:var(--grey);
   }
   .bottom-tab.active{
     color:var(--accent);
+  }
+  /* The actual pill: sized to its own icon+label, not to the button's equal
+     flex share. A fully round 999px radius — right for a stadium shape —
+     only reads as a pill when the box is snug around its content; stretched
+     out to fill a whole equal-width column it flattens into a rounded
+     rectangle, and on a long label like "Timegrapher" the curve pinches
+     straight into the text. Sizing to content is also what lets that same
+     999px radius stay genuinely round for every label, short or long,
+     without the fixed columns around it ever changing width. */
+  .bottom-tab-pill{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:0px;
+    padding:5px 8px 4px;
+    border-radius:999px;
+    /* One shared size, not one per label. Sized for "Timegrapher", the
+       longest — align-items:center then centers every shorter label inside
+       the same box, so the highlight lands in the same place and at the
+       same size switching to any tab, rather than visibly resizing itself
+       tab to tab.
+       max-width:100% is doing real work here, not just a safety net: with
+       five tabs actually on the bar (Profile included — easy to miss if it
+       was never actually rendered while testing this) even a phone-sized
+       screen doesn't always have 84px of column to spare per tab. Where it
+       doesn't, this caps the pill at whatever its own column actually has,
+       so it still lands the same size on every tab that fits it — it's only
+       the one fixed number that stops being universal, on the narrowest
+       phones. */
+    width:84px;
+    max-width:100%;
+  }
+  .bottom-tab.active .bottom-tab-pill{
     background:rgba(255,255,255,0.14);
     box-shadow:inset 0 1px 0 rgba(255,255,255,0.2);
   }
@@ -817,6 +866,13 @@
      filter on the panel itself, so it fades independently of the panel's own
      shadow — and pointer-events:none so it never swallows a tap on the
      fields underneath while it's still fading. */
+  /* See animateQuickLogGrowth in app.js: applied only while the confirm
+     panel's height is being animated in, so the transition never fires on
+     unrelated layout changes (a chart zoom, a window resize) that also
+     touch this element's height. */
+  #quickLogSection.growing{
+    transition:height 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
   .snap-flash{position:relative;}
   .snap-flash::after{
     content:'';
@@ -908,14 +964,37 @@
     text-align:center;
     font-size:11.5px;
     color:var(--grey);
-    margin-bottom:14px;
+    padding-bottom:12px;
+    margin-bottom:12px;
+    /* Separates the frozen reading from the fields below it — the panel
+       reads as "here's what got captured" over "here's what to fill in",
+       rather than one undifferentiated block. */
+    border-bottom:1px solid var(--line);
   }
-  /* The timestamp itself carries the information; "captured at … phone time"
-     is just the sentence around it, so only the figure is lifted out. */
+  /* The timestamp itself carries the information; "captured … " is just the
+     sentence around it, so only the figure is lifted out. */
   .confirm-sub b{
     color:var(--ink);
     font-weight:600;
     font-variant-numeric:tabular-nums;
+  }
+  /* A pill input with a small icon standing in for a visible label — this
+     field is optional and low-stakes, so the placeholder alone carries
+     enough meaning that a "Note (optional)" label above it was just extra
+     height for no extra clarity. */
+  .note-input-wrap{
+    position:relative;
+    display:flex;
+    align-items:center;
+  }
+  .note-input-icon{
+    position:absolute;
+    left:13px;
+    color:var(--grey);
+    pointer-events:none;
+  }
+  .note-input{
+    padding-left:36px !important;
   }
 
   /* History */
@@ -1468,12 +1547,16 @@
 
   /* Phone-sized screens: halve the vertical whitespace around the title so
      the clock starts higher. The notch inset itself is untouched — that's
-     physical clearance, not padding. */
+     physical clearance, not padding. Trimmed a further 30% on top of that
+     (7px/5px/4px/7px down to 5px/3px/3px/5px) so the capture panel below has
+     enough headroom to appear without the page needing to scroll to reach
+     it — see pinCapturePanel in app.js, which now only scrolls if it
+     actually doesn't fit. */
   @media (max-width:480px){
-    .app{padding-top:calc(var(--safe-top) + 7px);}
-    .app-title{margin-top:5px;margin-bottom:4px;}
+    .app{padding-top:calc(var(--safe-top) + 5px);}
+    .app-title{margin-top:3px;margin-bottom:3px;}
     .signout-btn{margin-top:3px;}
-    #stickyHeader{padding-top:7px;}
+    #stickyHeader{padding-top:5px;}
   }
 
 

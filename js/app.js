@@ -224,7 +224,7 @@ function render(){
         ${bundle.dialHtml}
       </div>
 
-      <div class="section" style="margin-top:8px;padding-top:0;border-top:none;">
+      <div class="section" id="quickLogSection" style="margin-top:8px;padding-top:0;border-top:none;">
         ${buildQuickLogArea()}
       </div>
 
@@ -465,9 +465,48 @@ function scrollPanelIntoView(el, pinTop){
 // are shorter pages, so switching away clamps the scroll position to fit
 // them, and the browser has no memory of where this tab was — coming back
 // left the panel open but the page at the top, no longer pinned.
+//
+// Not pinned to the top unconditionally any more: with the panel this
+// compact and the title area trimmed, it already fits in view from wherever
+// the page happens to be sitting most of the time — forcing a scroll on
+// every capture just to land somewhere it was already going to be visible
+// read as an unwanted jump. `false` here still scrolls exactly enough to
+// bring it fully into view when it genuinely doesn't fit (a smaller phone,
+// or a taller panel), the same fallback scrollEditRowIntoView already
+// relies on — it only stops being automatic about *always* moving the page.
 function pinCapturePanel(){
   if(!quickCaptured || manualMode || activeTab !== 'data') return;
-  scrollPanelIntoView(document.querySelector('.quick-log-box'), true);
+  scrollPanelIntoView(document.querySelector('.quick-log-box'), false);
+}
+
+// Wraps a render (that swaps the four tap-second buttons for the much
+// taller confirm form) so the page's height grows smoothly instead of in
+// one instant jump. That jump is what a mobile browser's dynamic toolbar
+// (the address bar that hides/shows as the page's scrollable height
+// changes) reacts to — animating the growth over a couple hundred ms keeps
+// the dock from visibly jumping as the toolbar chases it.
+function animateQuickLogGrowth(rerender){
+  const before = document.getElementById('quickLogSection');
+  const fromHeight = before ? before.getBoundingClientRect().height : 0;
+  rerender();
+  const section = document.getElementById('quickLogSection');
+  if(!before || !section) return;
+  const toHeight = section.getBoundingClientRect().height;
+  if(Math.abs(toHeight - fromHeight) < 1) return;
+  section.style.height = fromHeight + 'px';
+  section.style.overflow = 'hidden';
+  section.classList.add('growing');
+  void section.offsetHeight; // force layout before starting the transition
+  requestAnimationFrame(() => {
+    section.style.height = toHeight + 'px';
+  });
+  const clear = () => {
+    section.classList.remove('growing');
+    section.style.height = '';
+    section.style.overflow = '';
+    section.removeEventListener('transitionend', clear);
+  };
+  section.addEventListener('transitionend', clear);
 }
 
 
@@ -641,24 +680,23 @@ function buildQuickLogArea(){
   return `
     <div class="quick-log-box snap-flash">
       <div class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${timeStr}</div>
-      <div class="confirm-sub">captured at <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> phone time · <span class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
+      <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
       <div class="row2">
         <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
         <div class="field"><label for="qM">Watch min</label><input type="number" id="qM" min="0" max="59" placeholder="${pad2(c.getMinutes())}" /></div>
       </div>
-      <p class="hint" style="margin-top:8px;margin-bottom:8px;">Leave blank if it already matched the phone.</p>
-      <div class="row3">
+      <div class="row3" style="margin-top:12px;">
         <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
-        <div class="field">${buildSelect('qWear', WEAR_STATE_OPTIONS)}</div>
-        <div class="field">${buildSelect('qTimeOfDay', TIME_OF_DAY_OPTIONS)}</div>
+        <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
+        <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
       </div>
-      <div class="field" style="margin-top:10px;">
-        <label for="qNote">Note (optional)</label>
-        <input type="text" id="qNote" placeholder="worn daily, dial up overnight…" />
+      <div class="note-input-wrap" style="margin-top:12px;">
+        <svg class="note-input-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+        <input type="text" id="qNote" class="note-input" placeholder="Add note (optional)" />
       </div>
       <div class="row2" style="margin-top:12px;">
         <button type="button" class="btn-secondary" data-action="quickcancel">Cancel</button>
-        <button type="button" class="btn-primary" data-action="quickconfirm" style="flex:1">Log reading</button>
+        <button type="button" class="btn-primary" data-action="quickconfirm" style="flex:1">Log</button>
       </div>
     </div>
   `;
@@ -751,8 +789,10 @@ function attachHandlers(watch){
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       playShutterSound();
-      render();
-      pinCapturePanel();
+      animateQuickLogGrowth(() => {
+        render();
+        pinCapturePanel();
+      });
     };
   });
 
@@ -808,28 +848,35 @@ function syncBottomTabs(){
   });
 }
 
+// Shared by a direct tap on a dock button and a swipe gesture over the page
+// content — both are "go to this tab", and keeping one function means they
+// can never drift apart in what that actually does.
+function switchToTab(tab){
+  if(tab === activeTab) return;
+  const btn = document.querySelector(`.bottom-tab[data-tab="${tab}"]`);
+  if(!btn) return;
+  if(tgListening && tab !== 'timegrapher') tgAbort();
+  activeTab = tab;
+  syncBottomTabs();
+  // Small bounce on the icon being switched to — a one-shot CSS animation
+  // class, removed once it finishes so it can replay cleanly next time.
+  btn.classList.remove('tab-pop');
+  void btn.offsetWidth; // force a reflow so re-adding the class restarts the animation
+  btn.classList.add('tab-pop');
+  btn.addEventListener('animationend', () => btn.classList.remove('tab-pop'), { once: true });
+  // Jump straight to the top on every tab switch, so leaving a scrolled-down
+  // tab for a much shorter one never lands on a leftover scroll position the
+  // new page barely has room for.
+  window.scrollTo(0, 0);
+  editingReadingId = null;
+  editingCollectionId = null;
+  viewingCollectionId = null;
+  render();
+  pinCapturePanel();
+}
+
 document.querySelectorAll('.bottom-tab').forEach(btn => {
-  btn.onclick = () => {
-    if(tgListening && btn.dataset.tab !== 'timegrapher') tgAbort();
-    activeTab = btn.dataset.tab;
-    syncBottomTabs();
-    // Small bounce on the icon being switched to — a one-shot CSS
-    // animation class, removed once it finishes so it can replay cleanly
-    // next time this same tab is tapped again.
-    btn.classList.remove('tab-pop');
-    void btn.offsetWidth; // force a reflow so re-adding the class restarts the animation
-    btn.classList.add('tab-pop');
-    btn.addEventListener('animationend', () => btn.classList.remove('tab-pop'), { once: true });
-    // Jump straight to the top on every tab switch, so leaving a
-    // scrolled-down tab for a much shorter one never lands on a leftover
-    // scroll position the new page barely has room for.
-    window.scrollTo(0, 0);
-    editingReadingId = null;
-    editingCollectionId = null;
-    viewingCollectionId = null;
-    render();
-    pinCapturePanel();
-  };
+  btn.onclick = () => switchToTab(btn.dataset.tab);
   // iOS Safari often never applies :active on tap at all unless something
   // on the page explicitly listens for touch — a real touch listener
   // toggling this class sidesteps that, on every platform, rather than
@@ -839,6 +886,69 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
   btn.addEventListener('touchend', clearPressed);
   btn.addEventListener('touchcancel', clearPressed);
 });
+
+// --- swipe between tabs ---
+// A horizontal swipe anywhere over the page does the same thing as tapping
+// the next or previous dock icon — an alternative to reaching down to the
+// bar, not a replacement for it.
+//
+// Pointer events rather than touch events: several existing interactions
+// (the collection cards' swipe-to-delete, the history/chart scrollbar
+// thumbs) already use pointer events and call stopPropagation on them, but
+// a phone's browser dispatches touch events on a separate, parallel channel
+// that stopPropagation on a pointer event never touches — a document-level
+// touch listener would still see every one of those gestures too. Matching
+// the same event type those already use, and simply excluding their
+// elements below, avoids that collision entirely rather than fighting it.
+//
+// Restricted to pointerType 'touch': a mouse drag (selecting text, dragging
+// a scrollbar thumb on desktop) is a completely different gesture that only
+// coincidentally shares "horizontal movement" with a swipe.
+const TAB_SWIPE_MIN_DIST = 70;      // px — well past an accidental wobble
+const TAB_SWIPE_MAX_OFF_AXIS = 0.7; // vertical drift allowed, as a fraction of the horizontal distance
+const TAB_SWIPE_EDGE_GUARD = 24;    // px from either screen edge — iOS's own back/forward swipe lives here
+
+// Elements with their own horizontal drag or native horizontal scroll — a
+// swipe that starts inside one of these belongs to it, not to switching
+// tabs. Also the dock itself: swiping across the tab bar should not also
+// count as a page-content swipe on top of whatever it does natively.
+const TAB_SWIPE_EXCLUDED_SELECTOR = '.swipe-row, .custom-scrollbar-thumb, .tabs, .chart-scroll, .select-wrap, .bottom-tabs, input, textarea';
+
+let tabSwipeState = null;
+
+function tabSwipeOrder(){
+  return Array.from(document.querySelectorAll('.bottom-tab'))
+    .filter(b => getComputedStyle(b).display !== 'none')
+    .map(b => b.dataset.tab);
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if(e.pointerType !== 'touch') return;
+  if(e.target.closest(TAB_SWIPE_EXCLUDED_SELECTOR)) return;
+  if(e.clientX < TAB_SWIPE_EDGE_GUARD || e.clientX > window.innerWidth - TAB_SWIPE_EDGE_GUARD) return;
+  tabSwipeState = { startX: e.clientX, startY: e.clientY, id: e.pointerId };
+}, { passive: true });
+
+document.addEventListener('pointerup', (e) => {
+  if(!tabSwipeState || e.pointerId !== tabSwipeState.id) return;
+  const dx = e.clientX - tabSwipeState.startX;
+  const dy = e.clientY - tabSwipeState.startY;
+  tabSwipeState = null;
+  if(Math.abs(dx) < TAB_SWIPE_MIN_DIST) return;
+  if(Math.abs(dy) > Math.abs(dx) * TAB_SWIPE_MAX_OFF_AXIS) return;
+  const order = tabSwipeOrder();
+  const i = order.indexOf(activeTab);
+  if(i === -1) return;
+  // Swiping left brings the next tab in from the right, same as it would
+  // for a page or a photo — so it moves forward through the dock's order;
+  // swiping right goes back. Clamped rather than wrapping: overshooting past
+  // either end of the dock just stays put, the same way the dock itself has
+  // no way to "tap past" its first or last icon.
+  const next = order[dx < 0 ? i + 1 : i - 1];
+  if(next) switchToTab(next);
+}, { passive: true });
+
+document.addEventListener('pointercancel', () => { tabSwipeState = null; }, { passive: true });
 
 // --- bootstrap ---
 // loadState()/syncTrueTime() are no longer called from here. Since the app
