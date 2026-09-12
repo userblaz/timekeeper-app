@@ -81,6 +81,20 @@ function trueNow(){
   return new Date(Date.now() + timeOffsetMs);
 }
 
+// e.g. "UTC+1" — this phone's own local offset, not the reference clock's
+// (that one's always UTC-synced internally regardless of where you are).
+// Just a "which timezone am I reading this in" hint, so it's derived from
+// the device clock rather than trueNow(), which stays correct even while
+// still 'pending'/'failed'.
+function utcOffsetLabel(){
+  const mins = -new Date().getTimezoneOffset();
+  const sign = mins >= 0 ? '+' : '-';
+  const abs = Math.abs(mins);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `UTC${sign}${h}${m ? ':' + String(m).padStart(2, '0') : ''}`;
+}
+
 async function syncTrueTime(){
   const labelEl = document.getElementById('masterClockLabel');
   if(labelEl) labelEl.textContent = 'reference time · syncing…';
@@ -107,9 +121,10 @@ async function syncTrueTime(){
     timeSyncStatus = 'failed';
   }
   if(labelEl){
-    labelEl.textContent = timeSyncStatus === 'synced'
+    labelEl.textContent = (timeSyncStatus === 'synced'
       ? 'reference time · synced to atomic clock'
-      : 'reference time · this phone (sync failed, tap to retry)';
+      : 'reference time · this phone (sync failed, tap to retry)')
+      + ' · ' + utcOffsetLabel();
   }
 }
 
@@ -175,6 +190,42 @@ function playShutterSound(){
   const t = ctx.currentTime + 0.01;
   click(t, 0.07, 3000);            // mirror up: brighter, the louder of the two
   click(t + 0.055, 0.05, 2200);    // shutter closing: softer and lower
+}
+
+// A crown-winding ratchet for "mark as fully wound" — five sharp, snappy
+// ticks rising in pitch. A square wave with a near-instant attack and a
+// decay of just ~12ms, not the noise-through-a-filter texture
+// playShutterSound uses — that read as a soft scratch/click rather than a
+// crisp mechanical tick, and varied a little take to take even with a fixed
+// noise buffer. A plain oscillator tone is both crisper and exactly
+// reproducible every time.
+function playWindSound(){
+  if(!clockAudioCtx) clockAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = clockAudioCtx;
+  if(ctx.state === 'suspended') ctx.resume();
+
+  const tick = (at, freq, level) => {
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(level, at + 0.001);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.012);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + 0.02);
+  };
+
+  const t = ctx.currentTime + 0.01;
+  const clicks = 5;
+  for(let i = 0; i < clicks; i++){
+    const at = t + i * 0.04;
+    const level = 0.05 - i * 0.002;
+    const freq = 1400 + i * 180;
+    tick(at, freq, level);
+  }
 }
 
 function scheduleNextTick(){

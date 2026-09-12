@@ -614,6 +614,7 @@ async function markFullyWound(watchId){
   // Applied before the write goes out — the feedback belongs to the press,
   // not to a network round trip. A rejected write rolls it back below.
   w.lastWoundAt = now;
+  if(typeof playWindSound === 'function') playWindSound();
 
   // Updated in place rather than through render(). A full re-render rebuilds
   // the card's <img>, which repaints and made the photo twitch on every
