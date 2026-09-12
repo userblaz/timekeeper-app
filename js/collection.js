@@ -12,6 +12,11 @@ let viewingCollectionId = null;
 // per open, not on every later re-render while the detail page is up (an
 // edit save, a scroll-driven clock collapse, etc).
 let collectionDetailJustOpened = false;
+// Which tab the back button on a watch's detail page returns to — the
+// Collection tab's own list normally, but the Snap tab's "view in
+// Collection" menu button opens the same detail page directly from there,
+// so its back button needs to know to return to Snap instead.
+let collectionDetailReturnTab = 'collection';
 
 const CERTIFICATION_OPTIONS = [
   'COSC',
@@ -799,13 +804,22 @@ function attachCollectionHandlers(){
       if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
       viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null;
       collectionDetailJustOpened = true;
+      collectionDetailReturnTab = 'collection';
       wearCalendarMonthIndex = new Date().getMonth();
       render();
     };
   });
   wireCollectionSwipe();
   const backBtn = document.querySelector('[data-action="backtocollectionlist"]');
-  if(backBtn) backBtn.onclick = () => { viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null; render(); };
+  if(backBtn) backBtn.onclick = () => {
+    viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null;
+    if(collectionDetailReturnTab === 'data'){
+      activeTab = 'data';
+      collectionDetailReturnTab = 'collection';
+      syncBottomTabs();
+    }
+    render();
+  };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
   if(startEditBtn) startEditBtn.onclick = () => { editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = ''; render(); };
   const cancelBtn = document.querySelector('[data-action="cancelcollection"]');

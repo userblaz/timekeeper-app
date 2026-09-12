@@ -758,18 +758,15 @@ function buildSnapPopupHtml(){
     <div class="quick-log-box">
       <div class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${timeStr}</div>
       <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
-      <div class="row2">
+      <div class="row3">
         <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
         <div class="field"><label for="qM">Watch min</label><input type="number" id="qM" min="0" max="59" placeholder="${pad2(c.getMinutes())}" /></div>
+        <div class="field"><label for="qNote">Note</label><input type="text" id="qNote" placeholder="optional" /></div>
       </div>
       <div class="row3" style="margin-top:12px;">
         <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
         <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
         <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
-      </div>
-      <div class="note-input-wrap" style="margin-top:12px;">
-        <svg class="note-input-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-        <input type="text" id="qNote" class="note-input" placeholder="Add note (optional)" />
       </div>
       <div class="row2" style="margin-top:12px;">
         <button type="button" class="btn-secondary" data-action="quickcancel">Cancel</button>
@@ -829,7 +826,9 @@ function attachHandlers(watch){
     btn.onclick = (e) => { e.stopPropagation(); toggleWearDay(btn.dataset.id, todayStr()); };
   });
   // Jumps straight to this watch's Collection detail page — the same state
-  // a tap on its Collection-list card would leave things in.
+  // a tap on its Collection-list card would leave things in, except its
+  // back button returns here to Snap instead of the Collection list (see
+  // collectionDetailReturnTab, consumed in collection.js's back button).
   document.querySelectorAll('[data-action="viewwatchdetail"]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -837,6 +836,7 @@ function attachHandlers(watch){
       editingCollectionId = null;
       collectionPhotoFile = null;
       collectionDetailJustOpened = true;
+      collectionDetailReturnTab = 'data';
       wearCalendarMonthIndex = new Date().getMonth();
       activeTab = 'collection';
       syncBottomTabs();

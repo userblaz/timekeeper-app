@@ -92,11 +92,6 @@
     min-height:calc(100vh + 120px);
     min-height:calc(100dvh + 120px);
   }
-  .app-title{
-    margin-top:10px;
-    margin-bottom:8px;
-    text-align:center;
-  }
   h1{
     font-family:'Inter',sans-serif;
     font-weight:700;
@@ -104,12 +99,6 @@
     letter-spacing:-0.3px;
     margin:0 0 2px;
     color:var(--ink);
-  }
-  .app-title p{
-    font-family:'Inter',sans-serif;
-    font-size:11px;
-    color:var(--accent);
-    margin:0;
   }
   .subhead{
     font-size:13px;
@@ -916,17 +905,25 @@
      and manual forms open against the selected watch's card instead. */
   #snapDock{
     position:fixed;
-    left:8px;
-    right:8px;
-    bottom:calc(81px + var(--safe-bottom));
-    max-width:444px;
-    margin:0 auto;
+    left:0;
+    right:0;
+    bottom:0;
     z-index:29;
+    /* Extends the element's own box straight down to the screen edge and
+       gives it the page's own background — a solid curtain behind the
+       rounded card below, so a watch scrolling underneath never peeks out
+       around its corners or past its top edge before the padding here
+       clears it. The bottom padding is the dock's own 14px + 57px + safe
+       area (see the .toast comment above for where 81px comes from), so the
+       curtain reaches exactly down to the bottom-tabs dock and no further. */
+    padding:0 8px calc(81px + var(--safe-bottom));
+    background:var(--bg);
   }
   #snapDock .quick-log-box{
-    margin-bottom:0;
-    background:var(--accent);
-    border-color:var(--accent);
+    max-width:444px;
+    margin:0 auto;
+    background:var(--hero-bg);
+    border-color:var(--hero-bg);
   }
   #snapDock .quick-log-box .hint{
     color:rgba(255,255,255,0.85);
@@ -1010,6 +1007,7 @@
        and red the rates use elsewhere — which also sets this frozen reading
        apart from the live white clocks around it. */
     color:var(--accent);
+    margin-top:-3px;
     margin-bottom:4px;
     /* Plays once when the panel appears — the timestamp snaps down onto the
        panel like a shutter closing on the moment it just froze. Ease-out
@@ -1641,19 +1639,23 @@
      wrap as one connected, blue-stroked block (see buildDataWatchGroupHtml
      in app.js) — the border lives on the group, not the card, so the shared
      edge between the two reads as one continuous shape instead of two
-     stacked boxes. */
+     stacked boxes. The rounding on the group's own outer corners is drawn
+     by the card and panel themselves (top/bottom respectively) rather than
+     an overflow:hidden clip on the group — a clip there also cut off the
+     Position/Wear/Time dropdowns inside the panel, which need to overflow
+     past its edges to be usable. */
   .data-watch-group{
     position:relative;
     border:1.5px solid var(--accent);
     border-radius:18px;
-    overflow:hidden;
   }
   .data-watch-card.connected{
     border:none;
-    border-radius:0;
+    border-radius:18px 18px 0 0;
   }
   .data-watch-snap-panel{
     border-top:1px solid var(--line);
+    border-radius:0 0 18px 18px;
     padding:14px;
     background:var(--surface);
   }
@@ -1833,7 +1835,6 @@
      actually doesn't fit. */
   @media (max-width:480px){
     .app{padding-top:calc(var(--safe-top) + 5px);}
-    .app-title{margin-top:3px;margin-bottom:3px;}
     .signout-btn{margin-top:3px;}
     #stickyHeader{padding-top:5px;}
   }
