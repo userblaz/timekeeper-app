@@ -112,13 +112,11 @@ function powerReserveElapsed(w){
 
 function formatReserveRemaining(hoursLeft){
   if(hoursLeft <= 0) return 'wound down';
-  // Round to whole minutes first, then split. Rounding the minutes out of a
-  // fractional hour lets them land on 60 and print "57h 60m".
-  const totalMin = Math.round(hoursLeft * 60);
-  if(totalMin < 60) return `${totalMin} min left`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m ? `${h}h ${m}m left` : `${h}h left`;
+  // Whole hours only, no minutes and no "left" — keeps the row short on the
+  // Data tab's cards, where it sits next to a name, a rate badge and now a
+  // third action button. Rounded up rather than to nearest, so a sliver of
+  // reserve still reads as "1h" instead of a misleading "0h".
+  return `${Math.max(1, Math.ceil(hoursLeft))}h`;
 }
 
 // Nothing at all when no reserve has been set: a bar with a guessed capacity
@@ -160,12 +158,26 @@ function windIconSvg(){
   </svg>`;
 }
 
-// A plain checkmark for the "worn today" toggle — reads instantly as "done
-// today" and, unlike a wristwatch glyph, doesn't compete visually with the
-// wind icon or the app's own watch imagery.
+// A calendar with a checked-off day for the "worn today" toggle — reads as
+// "today, marked" rather than a generic checkmark, and stays legible at the
+// same small size as the wind icon beside it.
 function wornIconSvg(){
-  return `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+    <path d="M3.5 9.5h17" />
+    <path d="M8 3v3" /><path d="M16 3v3" />
+    <path d="M8.5 14.7l2 2 4.5-4.5" />
+  </svg>`;
+}
+
+// Three dots: jumps straight to this watch's Collection detail page — full
+// specs, charts, history, the wear calendar — everything the Data tab's
+// trimmed-down card leaves out.
+function menuIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="none">
+    <circle cx="12" cy="5.5" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="12" cy="18.5" r="1.8" />
   </svg>`;
 }
 
