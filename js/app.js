@@ -99,12 +99,16 @@ function findMenuForWrap(wrap){
   return null;
 }
 
-// While an escaped (portaled, viewport-fixed) menu is open, its position has
-// to be recomputed live — a static left/top captured once at open time goes
-// stale the instant the list it's anchored to scrolls (or the keyboard
-// resizes the viewport), leaving the menu floating wherever the button used
-// to be instead of tracking it. Only one select can be open at a time, so a
-// single tracked listener set is enough.
+// An escaped (portaled, viewport-fixed) menu is positioned once, at open
+// time, against wherever its trigger happens to be. Keeping that in sync
+// with a live scroll turned out worse than the staleness it was fixing —
+// recomputing it only on a scroll *event* lags well behind the list's own
+// smooth momentum-scrolling, so the menu visibly snapped to catch up,
+// reading as the text wobbling in place. Simplest fix: leave the list
+// scrollable (nothing here should stop that) and just close the menu the
+// moment a scroll, resize, orientation change or keyboard happens, instead
+// of chasing any of them. Only one select can be open at a time, so a single
+// tracked listener set is enough.
 let escapedMenuTracker = null;
 
 function positionEscapedMenu(menu, toggle){
@@ -133,19 +137,6 @@ function positionEscapedMenu(menu, toggle){
   }
 }
 
-// A portaled menu's position is only ever recomputed in response to a
-// scroll/resize *event* — on iOS that fires well behind the compositor's own
-// buttery-smooth momentum scrolling of the list underneath it, so the menu
-// visibly lags and then snaps to catch up, reading as a wobble against the
-// otherwise-still trigger and background. Rather than trying to keep pace
-// with that, just stop the list from scrolling at all for as long as its
-// menu is open — the trigger can't move, so there's nothing to chase and
-// nothing to wobble.
-function setListScrollFrozen(frozen){
-  const container = document.getElementById('dataWatchScroll');
-  if(container) container.style.overflowY = frozen ? 'hidden' : '';
-}
-
 function stopTrackingEscapedMenu(){
   if(!escapedMenuTracker) return;
   // `true` here is capture, not bubble — scroll events don't bubble, but a
@@ -171,7 +162,6 @@ function closeSelectMenu(menu){
   if(wasEscaped && wrap){
     wrap.appendChild(menu);
   }
-  if(wasEscaped) setListScrollFrozen(false);
   menu.classList.remove('select-menu-escaped', 'drop-up');
   menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
   if(wrap){
@@ -222,9 +212,13 @@ document.addEventListener('click', (e) => {
     if(wrap.closest('.data-watch-scroll')){
       document.body.appendChild(menu);
       menu.classList.add('select-menu-escaped');
-      setListScrollFrozen(true);
       positionEscapedMenu(menu, toggle);
-      escapedMenuTracker = () => positionEscapedMenu(menu, toggle);
+      // Positioned once, above — rather than keep it glued to the trigger
+      // through a live scroll (see the comment on escapedMenuTracker), just
+      // close it as soon as the list moves under it, the keyboard opens, or
+      // the phone rotates. The list itself is never touched here, so
+      // scrolling the page works normally the whole time this is open.
+      escapedMenuTracker = () => closeAllSelects(null);
       document.addEventListener('scroll', escapedMenuTracker, true);
       window.addEventListener('resize', escapedMenuTracker);
       window.addEventListener('orientationchange', escapedMenuTracker);
