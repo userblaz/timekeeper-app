@@ -1006,9 +1006,13 @@ function buildManualForm(){
             <label for="rDate">Date checked</label>
             <input type="date" id="rDate" required value="${todayStr()}" />
           </div>
-          <div class="field">
-            <label for="rOffset">Cumulative offset (sec)</label>
-            <input type="number" id="rOffset" step="1" placeholder="e.g. -4 or 12" required />
+          <div class="field stepper-row-field">
+            <label for="rOffsetMinutes">Cumulative offset (min)</label>
+            <div class="stepper-row">
+              <button type="button" class="zoom-btn" data-action="offsetstep" data-dir="-1">−</button>
+              <input type="number" inputmode="numeric" id="rOffsetMinutes" step="1" value="0" required />
+              <button type="button" class="zoom-btn" data-action="offsetstep" data-dir="1">+</button>
+            </div>
           </div>
         </div>
         <p class="hint" style="margin:0;">Negative = slow, positive = fast, since you set it.</p>
@@ -1090,14 +1094,44 @@ function attachHandlers(watch){
   if(form) form.onsubmit = (e) => {
     e.preventDefault();
     const date = document.getElementById('rDate').value;
-    const offset = document.getElementById('rOffset').value;
+    const minutes = document.getElementById('rOffsetMinutes').value;
     const note = document.getElementById('rNote').value;
-    if(!date || offset === '') return;
-    addReading(watch.id, date, offset, note, readConditionInputs('r'));
+    if(!date || minutes === '') return;
+    addReading(watch.id, date, Number(minutes) * 60, note, readConditionInputs('r'));
   };
-  scrollFieldAboveKeyboard(document.getElementById('rOffset'));
+  scrollFieldAboveKeyboard(document.getElementById('rOffsetMinutes'));
   scrollFieldAboveKeyboard(document.getElementById('rNote'));
   scrollFieldAboveKeyboard(document.getElementById('qNote'));
+
+  // Same tap-to-step, hold-to-accelerate interaction as the quick-snap
+  // popup's time stepper (see the "timestep" handler below) — one minute per
+  // tap, five per tick once held past 800ms, no bound in either direction.
+  document.querySelectorAll('[data-action="offsetstep"]').forEach(btn => {
+    let holdTimeout = null;
+    let holdInterval = null;
+    const dir = Number(btn.dataset.dir);
+    const step = (steps) => {
+      const input = document.getElementById('rOffsetMinutes');
+      if(!input) return;
+      const current = input.value === '' ? 0 : Number(input.value);
+      input.value = String(current + steps);
+    };
+    const clearHold = () => {
+      if(holdTimeout) clearTimeout(holdTimeout);
+      if(holdInterval) clearInterval(holdInterval);
+      holdTimeout = null; holdInterval = null;
+    };
+    btn.onpointerdown = (e) => {
+      e.preventDefault();
+      step(dir);
+      holdTimeout = setTimeout(() => {
+        holdInterval = setInterval(() => step(dir * 5), 150);
+      }, 800);
+    };
+    btn.onpointerup = clearHold;
+    btn.onpointerleave = clearHold;
+    btn.onpointercancel = clearHold;
+  });
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
