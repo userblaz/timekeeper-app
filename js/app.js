@@ -582,10 +582,32 @@ function resetPageScrollOnDataTab(){
 function scrollFieldAboveKeyboard(el){
   if(!el) return;
   el.addEventListener('focus', () => {
+    // Hidden immediately on focus rather than waiting on the visualViewport
+    // listener below — that only fires once the browser reports the resize,
+    // which on some devices lags or never fires reliably for a field this
+    // deep in a nested scroll container, leaving the dock stuck on-screen
+    // over the keyboard exactly when it shouldn't be. Focus itself is never
+    // unreliable, so it's the sturdier trigger for this.
+    const dock = document.getElementById('snapDock');
+    if(dock) dock.classList.add('dock-hidden-for-keyboard');
     setTimeout(() => {
       resetPageScrollOnDataTab();
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 300);
+  });
+  el.addEventListener('blur', () => {
+    // A short delay so tabbing straight into another field in the same
+    // popup (still inside the container) doesn't flash the dock back on
+    // between the two focus events.
+    setTimeout(() => {
+      const container = document.getElementById('dataWatchScroll');
+      const active = document.activeElement;
+      const stillFocusedInList = container && active && container.contains(active);
+      if(!stillFocusedInList){
+        const dock = document.getElementById('snapDock');
+        if(dock) dock.classList.remove('dock-hidden-for-keyboard');
+      }
+    }, 50);
   });
 }
 
