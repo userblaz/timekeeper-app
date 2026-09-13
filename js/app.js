@@ -351,15 +351,31 @@ function sizeDataWatchScroll(){
   const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
   const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
   scrollEl.style.height = height + 'px';
-  // A trailing spacer, sized to the container itself, guarantees there's
-  // always at least a full screen's worth of scroll room below the real
-  // content — without it, a short list (e.g. 2-3 watches) fits entirely
-  // inside the container with nothing to scroll, so bringing a snapped card
-  // up to the top silently no-ops instead of paging the ones above it away.
-  // Only needed while a snap pop-up is actually open; kept at 0 otherwise so
-  // plain browsing never shows dead scroll space at the bottom of the list.
+
+  // A trailing spacer gives just enough extra scroll room to bring the
+  // snapped watch's card all the way to the top — without it, a short list
+  // (e.g. 2-3 watches) fits entirely inside the container with nothing to
+  // scroll, so paging the snapped card to the top silently no-ops. Sized to
+  // the exact minimum needed rather than a flat screen's worth, so scrolling
+  // still bottoms out with at least one watch and the add-watch button in
+  // view instead of running on into empty space.
   const spacer = document.getElementById('dataWatchScrollSpacer');
-  if(spacer) spacer.style.height = (document.querySelector('.data-watch-group') ? height : 0) + 'px';
+  if(!spacer) return;
+  const group = document.querySelector('.data-watch-group');
+  const addBtn = document.querySelector('.data-add-watch-btn');
+  if(!group || !addBtn){ spacer.style.height = '0px'; return; }
+  spacer.style.height = '0px';
+  // scrollHeight can't be used to measure the real content height here — a
+  // scrollable box with shorter content than its own fixed height still
+  // reports scrollHeight === clientHeight, hiding how short the content
+  // actually is. Measuring the add-watch button's own position (the last
+  // real thing in the list) instead gives the true content height.
+  const containerTop = scrollEl.getBoundingClientRect().top;
+  const naturalContentHeight = scrollEl.scrollTop + (addBtn.getBoundingClientRect().bottom - containerTop);
+  const groupOffsetTop = scrollEl.scrollTop + (group.getBoundingClientRect().top - containerTop);
+  const naturalMaxScroll = Math.max(0, naturalContentHeight - height);
+  const neededMaxScroll = Math.max(naturalMaxScroll, groupOffsetTop);
+  spacer.style.height = Math.max(0, height + neededMaxScroll - naturalContentHeight) + 'px';
 }
 window.addEventListener('resize', sizeDataWatchScroll);
 
