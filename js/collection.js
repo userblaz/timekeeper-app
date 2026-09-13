@@ -1249,15 +1249,15 @@ function attachCollectionHandlers(){
       }
     });
     render();
-    focusAddWatchInput();
+    resetAddWatchScroll();
   };
   const cancelAddBtn = document.querySelector('[data-action="canceladdcollectionwatch"]');
   if(cancelAddBtn) cancelAddBtn.onclick = () => { addingCollectionWatch = false; render(); };
 
   const switchToManualBtn = document.querySelector('[data-action="switchtomanualadd"]');
-  if(switchToManualBtn) switchToManualBtn.onclick = () => { addWatchMode = 'manual'; render(); focusAddWatchInput(); };
+  if(switchToManualBtn) switchToManualBtn.onclick = () => { addWatchMode = 'manual'; render(); resetAddWatchScroll(); };
   const switchToSearchBtn = document.querySelector('[data-action="switchtocatalogsearch"]');
-  if(switchToSearchBtn) switchToSearchBtn.onclick = () => { addWatchMode = 'search'; render(); focusAddWatchInput(); };
+  if(switchToSearchBtn) switchToSearchBtn.onclick = () => { addWatchMode = 'search'; render(); resetAddWatchScroll(); };
 
   const addBtn = document.querySelector('[data-action="addcollectionwatch"]');
   if(addBtn) addBtn.onclick = () => {
@@ -1314,27 +1314,19 @@ function wireCatalogFilterHandlers(){
   });
 }
 
-function focusAddWatchInput(){
-  // Focusing the input the normal way scrolls it into view by whatever
-  // rule the browser picks for a field that isn't already at the top of
-  // the page — on mobile that's often centering it, which cuts off the
-  // reference clock above and makes the freshly-opened form look like
-  // it's landed mid-scroll rather than at the top.
-  //
-  // That used to be handled with focus({ preventScroll: true }), but that
-  // exact option combination has a known iOS Safari bug: the field still
-  // takes focus (cursor, highlight) but the on-screen keyboard silently
-  // never appears — precisely the "highlighted but not ready to type" bug
-  // this caused, and it happened regardless of whether the focus() call
-  // itself was synchronous or deferred, since the option was the actual
-  // problem, not the timing. Plain focus() doesn't have that bug, so the
-  // scroll is corrected the blunt way instead: let focus() do whatever
-  // scrolling it wants, then force the page back to the top right after,
-  // and again next frame in case the browser's own scroll-into-view lands
-  // asynchronously.
-  window.scrollTo(0, 0);
-  const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
-  if(inp) inp.focus();
+// Used to also auto-focus the field (the name says as much) so the
+// keyboard was ready the instant the form opened — but on iOS that
+// programmatic focus reliably left the field looking focused (cursor,
+// highlight) with the keyboard never actually appearing, no matter how
+// the focus() call was timed or invoked, and no fix found for that in a
+// few rounds of trying was worth chasing further. Dropping the
+// auto-focus entirely sidesteps it: the field just sits there unfocused
+// until the user taps it themselves, which is an ordinary direct tap on
+// a text input and opens the keyboard the normal way. What's left here is
+// only the part that still matters without it — putting the page back at
+// the top, since the freshly-opened form landing mid-scroll (behind the
+// clock) was its own separate bug.
+function resetAddWatchScroll(){
   window.scrollTo(0, 0);
   requestAnimationFrame(() => window.scrollTo(0, 0));
 }
