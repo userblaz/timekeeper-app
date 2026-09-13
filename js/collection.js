@@ -6,6 +6,14 @@
 let editingCollectionId = null;
 let collectionPhotoFile = null;
 let addingCollectionWatch = false;
+// Which half of the "Add watch" card is showing — the catalog search
+// (default) or the plain name-only fallback form. Reset to 'search' every
+// time the card is opened fresh; see startaddcollectionwatch below.
+let addWatchMode = 'search';
+let watchSearchQuery = '';
+let watchSearchCaseMaterial = '';
+let watchSearchMovementType = '';
+let watchSearchDial = '';
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -53,21 +61,11 @@ function buildCollectionTabHtml(){
     viewingCollectionId = null;
   }
 
-  const watchesHtml = state.watches.map(w => buildCollectionCard(w)).join('');
-  const addHtml = addingCollectionWatch ? `
-    <div class="collection-card collection-card-edit">
-      <div class="field">
-        <label for="newCollectionWatchName">Watch name</label>
-        <input type="text" id="newCollectionWatchName" placeholder="e.g. Seiko 5, Speedmaster…" />
-      </div>
-      <div class="row2" style="margin-top:6px;">
-        <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch">Cancel</button>
-        <button type="button" class="btn-primary" data-action="addcollectionwatch" style="flex:1">Add watch</button>
-      </div>
-    </div>
-  ` : `
-    <button type="button" class="collection-add-btn" data-action="startaddcollectionwatch">+ Add watch</button>
-  `;
+  // While the add-watch flow is open, the existing collection is hidden —
+  // the add form is the only thing that needs attention, and it sits at
+  // the top rather than buried under a full list of owned watches.
+  const watchesHtml = addingCollectionWatch ? '' : state.watches.map(w => buildCollectionCard(w)).join('');
+  const addHtml = buildAddWatchHtml();
 
   return `
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
@@ -85,6 +83,127 @@ function buildCollectionTabHtml(){
 // against — set small beside the name so they read as a qualifier on it
 // rather than as a second column competing with the reserve bar. Either half
 // is omitted when there's nothing to show.
+// The catalog is small enough to fetch once and filter client-side on
+// every keystroke (see data.js's ensureCatalogLoaded) — this is that
+// filter, not a query. Brand/model/reference all get searched together so
+// "submariner", "124060" and "rolex" all find the same entry.
+function matchesCatalogQuery(entry, query){
+  if(!query) return true;
+  const q = query.trim().toLowerCase();
+  if(!q) return true;
+  return [entry.brand, entry.model, entry.reference]
+    .filter(Boolean).join(' ').toLowerCase().includes(q);
+}
+
+function filteredWatchCatalog(){
+  const list = watchCatalog || [];
+  return list.filter(entry =>
+    matchesCatalogQuery(entry, watchSearchQuery) &&
+    (!watchSearchCaseMaterial || entry.case_material === watchSearchCaseMaterial) &&
+    (!watchSearchMovementType || entry.movement_type === watchSearchMovementType) &&
+    (!watchSearchDial || entry.dial_color === watchSearchDial)
+  );
+}
+
+// Built from whatever's actually in the fetched catalog, not a fixed list —
+// so it grows on its own as more watches get added to watch_catalog,
+// rather than needing a code change every time a new case material shows
+// up. (The name deliberately matches the helper the original, abandoned
+// version of this feature called but never actually wrote — see the
+// project handoff notes. This time it's real.)
+function catalogFilterOptions(field){
+  const list = watchCatalog || [];
+  return Array.from(new Set(list.map(e => e[field]).filter(Boolean))).sort();
+}
+
+function buildCatalogFiltersHtml(){
+  const caseMaterials = catalogFilterOptions('case_material');
+  const movementTypes = catalogFilterOptions('movement_type');
+  const dialColors = catalogFilterOptions('dial_color');
+  if(!caseMaterials.length && !movementTypes.length && !dialColors.length) return '';
+  const caseOptions = [['', 'Any case material'], ...caseMaterials.map(v => [v, v])];
+  const movementOptions = [['', 'Any movement'], ...movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)])];
+  const dialOptions = [['', 'Any dial'], ...dialColors.map(v => [v, v])];
+  return `
+    <div class="row2 watch-catalog-filters">
+      ${buildSelect('catalogFilterCaseMaterial', caseOptions, watchSearchCaseMaterial)}
+      ${buildSelect('catalogFilterMovementType', movementOptions, watchSearchMovementType)}
+      ${buildSelect('catalogFilterDial', dialOptions, watchSearchDial)}
+    </div>
+  `;
+}
+
+const CATALOG_RESULTS_LIMIT = 25;
+
+function buildCatalogResultsHtml(){
+  if(watchCatalogLoading) return `<div class="watch-catalog-hint">Loading catalog…</div>`;
+  if(!(watchCatalog || []).length){
+    return `<div class="watch-catalog-hint">Catalog isn't available right now — add this watch manually instead.</div>`;
+  }
+  // Nothing shown until the user actually starts typing — with no query,
+  // "matches" would just be the entire catalog, which reads as a random
+  // dump rather than a search result.
+  if(!watchSearchQuery.trim()) return '';
+  const matches = filteredWatchCatalog();
+  if(!matches.length){
+    return `<div class="watch-catalog-hint">No matches — try a different search, or add it manually instead.</div>`;
+  }
+  const shown = matches.slice(0, CATALOG_RESULTS_LIMIT);
+  const rowsHtml = shown.map(entry => {
+    const meta = [entry.reference, entry.case_material,
+      entry.movement_type ? entry.movement_type.charAt(0).toUpperCase() + entry.movement_type.slice(1) : ''
+    ].filter(Boolean).join(' · ');
+    return `
+    <button type="button" class="watch-catalog-result" data-action="selectcatalogwatch" data-id="${escapeHtml(entry.id)}">
+      <span class="watch-catalog-result-name">${escapeHtml(entry.brand)} ${escapeHtml(entry.model)}</span>
+      ${meta ? `<span class="watch-catalog-result-meta">${escapeHtml(meta)}</span>` : ''}
+    </button>`;
+  }).join('');
+  const moreHtml = matches.length > CATALOG_RESULTS_LIMIT
+    ? `<div class="watch-catalog-hint">+${matches.length - CATALOG_RESULTS_LIMIT} more — narrow your search to see them</div>`
+    : '';
+  return rowsHtml + moreHtml;
+}
+
+// The "Add watch" card itself: a catalog search by default (with a plain
+// name-only fallback one tap away), or the button that opens it. Separated
+// out from buildCollectionTabHtml so re-render doesn't need touching there
+// every time this card's own two modes change.
+function buildAddWatchHtml(){
+  if(!addingCollectionWatch){
+    return `<button type="button" class="collection-add-btn" data-action="startaddcollectionwatch">+ Add watch</button>`;
+  }
+  if(addWatchMode === 'manual'){
+    return `
+    <div class="collection-card collection-card-edit">
+      <div class="field">
+        <label for="newCollectionWatchName">Brand</label>
+        <input type="text" id="newCollectionWatchName" placeholder="e.g. Rolex, Omega, Seiko…" />
+      </div>
+      <button type="button" class="manual-link" data-action="switchtocatalogsearch">Search the catalog instead</button>
+      <div class="row2" style="margin-top:6px;">
+        <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch">Cancel</button>
+        <button type="button" class="btn-primary" data-action="addcollectionwatch" style="flex:1">Add watch</button>
+      </div>
+    </div>
+    `;
+  }
+  return `
+  <div class="collection-card collection-card-edit">
+    <div class="field">
+      <label for="watchCatalogSearch">Find your watch</label>
+      <input type="text" id="watchCatalogSearch" placeholder="Brand, model, or reference…" autocomplete="off" value="${escapeHtml(watchSearchQuery)}" />
+    </div>
+    ${buildCatalogFiltersHtml()}
+    <div id="watchCatalogResults" class="watch-catalog-results">${buildCatalogResultsHtml()}</div>
+    <button type="button" class="manual-link" data-action="switchtomanualadd">Can't find it? Add manually instead</button>
+    <div class="row2" style="margin-top:6px;">
+      <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch" style="flex:1">Cancel</button>
+    </div>
+  </div>
+  `;
+}
+
 function buildCollectionCardStats(w){
   const stats = overallStats(w);
   if(!stats && !w.accuracySpec) return '';
@@ -154,6 +273,17 @@ function buildPowerReserveHtml(w){
 
 // A mainspring: the thing the button actually refers to. Deliberately not a
 // circular arrow, which every app on the phone already uses for "refresh".
+// Six filled dots, not a stroked icon like the others on this card — a grab
+// handle reads better solid, and it never needs to match an active/inactive
+// state the way the wind icon does.
+function dragHandleIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none">
+    <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+    <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+    <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+  </svg>`;
+}
+
 function windIconSvg(){
   return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
    <g transform="rotate(180 12 12)">
@@ -191,6 +321,10 @@ function menuIconSvg(){
 // swipe has to have ended for the click it generates to be ignored.
 const SWIPE_REVEAL = 84;
 let swipeEndedAt = 0;
+// Matches .collection-list{gap:12px} in styles.css exactly — the reorder
+// drag's sibling-shift math (wireCollectionReorder, below) needs the real
+// gap value, not just an approximation of it.
+const COLLECTION_LIST_GAP = 12;
 
 // Shared by every swipeable row in the app (Collection cards, History rows)
 // — whichever of these the row actually contains is the element that slides.
@@ -274,6 +408,108 @@ function wireCollectionSwipe(cardSelector = '.collection-card', revealPx = SWIPE
   });
 }
 
+// Collection tab's drag-to-reorder. Deliberately its own handle rather than
+// making the whole card draggable: the card already owns two gestures (tap
+// to open, horizontal drag to reveal delete — wireCollectionSwipe above),
+// and vertical movement on the card is left to the browser for ordinary
+// page scrolling (touch-action:pan-y, see styles.css). Putting reordering on
+// a dedicated element means none of that has to be told apart from a
+// reorder drag — grabbing the handle is the only way in.
+//
+// Manual pointer tracking rather than the HTML5 drag-and-drop API, same
+// reasoning as wireCollectionSwipe: this is a phone PWA, and native DnD's
+// touch support is unreliable there. Only one render() happens, right at
+// the end — every intermediate frame moves rows with a direct transform,
+// same principle as the swipe gesture and the Add Watch search box's own
+// lesson about not rebuilding the DOM out from under an in-progress
+// gesture.
+function wireCollectionReorder(){
+  const list = document.querySelector('.collection-list');
+  if(!list) return;
+
+  document.querySelectorAll('.collection-drag-handle').forEach(handle => {
+    const row = handle.closest('.swipe-row');
+    if(!row) return;
+
+    let dragging = false, startY = 0, startIndex = 0, targetIndex = 0;
+    let rows = [], tops = [], heights = [];
+
+    const shiftFor = (i) => {
+      if(i === startIndex) return '';
+      if(startIndex < targetIndex && i > startIndex && i <= targetIndex){
+        return `translateY(${-(heights[startIndex] + COLLECTION_LIST_GAP)}px)`;
+      }
+      if(startIndex > targetIndex && i < startIndex && i >= targetIndex){
+        return `translateY(${heights[startIndex] + COLLECTION_LIST_GAP}px)`;
+      }
+      return '';
+    };
+
+    handle.addEventListener('pointerdown', (e) => {
+      // The card underneath owns tap-to-open and swipe-to-delete — this must
+      // never reach either of those listeners.
+      e.stopPropagation();
+      if(e.pointerType === 'mouse' && e.button !== 0) return;
+      rows = Array.from(list.querySelectorAll(':scope > .swipe-row'));
+      startIndex = rows.indexOf(row);
+      if(startIndex === -1 || rows.length < 2) return;
+      closeSwipeRows(null);
+      dragging = true;
+      startY = e.clientY;
+      targetIndex = startIndex;
+      tops = rows.map(r => r.offsetTop);
+      heights = rows.map(r => r.offsetHeight);
+      row.classList.add('dragging');
+      row.style.transition = 'none';
+      handle.setPointerCapture(e.pointerId);
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if(!dragging) return;
+      const dy = e.clientY - startY;
+      row.style.transform = `translateY(${dy}px)`;
+
+      // Every top/height here is from the pre-drag layout, since nothing
+      // else actually moves in the DOM until drop — only the dragged row's
+      // own translateY changes live, so its neighbors' positions stay a
+      // stable yardstick for "has it been dragged past this one yet".
+      const draggedCenter = tops[startIndex] + heights[startIndex] / 2 + dy;
+      let newIndex = startIndex;
+      rows.forEach((r, i) => {
+        if(i === startIndex) return;
+        const center = tops[i] + heights[i] / 2;
+        if(i < startIndex && draggedCenter < center) newIndex = Math.min(newIndex, i);
+        if(i > startIndex && draggedCenter > center) newIndex = Math.max(newIndex, i);
+      });
+      targetIndex = newIndex;
+
+      rows.forEach((r, i) => {
+        if(i === startIndex) return;
+        r.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
+        r.style.transform = shiftFor(i);
+      });
+    });
+
+    const finish = () => {
+      if(!dragging) return;
+      dragging = false;
+      rows.forEach(r => {
+        r.style.transition = '';
+        r.style.transform = '';
+        r.classList.remove('dragging');
+      });
+      if(targetIndex !== startIndex){
+        const [moved] = state.watches.splice(startIndex, 1);
+        state.watches.splice(targetIndex, 0, moved);
+        persistWatchOrder();
+        render();
+      }
+    };
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
+  });
+}
+
 // Recomputes the bars from the clock. Used both by the 30-second tick — the
 // bar moves about 0.04% a minute, so there is nothing to animate, it just
 // needs refreshing — and straight after a wind, where keeping the existing
@@ -326,6 +562,10 @@ function buildCollectionCard(w){
       </button>
     </div>
     <div class="collection-card" data-action="viewcollection" data-id="${w.id}">
+      ${state.watches.length > 1 ? `
+      <span class="collection-drag-handle" aria-label="Reorder ${escapeHtml(w.name)}">
+        ${dragHandleIconSvg()}
+      </span>` : ''}
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${buildCollectionCardStats(w)}</div>
@@ -599,12 +839,105 @@ function buildCollectionWatchBarHtml(w){
 
 function buildCollectionEditForm(w){
   const accuracyRange = parseAccuracySpec(w.accuracySpec);
+  // A catalog-sourced watch keeps its identifying details and factory specs
+  // locked to whatever the catalog actually says, so an edit here can never
+  // quietly drift it out of sync with the real spec — only the personal
+  // fields (photo, price, date, condition) stay editable, same split the
+  // catalog draws when the watch is first created (addWatchFromCatalog,
+  // data.js). A manually-added watch has no catalog entry behind it, so
+  // nothing here is locked; every field works exactly as it always has.
+  const locked = !!w.catalogId;
+  const lockedNote = locked ? ' <span class="field-locked-hint">from catalog</span>' : '';
+
+  const nameFieldHtml = locked ? `
+    <div class="field">
+      <label>Brand${lockedNote}</label>
+      <div class="field-readonly">${escapeHtml(w.name || '—')}</div>
+    </div>` : `
+    <div class="field">
+      <label for="colName_${w.id}">Brand</label>
+      <input type="text" id="colName_${w.id}" value="${escapeHtml(w.name || '')}" placeholder="e.g. Rolex, Omega, Seiko…" />
+    </div>`;
+
+  const modelReferenceHtml = locked ? `
+    <div class="row2">
+      <div class="field">
+        <label>Model${lockedNote}</label>
+        <div class="field-readonly">${escapeHtml(w.model || '—')}</div>
+      </div>
+      <div class="field">
+        <label>Reference number${lockedNote}</label>
+        <div class="field-readonly">${escapeHtml(w.reference || '—')}</div>
+      </div>
+    </div>` : `
+    <div class="row2">
+      <div class="field">
+        <label for="colModel_${w.id}">Model</label>
+        <input type="text" id="colModel_${w.id}" value="${escapeHtml(w.model || '')}" placeholder="e.g. Speedmaster, Submariner…" />
+      </div>
+      <div class="field">
+        <label for="colReference_${w.id}">Reference number</label>
+        <input type="text" id="colReference_${w.id}" value="${escapeHtml(w.reference || '')}" placeholder="e.g. 311.30.42.30.01.005" />
+      </div>
+    </div>`;
+
+  const accuracyFieldHtml = locked ? `
+    <div class="field">
+      <label>Factory accuracy spec (s/day)${lockedNote}</label>
+      <div class="field-readonly">${escapeHtml(w.accuracySpec || '—')}</div>
+    </div>` : `
+    <div class="field">
+      <label>Factory accuracy spec (s/day)</label>
+      <div class="row2">
+        <div class="field stepper-row-field">
+          <label for="colAccuracySlow_${w.id}">Slow</label>
+          <div class="stepper-row">
+            <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="slow" data-dir="-1">−</button>
+            <input type="number" id="colAccuracySlow_${w.id}" step="1" placeholder="-4" value="${accuracyRange && accuracyRange.min < 0 ? accuracyRange.min : ''}" />
+            <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="slow" data-dir="1">+</button>
+          </div>
+        </div>
+        <div class="field stepper-row-field">
+          <label for="colAccuracyFast_${w.id}">Fast</label>
+          <div class="stepper-row">
+            <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="fast" data-dir="-1">−</button>
+            <input type="text" inputmode="numeric" id="colAccuracyFast_${w.id}" placeholder="+6" value="${accuracyRange && accuracyRange.max > 0 ? '+'+accuracyRange.max : (accuracyRange && accuracyRange.max < 0 ? accuracyRange.max : '')}" />
+            <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="fast" data-dir="1">+</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const reserveFieldHtml = locked ? `
+    <div class="field">
+      <label>Power reserve (hours)${lockedNote}</label>
+      <div class="field-readonly">${w.powerReserveHours ? escapeHtml(String(w.powerReserveHours)) : '—'}</div>
+    </div>` : `
+    <div class="field">
+      <label for="colReserve_${w.id}">Power reserve (hours)</label>
+      <input type="number" id="colReserve_${w.id}" step="1" min="0" placeholder="e.g. 70" value="${w.powerReserveHours || ''}" />
+    </div>`;
+
+  const certsFieldHtml = locked ? `
+    <div class="field">
+      <label>Certificates${lockedNote}</label>
+      <div class="field-readonly">${(w.certifications && w.certifications.length) ? escapeHtml(w.certifications.join(', ')) : '—'}</div>
+    </div>` : `
+    <div class="field">
+      <label>Certificates</label>
+      <div class="cert-checkbox-list">
+        ${CERTIFICATION_OPTIONS.map(c => `
+          <label class="cert-checkbox">
+            <input type="checkbox" class="colCert_${w.id}" value="${escapeHtml(c)}" ${(w.certifications||[]).includes(c) ? 'checked' : ''} />
+            <span>${escapeHtml(c)}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>`;
+
   return `
     <div class="collection-card collection-card-edit">
-      <div class="field">
-        <label for="colName_${w.id}">Watch name</label>
-        <input type="text" id="colName_${w.id}" value="${escapeHtml(w.name || '')}" placeholder="e.g. Submariner Date" />
-      </div>
+      ${nameFieldHtml}
       <div class="field">
         <label for="colPhoto_${w.id}">Photo</label>
         <label class="btn-secondary" style="text-align:center;cursor:pointer;">
@@ -612,16 +945,7 @@ function buildCollectionEditForm(w){
           <input type="file" id="colPhoto_${w.id}" accept="image/*" style="display:none;" />
         </label>
       </div>
-      <div class="row2">
-        <div class="field">
-          <label for="colModel_${w.id}">Brand & model</label>
-          <input type="text" id="colModel_${w.id}" value="${escapeHtml(w.model || '')}" placeholder="e.g. Omega Speedmaster" />
-        </div>
-        <div class="field">
-          <label for="colReference_${w.id}">Reference number</label>
-          <input type="text" id="colReference_${w.id}" value="${escapeHtml(w.reference || '')}" placeholder="e.g. 311.30.42.30.01.005" />
-        </div>
-      </div>
+      ${modelReferenceHtml}
       <div class="row2">
         <div class="field">
           <label for="colPrice_${w.id}">Purchase price</label>
@@ -635,42 +959,9 @@ function buildCollectionEditForm(w){
           <input type="date" id="colDate_${w.id}" value="${w.purchaseDate || ''}" />
         </div>
       </div>
-      <div class="field">
-        <label>Factory accuracy spec (s/day)</label>
-        <div class="row2">
-          <div class="field stepper-row-field">
-            <label for="colAccuracySlow_${w.id}">Slow</label>
-            <div class="stepper-row">
-              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="slow" data-dir="-1">−</button>
-              <input type="number" id="colAccuracySlow_${w.id}" step="1" placeholder="-4" value="${accuracyRange && accuracyRange.min < 0 ? accuracyRange.min : ''}" />
-              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="slow" data-dir="1">+</button>
-            </div>
-          </div>
-          <div class="field stepper-row-field">
-            <label for="colAccuracyFast_${w.id}">Fast</label>
-            <div class="stepper-row">
-              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="fast" data-dir="-1">−</button>
-              <input type="text" inputmode="numeric" id="colAccuracyFast_${w.id}" placeholder="+6" value="${accuracyRange && accuracyRange.max > 0 ? '+'+accuracyRange.max : (accuracyRange && accuracyRange.max < 0 ? accuracyRange.max : '')}" />
-              <button type="button" class="zoom-btn" data-action="accuracystep" data-id="${w.id}" data-field="fast" data-dir="1">+</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="field">
-        <label for="colReserve_${w.id}">Power reserve (hours)</label>
-        <input type="number" id="colReserve_${w.id}" step="1" min="0" placeholder="e.g. 70" value="${w.powerReserveHours || ''}" />
-      </div>
-      <div class="field">
-        <label>Certificates</label>
-        <div class="cert-checkbox-list">
-          ${CERTIFICATION_OPTIONS.map(c => `
-            <label class="cert-checkbox">
-              <input type="checkbox" class="colCert_${w.id}" value="${escapeHtml(c)}" ${(w.certifications||[]).includes(c) ? 'checked' : ''} />
-              <span>${escapeHtml(c)}</span>
-            </label>
-          `).join('')}
-        </div>
-      </div>
+      ${accuracyFieldHtml}
+      ${reserveFieldHtml}
+      ${certsFieldHtml}
       <div class="field">
         <label for="colNotes_${w.id}">Notes / condition</label>
         <input type="text" id="colNotes_${w.id}" value="${escapeHtml(w.conditionNotes || '')}" placeholder="full set, box & papers…" />
@@ -686,20 +977,17 @@ function buildCollectionEditForm(w){
 }
 
 async function saveCollectionEdit(watchId){
-  const nameEl = document.getElementById('colName_'+watchId);
-  const modelEl = document.getElementById('colModel_'+watchId);
-  const referenceEl = document.getElementById('colReference_'+watchId);
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return;
+  // Mirrors buildCollectionEditForm's own locked check exactly — a
+  // catalog-backed watch never rendered the identity/spec inputs in the
+  // first place, so there's nothing here to read for them either.
+  const locked = !!w.catalogId;
+
   const priceEl = document.getElementById('colPrice_'+watchId);
   const currencyEl = document.getElementById('colCurrency_'+watchId);
   const dateEl = document.getElementById('colDate_'+watchId);
   const notesEl = document.getElementById('colNotes_'+watchId);
-  const reserveEl = document.getElementById('colReserve_'+watchId);
-  const accuracySlowEl = document.getElementById('colAccuracySlow_'+watchId);
-  const accuracyFastEl = document.getElementById('colAccuracyFast_'+watchId);
-  const certEls = document.querySelectorAll('.colCert_'+watchId+':checked');
-  const certifications = Array.from(certEls).map(el => el.value);
-  const w = state.watches.find(x => x.id === watchId);
-  if(!w) return;
 
   saveStatus = 'saving'; render();
 
@@ -713,26 +1001,39 @@ async function saveCollectionEdit(watchId){
     photoUrl = pub.publicUrl;
   }
 
-  const slowVal = accuracySlowEl.value === '' ? null : Number(accuracySlowEl.value);
-  const fastVal = accuracyFastEl.value === '' ? null : Number(accuracyFastEl.value);
-  const accuracySpec = (slowVal !== null || fastVal !== null)
-    ? `${slowVal !== null ? (slowVal>0?'-':'')+slowVal : '—'}/${fastVal !== null ? (fastVal>0?'+':'')+fastVal : '—'} s/day`
-    : null;
-
   const updates = {
-    // a watch always needs a name, so an emptied field keeps the old one
-    name: (nameEl.value || '').trim() || w.name,
-    model: (modelEl.value || '').trim() || null,
-    reference: (referenceEl.value || '').trim() || null,
     purchase_price: priceEl.value === '' ? null : Number(priceEl.value),
     purchase_currency: (currencyEl && currencyEl.value) || 'EUR',
     purchase_date: dateEl.value || null,
     condition_notes: (notesEl.value || '').trim() || null,
-    accuracy_spec: accuracySpec,
-    power_reserve_hours: reserveEl && reserveEl.value !== '' ? Number(reserveEl.value) : null,
-    certifications: certifications.length ? certifications.join(',') : null,
     photo_url: photoUrl || null
   };
+
+  if(!locked){
+    const nameEl = document.getElementById('colName_'+watchId);
+    const modelEl = document.getElementById('colModel_'+watchId);
+    const referenceEl = document.getElementById('colReference_'+watchId);
+    const reserveEl = document.getElementById('colReserve_'+watchId);
+    const accuracySlowEl = document.getElementById('colAccuracySlow_'+watchId);
+    const accuracyFastEl = document.getElementById('colAccuracyFast_'+watchId);
+    const certEls = document.querySelectorAll('.colCert_'+watchId+':checked');
+    const certifications = Array.from(certEls).map(el => el.value);
+
+    const slowVal = accuracySlowEl.value === '' ? null : Number(accuracySlowEl.value);
+    const fastVal = accuracyFastEl.value === '' ? null : Number(accuracyFastEl.value);
+    const accuracySpec = (slowVal !== null || fastVal !== null)
+      ? `${slowVal !== null ? (slowVal>0?'-':'')+slowVal : '—'}/${fastVal !== null ? (fastVal>0?'+':'')+fastVal : '—'} s/day`
+      : null;
+
+    // a watch always needs a name, so an emptied field keeps the old one
+    updates.name = (nameEl.value || '').trim() || w.name;
+    updates.model = (modelEl.value || '').trim() || null;
+    updates.reference = (referenceEl.value || '').trim() || null;
+    updates.accuracy_spec = accuracySpec;
+    updates.power_reserve_hours = reserveEl.value !== '' ? Number(reserveEl.value) : null;
+    updates.certifications = certifications.length ? certifications.join(',') : null;
+  }
+
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
   if(error){
     saveStatus = 'error';
@@ -741,16 +1042,18 @@ async function saveCollectionEdit(watchId){
     return;
   }
 
-  w.name = updates.name;
-  w.model = updates.model || '';
-  w.reference = updates.reference || '';
+  if(!locked){
+    w.name = updates.name;
+    w.model = updates.model || '';
+    w.reference = updates.reference || '';
+    w.accuracySpec = updates.accuracy_spec || '';
+    w.powerReserveHours = updates.power_reserve_hours;
+    w.certifications = updates.certifications ? updates.certifications.split(',').filter(Boolean) : [];
+  }
   w.purchasePrice = updates.purchase_price;
   w.purchaseCurrency = updates.purchase_currency;
   w.purchaseDate = updates.purchase_date;
   w.conditionNotes = updates.condition_notes || '';
-  w.accuracySpec = updates.accuracy_spec || '';
-  w.powerReserveHours = updates.power_reserve_hours;
-  w.certifications = updates.certifications ? updates.certifications.split(',').filter(Boolean) : [];
   w.photoUrl = updates.photo_url || '';
 
   editingCollectionId = null;
@@ -837,6 +1140,7 @@ function attachCollectionHandlers(){
     };
   });
   wireCollectionSwipe();
+  wireCollectionReorder();
   const backBtn = document.querySelector('[data-action="backtocollectionlist"]');
   if(backBtn) backBtn.onclick = () => {
     viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null;
@@ -912,11 +1216,32 @@ function attachCollectionHandlers(){
   const startAddBtn = document.querySelector('[data-action="startaddcollectionwatch"]');
   if(startAddBtn) startAddBtn.onclick = () => {
     addingCollectionWatch = true;
+    addWatchMode = 'search';
+    watchSearchQuery = '';
+    watchSearchCaseMaterial = '';
+    watchSearchMovementType = '';
+    watchSearchDial = '';
+    // Called before render(), not after: ensureCatalogLoaded() sets its
+    // "loading" flag synchronously (an async function body runs up to its
+    // first await immediately, not on a later tick), so the render() right
+    // below already paints the correct "Loading catalog…" state on the
+    // very first open instead of a wrong "catalog unavailable" flash that
+    // only corrects itself once the fetch finishes. A no-op, loading
+    // nothing, if the catalog is already cached from earlier this session.
+    ensureCatalogLoaded().then(() => {
+      if(addingCollectionWatch && addWatchMode === 'search') refreshCatalogResults();
+    });
     render();
-    setTimeout(()=>{ const inp = document.getElementById('newCollectionWatchName'); if(inp) inp.focus(); }, 0);
+    focusAddWatchInput();
   };
   const cancelAddBtn = document.querySelector('[data-action="canceladdcollectionwatch"]');
   if(cancelAddBtn) cancelAddBtn.onclick = () => { addingCollectionWatch = false; render(); };
+
+  const switchToManualBtn = document.querySelector('[data-action="switchtomanualadd"]');
+  if(switchToManualBtn) switchToManualBtn.onclick = () => { addWatchMode = 'manual'; render(); focusAddWatchInput(); };
+  const switchToSearchBtn = document.querySelector('[data-action="switchtocatalogsearch"]');
+  if(switchToSearchBtn) switchToSearchBtn.onclick = () => { addWatchMode = 'search'; render(); focusAddWatchInput(); };
+
   const addBtn = document.querySelector('[data-action="addcollectionwatch"]');
   if(addBtn) addBtn.onclick = () => {
     const inp = document.getElementById('newCollectionWatchName');
@@ -926,4 +1251,74 @@ function attachCollectionHandlers(){
   if(nameInput) nameInput.addEventListener('keydown', (e) => {
     if(e.key === 'Enter'){ e.preventDefault(); addCollectionWatch(nameInput.value); }
   });
+
+  // Deliberately 'input', not 'keydown' — this also has to catch a pasted
+  // reference number or an autofill, neither of which fires a keydown.
+  const catalogSearchInput = document.getElementById('watchCatalogSearch');
+  if(catalogSearchInput){
+    catalogSearchInput.addEventListener('input', () => {
+      watchSearchQuery = catalogSearchInput.value;
+      refreshCatalogResults();
+    });
+    catalogSearchInput.addEventListener('keydown', (e) => {
+      if(e.key !== 'Enter') return;
+      e.preventDefault();
+      if(!watchSearchQuery.trim()) return;
+      const first = filteredWatchCatalog()[0];
+      if(first) selectCatalogWatch(first.id);
+    });
+  }
+  // Only fires because app.js's select-option handler now dispatches
+  // 'change' on the hidden input when a value is picked (see app.js) — a
+  // real <select> does this on its own, this custom one didn't used to
+  // need to.
+  const caseMaterialFilter = document.getElementById('catalogFilterCaseMaterial');
+  if(caseMaterialFilter) caseMaterialFilter.addEventListener('change', () => {
+    watchSearchCaseMaterial = caseMaterialFilter.value;
+    refreshCatalogResults();
+  });
+  const movementTypeFilter = document.getElementById('catalogFilterMovementType');
+  if(movementTypeFilter) movementTypeFilter.addEventListener('change', () => {
+    watchSearchMovementType = movementTypeFilter.value;
+    refreshCatalogResults();
+  });
+  const dialFilter = document.getElementById('catalogFilterDial');
+  if(dialFilter) dialFilter.addEventListener('change', () => {
+    watchSearchDial = dialFilter.value;
+    refreshCatalogResults();
+  });
+  wireCatalogResultButtons();
+}
+
+function focusAddWatchInput(){
+  setTimeout(() => {
+    const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
+    if(inp) inp.focus();
+  }, 0);
+}
+
+// Rebuilds only the results list, never the whole card — see the "Add
+// watch" search input's own comment above for why that distinction is the
+// whole point. Called after every keystroke and every filter change.
+function refreshCatalogResults(){
+  const results = document.getElementById('watchCatalogResults');
+  if(!results) return;
+  results.innerHTML = buildCatalogResultsHtml();
+  wireCatalogResultButtons();
+}
+
+function wireCatalogResultButtons(){
+  document.querySelectorAll('[data-action="selectcatalogwatch"]').forEach(btn => {
+    btn.onclick = () => selectCatalogWatch(btn.dataset.id);
+  });
+}
+
+async function selectCatalogWatch(entryId){
+  const entry = (watchCatalog || []).find(e => String(e.id) === String(entryId));
+  if(!entry) return;
+  addingCollectionWatch = false;
+  await addWatchFromCatalog(entry);
+  viewingCollectionId = state.activeId;
+  editingCollectionId = state.activeId;
+  render();
 }
