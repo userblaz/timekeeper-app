@@ -535,11 +535,9 @@ if(window.visualViewport){
 // Collection tab's catalog search results, most often), rather than at the
 // bottom where there'd be nothing left to cover. Simplest fix is to just
 // get it out of the way for as long as a text field actually has the
-// keyboard open, the same trigger (a visualViewport resize with the
-// active element being a text field) as the Snap tab's own keyboard
-// handling above. Guarded on the app screen actually being visible so
-// this never fights showApp/showAuthScreen's own use of the same element
-// on the sign-in screen.
+// keyboard open. Guarded on the app screen actually being visible so this
+// never fights showApp/showAuthScreen's own use of the same element on the
+// sign-in screen.
 //
 // The reference clock at the top gets the same treatment, but only while
 // the Collection tab's add-watch search is open — it's the biggest single
@@ -550,26 +548,43 @@ if(window.visualViewport){
 // off (see CLOCK_FORCE_COLLAPSE_ENABLED in clock.js) — this is a separate,
 // narrower mechanism, not a reuse of that one. Reappears the moment the
 // keyboard closes, whether that's from tapping outside the field or
-// switching away from search mode, since both just mean this same resize
-// (or the tab/mode change re-running this check) sees the keyboard gone.
-if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', () => {
-    const bar = document.getElementById('bottomTabs');
-    const appShown = document.getElementById('app');
-    if(!bar || !appShown || appShown.style.display === 'none') return;
-    const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
-    const active = document.activeElement;
-    const isTextInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
-    const keyboardOpen = keyboardHeight > 40 && isTextInput;
-    bar.style.display = keyboardOpen ? 'none' : '';
-
-    const clockBox = document.getElementById('masterClockBox');
-    if(clockBox){
-      const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
-      clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
-    }
-  });
+// switching away from search mode.
+//
+// This used to key off visualViewport resize (measuring how much the
+// visible area shrank), the same signal the Snap tab logic above uses —
+// but on at least one real iOS device it never fired reliably here, so the
+// bar and clock stayed put with the keyboard fully open. Focus/blur on the
+// field itself is a more direct signal for "is the keyboard actually up"
+// and doesn't depend on the viewport-resize event firing at all: it's
+// driven straight off document.activeElement changing, via the bubbling
+// focusin/focusout events.
+function isKeyboardTextInput(el){
+  if(!el) return false;
+  if(el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
+  // Checkboxes/radios (the multi-select filter options, the reset-point
+  // checkbox, etc.) are <input> elements too but never bring up a keyboard.
+  if(el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return false;
+  return true;
 }
+function updateKeyboardHideState(){
+  const bar = document.getElementById('bottomTabs');
+  const appShown = document.getElementById('app');
+  if(!bar || !appShown || appShown.style.display === 'none') return;
+  const keyboardOpen = isKeyboardTextInput(document.activeElement);
+  bar.style.display = keyboardOpen ? 'none' : '';
+
+  const clockBox = document.getElementById('masterClockBox');
+  if(clockBox){
+    const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
+    clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
+  }
+}
+document.addEventListener('focusin', updateKeyboardHideState);
+// focusout fires just before activeElement actually clears (it briefly
+// becomes document.body), so check on the next tick once it's settled —
+// otherwise a tap from one field straight to another would flash the bar
+// back on in between.
+document.addEventListener('focusout', () => setTimeout(updateKeyboardHideState, 0));
 
 // Resets scroll to the very top over exactly `duration`ms — a fixed,
 // deterministic target rather than measuring a card's position and
