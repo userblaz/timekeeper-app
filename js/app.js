@@ -48,16 +48,27 @@ const TIME_OF_DAY_OPTIONS = [
 // came out unreadable (white-on-white, then dark-on-dark). The chosen value
 // lives in a hidden input carrying the same id the caller asked for, so
 // everything reading `document.getElementById(id).value` still works.
-function buildSelect(id, options, selectedValue){
+// `compact` marks the Snap tab's Position/Wear/Time dropdowns specifically —
+// they live inside the scrollable watch list (see the escape-to-portal logic
+// below) and get the tightened, merged-with-trigger treatment; every other
+// caller (Collection's reading-edit fields, the currency and wear-calendar
+// pickers) keeps the plain, spaced-out look, since those were never part of
+// this request and sit in normal-flow contexts that don't need to escape.
+function buildSelect(id, options, selectedValue, compact){
   const current = selectedValue || '';
   const currentLabel = (options.find(([value]) => value === current) || options[0])[1];
   // The first entry (empty value) is a placeholder label for the closed
   // button, not a real choice — listing it in the open menu just repeated
   // that same word ("Position", "Wear", "Time"...) as a bogus, always-first
   // option with nothing behind it.
+  const optionClass = 'select-option' + (compact ? ' select-option-compact' : '');
   const optionsHtml = options.filter(([value]) => value !== '').map(([value, label]) =>
-    `<button type="button" class="select-option${value===current?' selected':''}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
+    `<button type="button" class="${optionClass}${value===current?' selected':''}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
   ).join('');
+  // The hidden input's id is also how a portaled-out menu finds its way back
+  // to the right wrap later (see findSelectWrap) — the menu itself may no
+  // longer be a DOM descendant of the wrap by then, so `.closest()` alone
+  // can't be used for that lookup once it's escaped.
   return `
     <div class="select-wrap">
       <input type="hidden" id="${id}" value="${escapeHtml(current)}" />
@@ -65,17 +76,35 @@ function buildSelect(id, options, selectedValue){
         <span class="select-value">${escapeHtml(currentLabel)}</span>
         <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
-      <div class="select-menu" hidden>${optionsHtml}</div>
+      <div class="select-menu${compact ? ' select-menu-compact' : ''}" data-for="${id}" hidden>${optionsHtml}</div>
     </div>
   `;
 }
 
-// While an escaped (viewport-fixed) menu is open, its position has to be
-// recomputed live — a static left/top captured once at open time goes stale
-// the instant the list it's anchored to scrolls (or the keyboard resizes the
-// viewport), leaving the menu floating wherever the button used to be
-// instead of tracking it. Only one select can be open at a time, so a single
-// tracked listener set is enough.
+function findSelectWrap(menu){
+  const owner = document.getElementById(menu.dataset.for);
+  return owner ? owner.closest('.select-wrap') : null;
+}
+
+// The other direction of findSelectWrap — needed because a wrap's menu isn't
+// always its child in the DOM: once escaped it's been moved out to <body>
+// (see the toggleselect handler below), so `wrap.querySelector('.select-menu')`
+// would miss it, e.g. when the same open toggle is tapped again to close it.
+function findMenuForWrap(wrap){
+  const hiddenInput = wrap.querySelector('input[type="hidden"]');
+  if(!hiddenInput) return null;
+  for(const menu of document.querySelectorAll('.select-menu')){
+    if(menu.dataset.for === hiddenInput.id) return menu;
+  }
+  return null;
+}
+
+// While an escaped (portaled, viewport-fixed) menu is open, its position has
+// to be recomputed live — a static left/top captured once at open time goes
+// stale the instant the list it's anchored to scrolls (or the keyboard
+// resizes the viewport), leaving the menu floating wherever the button used
+// to be instead of tracking it. Only one select can be open at a time, so a
+// single tracked listener set is enough.
 let escapedMenuTracker = null;
 
 function positionEscapedMenu(menu, toggle){
@@ -83,6 +112,11 @@ function positionEscapedMenu(menu, toggle){
   const box = toggle.getBoundingClientRect();
   const spaceBelow = window.innerHeight - box.bottom;
   const spaceAbove = box.top;
+  // No gap for the compact popup dropdowns — they're styled to read as a
+  // seamless continuation of the trigger (see the CSS), so leaving room for
+  // one here would reopen the gap the styling is trying to close. The
+  // generic (non-compact) case keeps its small breathing gap.
+  const gap = menu.classList.contains('select-menu-compact') ? 0 : 6;
   // The menu is never scrollable, so when it doesn't fit below, open it
   // upward — but only if there's actually more room up there.
   const needed = menu.getBoundingClientRect().height + 12;
@@ -91,10 +125,10 @@ function positionEscapedMenu(menu, toggle){
   menu.style.left = box.left + 'px';
   menu.style.width = box.width + 'px';
   if(dropUp){
-    menu.style.bottom = (window.innerHeight - box.top + 6) + 'px';
+    menu.style.bottom = (window.innerHeight - box.top + gap) + 'px';
     menu.style.top = '';
   } else {
-    menu.style.top = (box.bottom + 6) + 'px';
+    menu.style.top = (box.bottom + gap) + 'px';
     menu.style.bottom = '';
   }
 }
@@ -108,22 +142,38 @@ function stopTrackingEscapedMenu(){
   // without having to know which one it is.
   document.removeEventListener('scroll', escapedMenuTracker, true);
   window.removeEventListener('resize', escapedMenuTracker);
+  window.removeEventListener('orientationchange', escapedMenuTracker);
   if(window.visualViewport) window.visualViewport.removeEventListener('resize', escapedMenuTracker);
   escapedMenuTracker = null;
 }
 
+// Hides one menu and, if it was portaled out to <body> (see the toggleselect
+// handler below), moves it back home into its own wrap — otherwise a wrap
+// destroyed by some unrelated render() while its menu was off in <body>
+// would orphan that menu there forever, invisible but never cleaned up.
+function closeSelectMenu(menu){
+  const wrap = findSelectWrap(menu);
+  menu.hidden = true;
+  if(menu.classList.contains('select-menu-escaped') && wrap){
+    wrap.appendChild(menu);
+  }
+  menu.classList.remove('select-menu-escaped', 'drop-up');
+  menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
+  if(wrap){
+    wrap.classList.remove('select-open', 'drop-up');
+    wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
+  }
+}
+
 function closeAllSelects(except){
   stopTrackingEscapedMenu();
-  document.querySelectorAll('.select-wrap').forEach(wrap => {
-    if(wrap === except) return;
-    const menu = wrap.querySelector('.select-menu');
-    menu.hidden = true;
-    // Undo the escape-to-fixed positioning (see the toggleselect handler
-    // below) so the menu goes back to its normal, wrap-relative layout the
-    // next time it opens somewhere that doesn't need it.
-    menu.classList.remove('select-menu-escaped', 'drop-up');
-    menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
-    wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
+  // Querying menus directly (rather than each wrap's own child) is what
+  // makes this still find a menu that's currently portaled out to <body> —
+  // it's no longer a descendant of its wrap at that point, so a
+  // wrap-relative lookup would silently miss it.
+  document.querySelectorAll('.select-menu').forEach(menu => {
+    if(findSelectWrap(menu) === except) return;
+    closeSelectMenu(menu);
   });
 }
 
@@ -134,40 +184,49 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     const wrap = toggle.closest('.select-wrap');
-    const menu = wrap.querySelector('.select-menu');
+    const menu = findMenuForWrap(wrap);
     const willOpen = menu.hidden;
     closeAllSelects(wrap);
-    menu.hidden = !willOpen;
-    toggle.setAttribute('aria-expanded', String(willOpen));
-    if(willOpen){
-      // The menu is never scrollable, so when it doesn't fit below, open it
-      // upward — but only if there's actually more room up there. (Plain,
-      // wrap-relative menus get this decided once here; escaped ones redo it
-      // on every reposition below, since the room available can change as
-      // the button moves.)
+    if(!willOpen){
+      // Tapping the same toggle again while its own menu is open — close it
+      // through the normal path (closeSelectMenu) so an escaped one gets
+      // portaled back home and fully cleaned up, not just hidden in place.
+      closeSelectMenu(menu);
+      return;
+    }
+    menu.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    // The Snap tab's own watch list scrolls inside an overflow:auto
+    // container (see sizeDataWatchScroll) that would otherwise clip a menu
+    // extending past its edge — the confirm popup's Position/Wear/Time
+    // dropdowns are tall enough to do exactly that. Escaping — moving the
+    // menu itself to <body> and positioning it in viewport coordinates —
+    // lets it draw over everything, trigger dock and bottom tabs included,
+    // instead of being cut off, and stops it being clipped by any
+    // ancestor's overflow no matter what that ancestor does later.
+    if(wrap.closest('.data-watch-scroll')){
+      document.body.appendChild(menu);
+      menu.classList.add('select-menu-escaped');
+      positionEscapedMenu(menu, toggle);
+      escapedMenuTracker = () => positionEscapedMenu(menu, toggle);
+      document.addEventListener('scroll', escapedMenuTracker, true);
+      window.addEventListener('resize', escapedMenuTracker);
+      window.addEventListener('orientationchange', escapedMenuTracker);
+      if(window.visualViewport) window.visualViewport.addEventListener('resize', escapedMenuTracker);
+      wrap.classList.toggle('drop-up', menu.classList.contains('drop-up'));
+    } else {
+      // Plain, wrap-relative menus get the drop-up decision made once here
+      // instead — they never move, so there's nothing to re-track.
       menu.classList.remove('drop-up');
       const box = toggle.getBoundingClientRect();
       const spaceBelow = window.innerHeight - box.bottom;
       const spaceAbove = box.top;
       const needed = menu.getBoundingClientRect().height + 12;
       const dropUp = needed > spaceBelow && spaceAbove > spaceBelow;
-      if(dropUp) menu.classList.add('drop-up');
-
-      // The Snap tab's own watch list scrolls inside an overflow:auto
-      // container (see sizeDataWatchScroll) that would otherwise clip a
-      // menu extending past its edge — the confirm popup's Position/Wear/
-      // Time dropdowns are tall enough to do exactly that. Escaping to
-      // viewport-fixed coordinates here lets the menu draw over everything,
-      // trigger dock and bottom tabs included, instead of being cut off.
-      if(wrap.closest('.data-watch-scroll')){
-        menu.classList.add('select-menu-escaped');
-        positionEscapedMenu(menu, toggle);
-        escapedMenuTracker = () => positionEscapedMenu(menu, toggle);
-        document.addEventListener('scroll', escapedMenuTracker, true);
-        window.addEventListener('resize', escapedMenuTracker);
-        if(window.visualViewport) window.visualViewport.addEventListener('resize', escapedMenuTracker);
-      }
+      menu.classList.toggle('drop-up', dropUp);
+      wrap.classList.toggle('drop-up', dropUp);
     }
+    wrap.classList.add('select-open');
     return;
   }
 
@@ -175,18 +234,15 @@ document.addEventListener('click', (e) => {
   if(option){
     e.preventDefault();
     e.stopPropagation();
-    stopTrackingEscapedMenu();
-    const wrap = option.closest('.select-wrap');
+    const wrap = option.closest('.select-wrap') || findSelectWrap(option.closest('.select-menu'));
     const button = wrap.querySelector('[data-action="toggleselect"]');
-    const menu = wrap.querySelector('.select-menu');
+    const menu = option.closest('.select-menu');
     wrap.querySelector('input[type="hidden"]').value = option.dataset.value;
     wrap.querySelector('.select-value').textContent = option.textContent;
     button.classList.toggle('placeholder', !option.dataset.value);
-    wrap.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
-    menu.hidden = true;
-    menu.classList.remove('select-menu-escaped', 'drop-up');
-    menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
-    button.setAttribute('aria-expanded', 'false');
+    menu.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
+    stopTrackingEscapedMenu();
+    closeSelectMenu(menu);
     return;
   }
 
@@ -234,10 +290,13 @@ function render(){
   const root = document.getElementById('root');
   if(!loaded){ root.innerHTML = 'Loading…'; return; }
 
-  // Rebuilding #root below (innerHTML) destroys any open select-menu along
-  // with the rest of the DOM under it — stop tracking it now rather than
-  // leaving its scroll/resize listeners repositioning a detached element.
-  stopTrackingEscapedMenu();
+  // Rebuilding #root below (innerHTML) destroys every select-wrap under it —
+  // including, for a menu currently portaled out to <body> (see
+  // closeAllSelects), the only thing that would otherwise have moved it back
+  // and cleaned it up. Closing here first returns it home before its wrap
+  // disappears, so it gets torn down with everything else instead of being
+  // orphaned in <body> forever.
+  closeAllSelects(null);
 
   // The Snap tab's watch list scrolls in its own region (see
   // sizeDataWatchScroll) so the reference clock stays put — the page itself
@@ -1045,9 +1104,9 @@ function buildSnapPopupHtml(){
       </div>
       <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span id="qOffsetLabel" class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
       <div class="row3">
-        <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
-        <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
-        <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
+        <div class="field">${buildSelect('qPosition', POSITION_OPTIONS, undefined, true)}</div>
+        <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)], undefined, true)}</div>
+        <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)], undefined, true)}</div>
       </div>
       <input type="text" id="qNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
       <div class="row2" style="margin-top:12px;">
@@ -1079,9 +1138,9 @@ function buildManualForm(){
         </div>
         <p class="hint" style="margin:0;">Negative = slow, positive = fast, since you set it.</p>
         <div class="row3">
-          <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
-          <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
-          <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
+          <div class="field">${buildSelect('rPosition', POSITION_OPTIONS, undefined, true)}</div>
+          <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)], undefined, true)}</div>
+          <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)], undefined, true)}</div>
         </div>
         <input type="text" id="rNote" class="note-inline-input" placeholder="+ optional note" />
         <div class="row2">

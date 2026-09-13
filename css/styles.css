@@ -790,20 +790,64 @@
     bottom:calc(100% + 6px);
   }
   /* Escapes the Snap tab's overflow:auto watch-list container (see the
-     toggleselect handler in app.js) — positioned in viewport coordinates
-     instead of relative to its wrap, with a z-index above the fixed snap
-     dock and bottom tab bar so it's never clipped or drawn under them. */
+     toggleselect handler in app.js) — the menu is moved to <body> and
+     positioned in viewport coordinates instead of living inside its wrap,
+     with a z-index above the fixed snap dock and bottom tab bar so it's
+     never clipped or drawn under them. */
   .select-menu.select-menu-escaped{
     position:fixed;
     right:auto;
     z-index:70;
   }
-  /* Position/Wear/Time lists in the snap confirm popup are short enough to
-     show in full rather than scroll — unlike the generic select-menu (used
-     for longer lists like currencies), which stays capped and scrollable. */
-  .quick-log-box .select-menu{
+  /* The Position/Wear/Time dropdowns in the Snap tab's confirm/manual popup
+     (see the `compact` param on buildSelect) — short lists shown in full
+     rather than scrolled, tightened up for a small phone viewport, and
+     styled while open to read as one continuous shape with their trigger
+     instead of a separate floating panel (see .select-open below). Keyed off
+     their own class rather than an ancestor selector because the escape
+     above moves the menu to <body>, outside `.quick-log-box` entirely — a
+     `.quick-log-box .select-menu` rule would stop matching the moment it
+     escapes. */
+  .select-menu-compact{
     max-height:none;
     overflow-y:visible;
+    padding:4px 6px;
+    top:100%;
+    /* The trigger's own bottom border is the seam line in the normal
+       (opens-down) case — dropping the menu's matching top edge here is
+       what keeps that from doubling up into two lines. */
+    border-top-width:0;
+    border-top-left-radius:0;
+    border-top-right-radius:0;
+  }
+  /* No gap and square touching corners so the open menu reads as a second
+     panel of the same shape as its trigger rather than a floating box below
+     it — the JS drops the usual 6px gap for these too (see
+     positionEscapedMenu). Only the trigger's own square corners live here;
+     the menu's are set above/below since which pair squares off swaps with
+     drop-up. */
+  .select-wrap.select-open .condition-select{
+    border-bottom-left-radius:0;
+    border-bottom-right-radius:0;
+  }
+  .select-wrap.select-open.drop-up .condition-select{
+    border-top-left-radius:0;
+    border-top-right-radius:0;
+    border-bottom-left-radius:12px;
+    border-bottom-right-radius:12px;
+    /* The menu's own bottom border is the seam line here (see
+       .select-menu-compact.drop-up) — without dropping this one too,
+       the two would stack into a visibly doubled line. */
+    border-top-width:0;
+  }
+  .select-menu-compact.drop-up{
+    top:auto;
+    bottom:100%;
+    border-top-width:1px;
+    border-top-left-radius:12px;
+    border-top-right-radius:12px;
+    border-bottom-left-radius:0;
+    border-bottom-right-radius:0;
   }
   .select-option{
     display:block;
@@ -815,6 +859,13 @@
     background:transparent;
     color:var(--ink);
     font-size:13px;
+  }
+  /* ~44px total row height (13px text, line-height 1.2, plus this padding)
+     — tight for a small phone viewport but not below the usual accessible
+     tap-target floor. */
+  .select-option-compact{
+    padding:14px 12px;
+    line-height:1.2;
   }
   .select-option.selected{
     color:var(--accent);
