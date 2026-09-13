@@ -1899,6 +1899,10 @@
   .data-watch-card-body .reserve-row{
     width:100%;
     justify-content:center;
+    /* Overrides the shared .reserve-row's own margin-top: spacing here comes
+       entirely from the body's `gap` so every line is evenly spaced instead
+       of the reserve row getting an extra, uneven bump on top of it. */
+    margin-top:0;
   }
   .data-watch-card-body .reserve-hint{
     width:100%;

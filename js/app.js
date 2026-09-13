@@ -165,6 +165,14 @@ function render(){
     const atEdge = existingDriftScroll.scrollLeft >= existingDriftScroll.scrollWidth - existingDriftScroll.clientWidth - 4;
     driftScrollLeft = atEdge ? null : existingDriftScroll.scrollLeft;
   }
+  // Same idea for the Snap tab's own watch-list scroll region — innerHTML
+  // rebuilds the whole list on every render, including a plain watch
+  // selection, so without this a scrolled-down list would silently snap
+  // back to the top just from picking a different watch. Handlers that
+  // actually want to move the list (see scrollWatchCardToTop) call that
+  // after render() returns, which overrides this restore as intended.
+  const existingDataWatchScroll = document.getElementById('dataWatchScroll');
+  const dataWatchScrollTop = existingDataWatchScroll ? existingDataWatchScroll.scrollTop : 0;
 
   // While the capture panel is open the clock is held collapsed outright,
   // rather than scrolling far enough to collapse it the normal way — that
@@ -246,6 +254,8 @@ function render(){
 
   root.innerHTML = buildDataWatchListHtml();
   sizeDataWatchScroll();
+  const newDataWatchScroll = document.getElementById('dataWatchScroll');
+  if(newDataWatchScroll) newDataWatchScroll.scrollTop = dataWatchScrollTop;
 
   attachHandlers(watch);
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
