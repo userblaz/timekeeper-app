@@ -71,10 +71,11 @@ function buildCollectionTabHtml(){
   // the top rather than buried under a full list of owned watches.
   const watchesHtml = addingCollectionWatch ? '' : state.watches.map(w => buildCollectionCard(w)).join('');
   const addHtml = buildAddWatchHtml();
+  const headingHtml = addingCollectionWatch ? '' : `<h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>`;
 
   return `
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
-      <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
+      ${headingHtml}
       <div class="collection-list">
         ${watchesHtml}
         ${addHtml}
@@ -200,12 +201,14 @@ function buildAddWatchHtml(){
   return `
   <div class="collection-card collection-card-edit">
     <div class="field">
-      <label for="watchCatalogSearch">Find your watch</label>
+      <div class="field-label-row">
+        <label for="watchCatalogSearch">Find your watch</label>
+        <button type="button" class="manual-link manual-link-inline" data-action="switchtomanualadd">Can't find it? Add manually instead</button>
+      </div>
       <input type="text" id="watchCatalogSearch" placeholder="Brand, model, or reference…" autocomplete="off" value="${escapeHtml(watchSearchQuery)}" />
     </div>
     <div id="watchCatalogFilters">${buildCatalogFiltersHtml()}</div>
     <div id="watchCatalogResults" class="watch-catalog-results">${buildCatalogResultsHtml()}</div>
-    <button type="button" class="manual-link" data-action="switchtomanualadd">Can't find it? Add manually instead</button>
     <div class="row2" style="margin-top:6px;">
       <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch" style="flex:1">Cancel</button>
     </div>
