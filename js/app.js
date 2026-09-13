@@ -66,6 +66,34 @@ function buildSelect(id, options, selectedValue){
   `;
 }
 
+// A multi-choice variant of buildSelect above — same custom-dropdown shell
+// (so it gets the same overflow-escaping, drop-up and outside-click-closes
+// behavior for free, see the delegated handlers below), but checkboxes
+// instead of one-tap-and-close buttons, and a short fixed label instead of
+// echoing back whatever's chosen — there's no length of value list that
+// reads well in the space a button like this has, so it just says how many
+// are checked instead (see the change handler below, which is what keeps
+// that count in sync without a full re-render).
+function buildMultiSelect(id, shortLabel, options, selectedValues){
+  const selected = new Set(selectedValues || []);
+  const optionsHtml = options.map(([value, label]) => `
+    <label class="multi-select-option">
+      <input type="checkbox" data-action="multiselecttoggle" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''} />
+      <span>${escapeHtml(label)}</span>
+    </label>
+  `).join('');
+  return `
+    <div class="select-wrap multi-select-wrap" data-short-label="${escapeHtml(shortLabel)}">
+      <input type="hidden" id="${id}" value="${escapeHtml(Array.from(selected).join(','))}" />
+      <button type="button" class="condition-select${selected.size ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+        <span class="select-value">${escapeHtml(shortLabel)}${selected.size ? ` (${selected.size})` : ''}</span>
+        <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      <div class="select-menu multi-select-menu" hidden>${optionsHtml}</div>
+    </div>
+  `;
+}
+
 function closeAllSelects(except){
   document.querySelectorAll('.select-wrap').forEach(wrap => {
     if(wrap === except) return;
@@ -145,7 +173,38 @@ document.addEventListener('click', (e) => {
     return;
   }
 
+  // A checkbox toggle (see the 'change' handler below) fires a click too —
+  // without this, the fallthrough closeAllSelects() right below would shut
+  // the menu after every single checkbox tap, defeating the entire point
+  // of a multi-select.
+  if(e.target.closest('.multi-select-option')) return;
+
   closeAllSelects(null);
+});
+
+// Delegated the same way as the click handler above: survives every
+// re-render without rewiring, and stays a plain 'change' (not 'click') so
+// it fires once per actual state change rather than per pointer tap.
+// Deliberately doesn't close the menu or call closeAllSelects — that's the
+// one behavioral difference from a single-select's option buttons, and the
+// whole reason this needs its own handler instead of reusing that one.
+document.addEventListener('change', (e) => {
+  const checkbox = e.target.closest('[data-action="multiselecttoggle"]');
+  if(!checkbox) return;
+  const wrap = checkbox.closest('.multi-select-wrap');
+  if(!wrap) return;
+  const hidden = wrap.querySelector('input[type="hidden"]');
+  const checked = Array.from(wrap.querySelectorAll('[data-action="multiselecttoggle"]:checked')).map(el => el.value);
+  hidden.value = checked.join(',');
+  const shortLabel = wrap.dataset.shortLabel;
+  const valueEl = wrap.querySelector('.select-value');
+  if(valueEl) valueEl.textContent = shortLabel + (checked.length ? ` (${checked.length})` : '');
+  const button = wrap.querySelector('[data-action="toggleselect"]');
+  if(button) button.classList.toggle('placeholder', checked.length === 0);
+  // Same reasoning as the single-select's hidden-input dispatch above —
+  // callers (the Collection tab's catalog filters) listen for 'change' on
+  // this hidden input, not on the checkboxes themselves.
+  hidden.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
 document.addEventListener('keydown', (e) => {

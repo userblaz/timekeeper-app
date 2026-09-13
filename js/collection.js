@@ -11,9 +11,14 @@ let addingCollectionWatch = false;
 // time the card is opened fresh; see startaddcollectionwatch below.
 let addWatchMode = 'search';
 let watchSearchQuery = '';
-let watchSearchCaseMaterial = '';
-let watchSearchMovementType = '';
-let watchSearchDial = '';
+// Each holds zero or more selected values now (see buildMultiSelect in
+// app.js) rather than one — empty means "no filter", same as before, but
+// picking more than one value within the same filter now widens the
+// match instead of narrowing it (an OR within the filter, an AND across
+// the three).
+let watchSearchCaseMaterials = [];
+let watchSearchMovementTypes = [];
+let watchSearchDials = [];
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -99,9 +104,9 @@ function filteredWatchCatalog(){
   const list = watchCatalog || [];
   return list.filter(entry =>
     matchesCatalogQuery(entry, watchSearchQuery) &&
-    (!watchSearchCaseMaterial || entry.case_material === watchSearchCaseMaterial) &&
-    (!watchSearchMovementType || entry.movement_type === watchSearchMovementType) &&
-    (!watchSearchDial || entry.dial_color === watchSearchDial)
+    (!watchSearchCaseMaterials.length || watchSearchCaseMaterials.includes(entry.case_material)) &&
+    (!watchSearchMovementTypes.length || watchSearchMovementTypes.includes(entry.movement_type)) &&
+    (!watchSearchDials.length || watchSearchDials.includes(entry.dial_color))
   );
 }
 
@@ -116,19 +121,23 @@ function catalogFilterOptions(field){
   return Array.from(new Set(list.map(e => e[field]).filter(Boolean))).sort();
 }
 
+// Options come from whatever's actually in the fetched catalog (see
+// catalogFilterOptions), so this list — and therefore what shows up here —
+// grows on its own as more watches are added to watch_catalog, with no
+// code change needed on this end.
 function buildCatalogFiltersHtml(){
   const caseMaterials = catalogFilterOptions('case_material');
   const movementTypes = catalogFilterOptions('movement_type');
   const dialColors = catalogFilterOptions('dial_color');
   if(!caseMaterials.length && !movementTypes.length && !dialColors.length) return '';
-  const caseOptions = [['', 'Any case material'], ...caseMaterials.map(v => [v, v])];
-  const movementOptions = [['', 'Any movement'], ...movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)])];
-  const dialOptions = [['', 'Any dial'], ...dialColors.map(v => [v, v])];
+  const caseOptions = caseMaterials.map(v => [v, v]);
+  const movementOptions = movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)]);
+  const dialOptions = dialColors.map(v => [v, v]);
   return `
-    <div class="row2 watch-catalog-filters">
-      ${buildSelect('catalogFilterCaseMaterial', caseOptions, watchSearchCaseMaterial)}
-      ${buildSelect('catalogFilterMovementType', movementOptions, watchSearchMovementType)}
-      ${buildSelect('catalogFilterDial', dialOptions, watchSearchDial)}
+    <div class="row3 watch-catalog-filters">
+      ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', caseOptions, watchSearchCaseMaterials)}
+      ${buildMultiSelect('catalogFilterMovementType', 'Movement', movementOptions, watchSearchMovementTypes)}
+      ${buildMultiSelect('catalogFilterDial', 'Dial', dialOptions, watchSearchDials)}
     </div>
   `;
 }
@@ -194,7 +203,7 @@ function buildAddWatchHtml(){
       <label for="watchCatalogSearch">Find your watch</label>
       <input type="text" id="watchCatalogSearch" placeholder="Brand, model, or reference…" autocomplete="off" value="${escapeHtml(watchSearchQuery)}" />
     </div>
-    ${buildCatalogFiltersHtml()}
+    <div id="watchCatalogFilters">${buildCatalogFiltersHtml()}</div>
     <div id="watchCatalogResults" class="watch-catalog-results">${buildCatalogResultsHtml()}</div>
     <button type="button" class="manual-link" data-action="switchtomanualadd">Can't find it? Add manually instead</button>
     <div class="row2" style="margin-top:6px;">
@@ -1218,9 +1227,9 @@ function attachCollectionHandlers(){
     addingCollectionWatch = true;
     addWatchMode = 'search';
     watchSearchQuery = '';
-    watchSearchCaseMaterial = '';
-    watchSearchMovementType = '';
-    watchSearchDial = '';
+    watchSearchCaseMaterials = [];
+    watchSearchMovementTypes = [];
+    watchSearchDials = [];
     // Called before render(), not after: ensureCatalogLoaded() sets its
     // "loading" flag synchronously (an async function body runs up to its
     // first await immediately, not on a later tick), so the render() right
@@ -1229,7 +1238,10 @@ function attachCollectionHandlers(){
     // only corrects itself once the fetch finishes. A no-op, loading
     // nothing, if the catalog is already cached from earlier this session.
     ensureCatalogLoaded().then(() => {
-      if(addingCollectionWatch && addWatchMode === 'search') refreshCatalogResults();
+      if(addingCollectionWatch && addWatchMode === 'search'){
+        refreshCatalogFilters();
+        refreshCatalogResults();
+      }
     });
     render();
     focusAddWatchInput();
@@ -1268,26 +1280,33 @@ function attachCollectionHandlers(){
       if(first) selectCatalogWatch(first.id);
     });
   }
-  // Only fires because app.js's select-option handler now dispatches
-  // 'change' on the hidden input when a value is picked (see app.js) — a
-  // real <select> does this on its own, this custom one didn't used to
-  // need to.
+  wireCatalogFilterHandlers();
+  wireCatalogResultButtons();
+}
+
+// Only fires because app.js's multi-select/select-option handlers dispatch
+// 'change' on the hidden input when a value is picked (see app.js) — a real
+// <select> does this on its own, these custom ones didn't used to need to.
+// Pulled out on its own (rather than left inline in attachCollectionHandlers
+// above) so refreshCatalogFilters() below can rewire the exact same three
+// listeners after it rebuilds #watchCatalogFilters from scratch, instead of
+// a second, easily-drifting copy of this.
+function wireCatalogFilterHandlers(){
   const caseMaterialFilter = document.getElementById('catalogFilterCaseMaterial');
   if(caseMaterialFilter) caseMaterialFilter.addEventListener('change', () => {
-    watchSearchCaseMaterial = caseMaterialFilter.value;
+    watchSearchCaseMaterials = caseMaterialFilter.value ? caseMaterialFilter.value.split(',') : [];
     refreshCatalogResults();
   });
   const movementTypeFilter = document.getElementById('catalogFilterMovementType');
   if(movementTypeFilter) movementTypeFilter.addEventListener('change', () => {
-    watchSearchMovementType = movementTypeFilter.value;
+    watchSearchMovementTypes = movementTypeFilter.value ? movementTypeFilter.value.split(',') : [];
     refreshCatalogResults();
   });
   const dialFilter = document.getElementById('catalogFilterDial');
   if(dialFilter) dialFilter.addEventListener('change', () => {
-    watchSearchDial = dialFilter.value;
+    watchSearchDials = dialFilter.value ? dialFilter.value.split(',') : [];
     refreshCatalogResults();
   });
-  wireCatalogResultButtons();
 }
 
 function focusAddWatchInput(){
@@ -1315,6 +1334,13 @@ function refreshCatalogResults(){
   if(!results) return;
   results.innerHTML = buildCatalogResultsHtml();
   wireCatalogResultButtons();
+}
+
+function refreshCatalogFilters(){
+  const filters = document.getElementById('watchCatalogFilters');
+  if(!filters) return;
+  filters.innerHTML = buildCatalogFiltersHtml();
+  wireCatalogFilterHandlers();
 }
 
 function wireCatalogResultButtons(){
