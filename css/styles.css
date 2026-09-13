@@ -1881,7 +1881,7 @@
     justify-content:flex-start;
     text-align:left;
     width:100%;
-    margin-top:2px;
+    margin-top:5px;
   }
   /* Left-aligned, not centered like the name — it lines up with the reserve
      bar's own left edge just below it, and matches the name's size instead
@@ -1898,7 +1898,7 @@
   .data-watch-card-body .reserve-row{
     width:100%;
     justify-content:center;
-    margin-top:4px;
+    margin-top:1px;
   }
   .data-watch-card-body .reserve-hint{
     width:100%;
