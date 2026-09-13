@@ -303,6 +303,12 @@
     align-items:center;
     justify-content:center;
   }
+  /* The confirm popup's stepper disables whichever end is at its clamp (see
+     QUICK_TIME_ADJUST_LIMIT_SECONDS in app.js) rather than wrapping past it. */
+  .zoom-btn:disabled{
+    opacity:0.35;
+    cursor:default;
+  }
   .stepper-row{
     display:flex;
     align-items:center;

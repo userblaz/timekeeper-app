@@ -5,12 +5,21 @@
 let selectedOffsetIdx = null;
 let selectedDriftIdx = null;
 let quickCaptured = null;
-let quickHourValue = null;
-let quickMinuteValue = null;
-let quickSecondValue = null;
-// Which of the three the +/- stepper currently acts on — tapping a field in
-// the confirm popup's time readout (see buildSnapPopupHtml) switches this,
-// and only that field pulses.
+// The confirm popup's stepper tracks two independent, additive corrections
+// from the captured reading rather than three separate wall-clock field
+// values — that's what keeps the offset math correct across a minute or
+// second wrap (see computeQuickOffsetSeconds and quickDisplaySeconds): the
+// displayed h/m/s and the logged offset are both derived from the same sum,
+// never reconstructed from a bare field and re-diffed against the captured
+// hour. Whole-hour corrections (quickHourAdjustSeconds, always a multiple of
+// 3600) are unbounded and wrap freely through the day; the minute/second
+// fine offset (quickFineAdjustSeconds) is clamped to
+// QUICK_TIME_ADJUST_LIMIT_SECONDS — see the constant below for why.
+let quickHourAdjustSeconds = 0;
+let quickFineAdjustSeconds = 0;
+// Which field the +/- stepper currently acts on — tapping a field in the
+// confirm popup's time readout (see buildSnapPopupHtml) switches this, and
+// only that field pulses.
 let quickSelectedField = 'minute';
 let manualMode = false;
 let clockTimer = null;
@@ -879,24 +888,56 @@ function buildSnapTriggerHtml(){
 // — the confirm form after a quick tap, or the manual-entry form. Only
 // meaningful while quickCaptured or manualMode is set (see
 // buildDataWatchGroupHtml, which is the only caller).
+
+// A real accuracy correction is a matter of seconds; anything needing more
+// than this should go through "Enter offset manually instead" instead of
+// hunting for it one tap at a time. Also what stops the minute/second
+// stepper from wrapping around into silently wrong territory (see the
+// comment on quickFineAdjustSeconds above).
+const QUICK_TIME_ADJUST_LIMIT_SECONDS = 600; // ±10 minutes
+
+// The captured reading's own position in the day, in seconds — the fixed
+// point every correction is measured from.
+function quickBaseSeconds(){
+  const c = quickCaptured.at;
+  return c.getHours()*3600 + c.getMinutes()*60 + quickCaptured.second;
+}
+// The reading currently dialled in, normalized back into a 0-86399 wall-
+// clock position — purely for display. Adding the two corrections here
+// rather than folding each one into its own field first (a bare minute
+// number wrapped mod 60, say) is what avoids ever needing to reconstruct a
+// wall-clock time and re-diff it: this and computeQuickOffsetSeconds both
+// just add the same two numbers to two different starting points.
+function quickDisplaySeconds(){
+  const total = quickBaseSeconds() + quickHourAdjustSeconds + quickFineAdjustSeconds;
+  return ((total % 86400) + 86400) % 86400;
+}
 // The full diff (in seconds) between the watch reading currently dialled in
-// — hour, minute and second each independently adjustable via the stepper
-// (see quickSelectedField), defaulting to the tapped mark's captured values
-// — and the phone's own time at capture. Recomputed live as the stepper
-// moves, so it always reflects what "Log" would actually save, not just the
-// accuracy of the tapped second mark.
+// and the phone's own time at capture — just the captured diff plus
+// whatever's been added since, so it's exact regardless of how many times
+// the stepper has crossed a minute, hour or day boundary. Recomputed live as
+// the stepper moves, so it always reflects what "Log" would actually save,
+// not just the accuracy of the tapped second mark.
 function computeQuickOffsetSeconds(){
   if(!quickCaptured) return 0;
   const c = quickCaptured.at;
-  const h = quickHourValue === null ? c.getHours() : quickHourValue;
-  const mm = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
-  const ss = quickSecondValue === null ? quickCaptured.second : quickSecondValue;
   const phoneSec = c.getHours()*3600 + c.getMinutes()*60 + c.getSeconds();
-  const watchSec = h*3600 + mm*60 + ss;
-  let diff = watchSec - phoneSec;
+  let diff = (quickBaseSeconds() - phoneSec) + quickHourAdjustSeconds + quickFineAdjustSeconds;
   while(diff > 43200) diff -= 86400;
   while(diff <= -43200) diff += 86400;
   return diff;
+}
+// Disables whichever of the +/- stepper buttons would push the minute/
+// second fine offset past its clamp — a no-op button reads better as
+// visibly disabled than as one that just silently stops responding. The
+// hour field is never clamped, so both stay enabled while it's selected.
+function updateQuickStepperButtons(){
+  const minusBtn = document.querySelector('[data-action="timestep"][data-dir="-1"]');
+  const plusBtn = document.querySelector('[data-action="timestep"][data-dir="1"]');
+  const atMin = quickSelectedField !== 'hour' && quickFineAdjustSeconds <= -QUICK_TIME_ADJUST_LIMIT_SECONDS;
+  const atMax = quickSelectedField !== 'hour' && quickFineAdjustSeconds >= QUICK_TIME_ADJUST_LIMIT_SECONDS;
+  if(minusBtn) minusBtn.disabled = atMin;
+  if(plusBtn) plusBtn.disabled = atMax;
 }
 function formatQuickOffsetLabel(diff){
   if(diff === 0) return 'spot on';
@@ -912,19 +953,25 @@ function buildSnapPopupHtml(){
   if(!quickCaptured) return '';
 
   const c = quickCaptured.at;
-  const h = quickHourValue === null ? c.getHours() : quickHourValue;
-  const mm = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
-  const ss = quickSecondValue === null ? quickCaptured.second : quickSecondValue;
+  const displaySec = quickDisplaySeconds();
+  const h = Math.floor(displaySec / 3600);
+  const mm = Math.floor((displaySec % 3600) / 60);
+  const ss = displaySec % 60;
   const aheadBy = computeQuickOffsetSeconds();
   const offsetLabel = formatQuickOffsetLabel(aheadBy);
   const fieldHtml = (field, id, value) => `<span id="${id}" class="confirm-time-field${quickSelectedField === field ? ' confirm-time-field-selected' : ''}" data-action="selecttimefield" data-field="${field}">${pad2(value)}</span>`;
+  // Only the minute/second fine offset is clamped (see
+  // QUICK_TIME_ADJUST_LIMIT_SECONDS) — whole-hour corrections are unbounded,
+  // so the hour field never disables either button.
+  const atMin = quickSelectedField !== 'hour' && quickFineAdjustSeconds <= -QUICK_TIME_ADJUST_LIMIT_SECONDS;
+  const atMax = quickSelectedField !== 'hour' && quickFineAdjustSeconds >= QUICK_TIME_ADJUST_LIMIT_SECONDS;
   return `
     <div class="quick-log-box">
       <div class="confirm-time-label">Adjust your watch's time</div>
       <div class="confirm-time-row">
-        <button type="button" class="zoom-btn" data-action="timestep" data-dir="-1">−</button>
+        <button type="button" class="zoom-btn" data-action="timestep" data-dir="-1"${atMin ? ' disabled' : ''}>−</button>
         <div id="qConfirmTime" class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${fieldHtml('hour', 'qHourDisplay', h)}:${fieldHtml('minute', 'qMinuteDisplay', mm)}:${fieldHtml('second', 'qSecondDisplay', ss)}</div>
-        <button type="button" class="zoom-btn" data-action="timestep" data-dir="1">+</button>
+        <button type="button" class="zoom-btn" data-action="timestep" data-dir="1"${atMax ? ' disabled' : ''}>+</button>
       </div>
       <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span id="qOffsetLabel" class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
       <div class="row3">
@@ -1043,13 +1090,13 @@ function attachHandlers(watch){
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
-    manualMode = true; quickCaptured = null; quickHourValue = null; quickMinuteValue = null; quickSecondValue = null; quickSelectedField = 'minute';
+    manualMode = true; quickCaptured = null; quickHourAdjustSeconds = 0; quickFineAdjustSeconds = 0; quickSelectedField = 'minute';
     render();
     if(watch) scrollWatchCardToTop(watch.id, 125);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
-  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickHourValue = null; quickMinuteValue = null; quickSecondValue = null; quickSelectedField = 'minute'; render(); };
+  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickHourAdjustSeconds = 0; quickFineAdjustSeconds = 0; quickSelectedField = 'minute'; render(); };
 
   if(watch) attachWatchStatsHandlers(watch);
 
@@ -1069,9 +1116,8 @@ function attachHandlers(watch){
   document.querySelectorAll('[data-action="quicksec"]').forEach(el=>{
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
-      quickHourValue = quickCaptured.at.getHours();
-      quickMinuteValue = quickCaptured.at.getMinutes();
-      quickSecondValue = quickCaptured.second;
+      quickHourAdjustSeconds = 0;
+      quickFineAdjustSeconds = 0;
       quickSelectedField = 'minute';
       playShutterSound();
       render();
@@ -1082,9 +1128,8 @@ function attachHandlers(watch){
   const quickCancelBtn = document.querySelector('[data-action="quickcancel"]');
   if(quickCancelBtn) quickCancelBtn.onclick = () => {
     quickCaptured = null;
-    quickHourValue = null;
-    quickMinuteValue = null;
-    quickSecondValue = null;
+    quickHourAdjustSeconds = 0;
+    quickFineAdjustSeconds = 0;
     quickSelectedField = 'minute';
     render();
   };
@@ -1104,6 +1149,7 @@ function attachHandlers(watch){
       document.querySelectorAll('.confirm-time-field').forEach(f => {
         f.classList.toggle('confirm-time-field-selected', f.dataset.field === quickSelectedField);
       });
+      updateQuickStepperButtons();
     };
   });
 
@@ -1116,21 +1162,26 @@ function attachHandlers(watch){
     let holdTimeout = null;
     let holdInterval = null;
     const dir = Number(el.dataset.dir);
-    const step = (amount) => {
+    // `steps` is a count, not seconds — converted to the right unit for
+    // whichever field is selected (an hour step is 3600s; minute/second are
+    // 60s/1s and share the clamped fine-offset pool, see
+    // QUICK_TIME_ADJUST_LIMIT_SECONDS).
+    const step = (steps) => {
       if(!quickCaptured) return;
       if(quickSelectedField === 'hour'){
-        quickHourValue = ((quickHourValue + amount) % 24 + 24) % 24;
-      } else if(quickSelectedField === 'second'){
-        quickSecondValue = ((quickSecondValue + amount) % 60 + 60) % 60;
+        quickHourAdjustSeconds += steps * 3600;
       } else {
-        quickMinuteValue = ((quickMinuteValue + amount) % 60 + 60) % 60;
+        const unit = quickSelectedField === 'second' ? 1 : 60;
+        const next = quickFineAdjustSeconds + steps * unit;
+        quickFineAdjustSeconds = Math.max(-QUICK_TIME_ADJUST_LIMIT_SECONDS, Math.min(QUICK_TIME_ADJUST_LIMIT_SECONDS, next));
       }
+      const displaySec = quickDisplaySeconds();
       const hourDisplay = document.getElementById('qHourDisplay');
       const minuteDisplay = document.getElementById('qMinuteDisplay');
       const secondDisplay = document.getElementById('qSecondDisplay');
-      if(hourDisplay) hourDisplay.textContent = pad2(quickHourValue);
-      if(minuteDisplay) minuteDisplay.textContent = pad2(quickMinuteValue);
-      if(secondDisplay) secondDisplay.textContent = pad2(quickSecondValue);
+      if(hourDisplay) hourDisplay.textContent = pad2(Math.floor(displaySec / 3600));
+      if(minuteDisplay) minuteDisplay.textContent = pad2(Math.floor((displaySec % 3600) / 60));
+      if(secondDisplay) secondDisplay.textContent = pad2(displaySec % 60);
       const aheadBy = computeQuickOffsetSeconds();
       const side = aheadBy >= 0 ? 'ahead' : 'behind';
       const timeEl = document.getElementById('qConfirmTime');
@@ -1144,6 +1195,7 @@ function attachHandlers(watch){
         offsetEl.classList.add(side);
         offsetEl.textContent = formatQuickOffsetLabel(aheadBy);
       }
+      updateQuickStepperButtons();
     };
     const clearHold = () => {
       if(holdTimeout) clearTimeout(holdTimeout);
@@ -1152,9 +1204,13 @@ function attachHandlers(watch){
     };
     el.onpointerdown = (e) => {
       e.preventDefault();
+      if(el.disabled) return;
       step(dir);
       holdTimeout = setTimeout(() => {
-        holdInterval = setInterval(() => step(dir * 5), 150);
+        holdInterval = setInterval(() => {
+          step(dir * 5);
+          if(el.disabled) clearHold();
+        }, 150);
       }, 800);
     };
     el.onpointerup = clearHold;
@@ -1167,21 +1223,13 @@ function attachHandlers(watch){
     if(!quickCaptured) return;
     const c = quickCaptured.at;
     const qNote = document.getElementById('qNote');
-    const h = quickHourValue === null ? c.getHours() : quickHourValue;
-    const m = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
-    const s = quickSecondValue === null ? quickCaptured.second : quickSecondValue;
     const note = qNote ? qNote.value : '';
-    const phoneSec = c.getHours()*3600 + c.getMinutes()*60 + c.getSeconds();
-    const watchSec = h*3600 + m*60 + s;
-    let diff = watchSec - phoneSec;
-    while(diff > 43200) diff -= 86400;
-    while(diff <= -43200) diff += 86400;
+    const diff = computeQuickOffsetSeconds();
     const date = c.toISOString().slice(0,10);
     const conditions = readConditionInputs('q');
     quickCaptured = null;
-    quickHourValue = null;
-    quickMinuteValue = null;
-    quickSecondValue = null;
+    quickHourAdjustSeconds = 0;
+    quickFineAdjustSeconds = 0;
     quickSelectedField = 'minute';
     addReading(watch.id, date, diff, note, conditions);
   };
