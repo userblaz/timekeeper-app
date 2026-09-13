@@ -932,30 +932,31 @@ function buildSnapPopupHtml(){
 
 function buildManualForm(){
   return `
-    <button type="button" class="manual-link" data-action="quickmode" style="margin:0 0 12px;">← Use quick tap instead</button>
-    <form id="readingForm">
-      <div class="row2">
-        <div class="field">
-          <label for="rDate">Date checked</label>
-          <input type="date" id="rDate" required value="${todayStr()}" />
+    <div class="quick-log-box">
+      <form id="readingForm">
+        <div class="row2">
+          <div class="field">
+            <label for="rDate">Date checked</label>
+            <input type="date" id="rDate" required value="${todayStr()}" />
+          </div>
+          <div class="field">
+            <label for="rOffset">Cumulative offset (sec)</label>
+            <input type="number" id="rOffset" step="1" placeholder="e.g. -4 or 12" required />
+          </div>
         </div>
-        <div class="field">
-          <label for="rOffset">Cumulative offset (sec)</label>
-          <input type="number" id="rOffset" step="1" placeholder="e.g. -4 or 12" required />
+        <p class="hint" style="margin-top:8px;">Negative = slow, positive = fast, since you set it.</p>
+        <div class="row3" style="margin-top:10px;">
+          <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
+          <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
+          <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
         </div>
-      </div>
-      <p class="hint">Offset = how far the watch has drifted from correct time since you set it (negative = slow, positive = fast).</p>
-      <div class="row3">
-        <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
-        <div class="field">${buildSelect('rWear', WEAR_STATE_OPTIONS)}</div>
-        <div class="field">${buildSelect('rTimeOfDay', TIME_OF_DAY_OPTIONS)}</div>
-      </div>
-      <div class="field" style="margin-top:10px;">
-        <label for="rNote">Note (optional)</label>
-        <input type="text" id="rNote" placeholder="worn daily, dial up overnight…" />
-      </div>
-      <button type="submit" class="btn-primary">Add reading</button>
-    </form>
+        <input type="text" id="rNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
+        <div class="row2" style="margin-top:12px;">
+          <button type="button" class="btn-secondary" data-action="quickmode" style="flex:1">Cancel</button>
+          <button type="submit" class="btn-primary" style="flex:1">Add reading</button>
+        </div>
+      </form>
+    </div>
   `;
 }
 
