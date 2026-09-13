@@ -601,7 +601,15 @@ if(window.visualViewport){
     // long as the keyboard is actually up.
     const spacer = document.getElementById('dataWatchScrollSpacer');
     if(spacer) spacer.style.height = Math.max(parseFloat(spacer.style.height) || 0, keyboardHeight) + 'px';
-    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
+    // The trigger dock is fixed to the bottom of the *visual* viewport, so on
+    // iOS it rides up and keeps sitting right above the keyboard instead of
+    // being covered by it — still occupying real screen space there, not
+    // free room a focused field can safely sit in. Without subtracting it,
+    // a field could measure as "already above the keyboard" while the dock
+    // is still drawn directly over it.
+    const dock = document.getElementById('snapDock');
+    const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
+    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop - dockHeight;
     const overflow = active.getBoundingClientRect().bottom - visibleBottom;
     if(overflow > 0) container.scrollTop += overflow + 12;
   });
