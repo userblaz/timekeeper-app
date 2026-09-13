@@ -522,7 +522,13 @@ function sizeDataWatchScroll(){
   const header = document.getElementById('stickyHeader');
   const dock = document.getElementById('snapDock');
   const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
-  const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
+  // A dock hidden for the keyboard (see the visualViewport listener below)
+  // is invisible but still `display` non-'none' — without also checking for
+  // that, the list would keep leaving room below it for a box that isn't
+  // being drawn there any more, showing up as a dead gap above the bottom
+  // tab bar for as long as the keyboard is up.
+  const dockHidden = dock && dock.classList.contains('dock-hidden-for-keyboard');
+  const dockHeight = (dock && dock.style.display !== 'none' && !dockHidden) ? dock.offsetHeight : 0;
   const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
   scrollEl.style.height = height + 'px';
 
@@ -590,6 +596,11 @@ function scrollFieldAboveKeyboard(el){
     // unreliable, so it's the sturdier trigger for this.
     const dock = document.getElementById('snapDock');
     if(dock) dock.classList.add('dock-hidden-for-keyboard');
+    // The list's own height normally leaves room below it for the dock (see
+    // sizeDataWatchScroll) — with the dock now hidden, that room would
+    // otherwise sit empty as a dead gap above the bottom tab bar until
+    // something else happens to re-measure it.
+    sizeDataWatchScroll();
     setTimeout(() => {
       resetPageScrollOnDataTab();
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -606,6 +617,7 @@ function scrollFieldAboveKeyboard(el){
       if(!stillFocusedInList){
         const dock = document.getElementById('snapDock');
         if(dock) dock.classList.remove('dock-hidden-for-keyboard');
+        sizeDataWatchScroll();
       }
     }, 50);
   });
@@ -636,6 +648,11 @@ if(window.visualViewport){
       sizeDataWatchScroll();
       return;
     }
+    // Re-measure the container's own height now that the dock is hidden (see
+    // the toggle above) — otherwise it keeps the height it had while the
+    // dock still reserved room below it, leaving a dead gap where the dock
+    // used to be instead of growing to use that freed space.
+    sizeDataWatchScroll();
     // The list's own scroll room is normally capped to just what's needed
     // to bring a snapped watch to the top (see sizeDataWatchScroll) — with
     // only one or two watches, that can be nowhere near enough to also
