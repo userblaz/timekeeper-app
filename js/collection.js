@@ -1320,15 +1320,26 @@ function focusAddWatchInput(){
   // the page — on mobile that's often centering it, which cuts off the
   // reference clock above and makes the freshly-opened form look like
   // it's landed mid-scroll rather than at the top. preventScroll skips
-  // that, and the explicit scrollTo(0,0) (before and after focusing, since
-  // focus can still fire its own scroll asynchronously right after) is
-  // what actually puts the page back at the top instead.
+  // that, and the explicit scrollTo(0,0) calls (before, right after, and
+  // once more next frame, since focus can still fire its own scroll
+  // asynchronously right after) are what actually put the page back at
+  // the top instead.
+  //
+  // The focus() call itself has to run synchronously, in the same tick as
+  // the tap that triggered it — iOS Safari only raises the on-screen
+  // keyboard for a focus() made directly inside a trusted user gesture's
+  // own call stack. Deferring it even to a same-tick setTimeout(fn, 0)
+  // drops it out of that gesture: the field still shows as focused
+  // (cursor, highlight) but the keyboard itself never actually appears,
+  // which is exactly the "highlighted but not ready to type" bug this
+  // used to cause. render() already finished rebuilding the DOM
+  // synchronously before this runs, so the input already exists — there's
+  // nothing left to wait a tick for.
   window.scrollTo(0, 0);
-  setTimeout(() => {
-    const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
-    if(inp) inp.focus({ preventScroll: true });
-    window.scrollTo(0, 0);
-  }, 0);
+  const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
+  if(inp) inp.focus({ preventScroll: true });
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => window.scrollTo(0, 0));
 }
 
 // Rebuilds only the results list, never the whole card — see the "Add

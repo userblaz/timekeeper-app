@@ -555,16 +555,9 @@ if(window.visualViewport){
 // but on at least one real iOS device it never fired reliably here, so the
 // bar and clock stayed put with the keyboard fully open. Focus/blur on the
 // field itself is a more direct signal for "is the keyboard actually up"
-// and doesn't depend on the viewport-resize event firing at all.
-//
-// One wrinkle: focusin fires the instant a field is focused, including the
-// automatic focus the "Add watch" search box gets the moment that view
-// opens — well before the on-screen keyboard has actually slid into view.
-// Hiding immediately on focusin made the bar/clock vanish right as the view
-// switched, ahead of the keyboard itself. So hiding is delayed just long
-// enough for the keyboard's own slide-up animation to catch up; showing
-// again (on focusout, or on focusing something that isn't a text field) is
-// still immediate, since there's no matching animation to wait for there.
+// and doesn't depend on the viewport-resize event firing at all: it's
+// driven straight off document.activeElement changing, via the bubbling
+// focusin/focusout events.
 function isKeyboardTextInput(el){
   if(!el) return false;
   if(el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
@@ -573,39 +566,25 @@ function isKeyboardTextInput(el){
   if(el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return false;
   return true;
 }
-function applyKeyboardHideState(hide){
+function updateKeyboardHideState(){
   const bar = document.getElementById('bottomTabs');
   const appShown = document.getElementById('app');
   if(!bar || !appShown || appShown.style.display === 'none') return;
-  bar.style.display = hide ? 'none' : '';
+  const keyboardOpen = isKeyboardTextInput(document.activeElement);
+  bar.style.display = keyboardOpen ? 'none' : '';
 
   const clockBox = document.getElementById('masterClockBox');
   if(clockBox){
     const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
-    clockBox.style.display = (hide && inAddWatchView) ? 'none' : '';
+    clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
   }
 }
-let keyboardHideTimer = null;
-document.addEventListener('focusin', (e) => {
-  if(keyboardHideTimer){ clearTimeout(keyboardHideTimer); keyboardHideTimer = null; }
-  if(!isKeyboardTextInput(e.target)){
-    applyKeyboardHideState(false);
-    return;
-  }
-  keyboardHideTimer = setTimeout(() => {
-    keyboardHideTimer = null;
-    if(isKeyboardTextInput(document.activeElement)) applyKeyboardHideState(true);
-  }, 350);
-});
-document.addEventListener('focusout', () => {
-  if(keyboardHideTimer){ clearTimeout(keyboardHideTimer); keyboardHideTimer = null; }
-  // activeElement briefly clears to document.body between focusout and the
-  // next focusin (e.g. tabbing between two fields), so settle on the next
-  // tick once it's landed on whatever's actually focused now.
-  setTimeout(() => {
-    applyKeyboardHideState(isKeyboardTextInput(document.activeElement));
-  }, 0);
-});
+document.addEventListener('focusin', updateKeyboardHideState);
+// focusout fires just before activeElement actually clears (it briefly
+// becomes document.body), so check on the next tick once it's settled —
+// otherwise a tap from one field straight to another would flash the bar
+// back on in between.
+document.addEventListener('focusout', () => setTimeout(updateKeyboardHideState, 0));
 
 // Resets scroll to the very top over exactly `duration`ms — a fixed,
 // deterministic target rather than measuring a card's position and
