@@ -1319,25 +1319,22 @@ function focusAddWatchInput(){
   // rule the browser picks for a field that isn't already at the top of
   // the page — on mobile that's often centering it, which cuts off the
   // reference clock above and makes the freshly-opened form look like
-  // it's landed mid-scroll rather than at the top. preventScroll skips
-  // that, and the explicit scrollTo(0,0) calls (before, right after, and
-  // once more next frame, since focus can still fire its own scroll
-  // asynchronously right after) are what actually put the page back at
-  // the top instead.
+  // it's landed mid-scroll rather than at the top.
   //
-  // The focus() call itself has to run synchronously, in the same tick as
-  // the tap that triggered it — iOS Safari only raises the on-screen
-  // keyboard for a focus() made directly inside a trusted user gesture's
-  // own call stack. Deferring it even to a same-tick setTimeout(fn, 0)
-  // drops it out of that gesture: the field still shows as focused
-  // (cursor, highlight) but the keyboard itself never actually appears,
-  // which is exactly the "highlighted but not ready to type" bug this
-  // used to cause. render() already finished rebuilding the DOM
-  // synchronously before this runs, so the input already exists — there's
-  // nothing left to wait a tick for.
+  // That used to be handled with focus({ preventScroll: true }), but that
+  // exact option combination has a known iOS Safari bug: the field still
+  // takes focus (cursor, highlight) but the on-screen keyboard silently
+  // never appears — precisely the "highlighted but not ready to type" bug
+  // this caused, and it happened regardless of whether the focus() call
+  // itself was synchronous or deferred, since the option was the actual
+  // problem, not the timing. Plain focus() doesn't have that bug, so the
+  // scroll is corrected the blunt way instead: let focus() do whatever
+  // scrolling it wants, then force the page back to the top right after,
+  // and again next frame in case the browser's own scroll-into-view lands
+  // asynchronously.
   window.scrollTo(0, 0);
   const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
-  if(inp) inp.focus({ preventScroll: true });
+  if(inp) inp.focus();
   window.scrollTo(0, 0);
   requestAnimationFrame(() => window.scrollTo(0, 0));
 }
