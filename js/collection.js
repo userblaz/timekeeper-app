@@ -1151,6 +1151,11 @@ function attachCollectionHandlers(){
       wearCalendarYear = new Date().getFullYear();
       wearCalendarMonth = new Date().getMonth();
       render();
+      // Opening a watch straight off a scrolled-down list otherwise leaves
+      // the detail page landed wherever the list happened to be scrolled
+      // to, rather than at its own top — scrollToPageTop (app.js) is the
+      // same eased scroll-to-top already written for exactly this.
+      scrollToPageTop(300);
     };
   });
   wireCollectionSwipe();
