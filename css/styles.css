@@ -1963,9 +1963,13 @@
      it — see pinCapturePanel in app.js, which now only scrolls if it
      actually doesn't fit. */
   @media (max-width:480px){
-    .app{padding-top:calc(var(--safe-top) + 5px);}
+    .app{padding-top:calc(var(--safe-top) + 10px);}
     .signout-btn{margin-top:3px;}
-    #stickyHeader{padding-top:5px;}
+    /* A few px more than before — on iOS wrapped as a native app shell
+       (rather than plain mobile Safari), the status bar's own translucent
+       blur sits right on top of this text at 5px, with nothing underneath
+       it to separate the two. */
+    #stickyHeader{padding-top:10px;}
   }
 
 
