@@ -79,6 +79,14 @@
     -webkit-font-smoothing:antialiased;
     min-height:100vh;
   }
+  /* Snap tab only (see render() in app.js): the watch list scrolls in its
+     own region (.data-watch-scroll) so the reference clock stays fully
+     expanded — the page itself must not also scroll there, or a touch could
+     land on either scroll area ambiguously. */
+  body.no-page-scroll{
+    height:100vh;
+    overflow:hidden;
+  }
   .app{
     max-width:480px;
     margin:0 auto;
@@ -92,11 +100,6 @@
     min-height:calc(100vh + 120px);
     min-height:calc(100dvh + 120px);
   }
-  .app-title{
-    margin-top:10px;
-    margin-bottom:8px;
-    text-align:center;
-  }
   h1{
     font-family:'Inter',sans-serif;
     font-weight:700;
@@ -104,12 +107,6 @@
     letter-spacing:-0.3px;
     margin:0 0 2px;
     color:var(--ink);
-  }
-  .app-title p{
-    font-family:'Inter',sans-serif;
-    font-size:11px;
-    color:var(--accent);
-    margin:0;
   }
   .subhead{
     font-size:13px;
@@ -634,10 +631,39 @@
   }
   .row2{
     display:flex;
-    align-items:flex-start;
+    align-items:center;
     gap:10px;
   }
   .row2 .field{flex:1;min-width:0;}
+  .row2 .btn-primary{margin-top:0;}
+  .confirm-time-label{
+    text-align:center;
+    font-size:11.5px;
+    color:var(--grey);
+    margin-bottom:2px;
+  }
+  .confirm-time-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+  }
+  .confirm-time-row .confirm-time{
+    margin-top:0;
+    margin-bottom:0;
+  }
+  .confirm-time-minute{
+    display:inline-block;
+    font-variant-numeric:tabular-nums;
+    animation:minute-pulse 1.8s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .confirm-time-minute{animation:none;}
+  }
+  @keyframes minute-pulse{
+    0%, 100%{opacity:1;}
+    50%{opacity:0.3;}
+  }
   .row3{
     display:flex;
     gap:8px;
@@ -696,6 +722,17 @@
     -webkit-appearance:none;
     appearance:none;
   }
+  input.note-inline-input{
+    display:block;
+    padding:2px 0;
+    border:none;
+    border-radius:0;
+    background:transparent;
+    font-size:12px;
+  }
+  input.note-inline-input::placeholder{
+    color:var(--grey);
+  }
   .select-wrap{position:relative;}
   .condition-select{
     font-family:'Inter',sans-serif;
@@ -744,6 +781,13 @@
   .select-menu.drop-up{
     top:auto;
     bottom:calc(100% + 6px);
+  }
+  /* Position/Wear/Time lists in the snap confirm popup are short enough to
+     show in full rather than scroll — unlike the generic select-menu (used
+     for longer lists like currencies), which stays capped and scrollable. */
+  .quick-log-box .select-menu{
+    max-height:none;
+    overflow-y:visible;
   }
   .select-option{
     display:block;
@@ -920,17 +964,26 @@
      and manual forms open against the selected watch's card instead. */
   #snapDock{
     position:fixed;
-    left:8px;
-    right:8px;
-    bottom:calc(81px + var(--safe-bottom));
-    max-width:444px;
-    margin:0 auto;
+    left:0;
+    right:0;
+    bottom:0;
     z-index:29;
+    /* Extends the element's own box straight down to the screen edge and
+       gives it the page's own background — a solid curtain behind the
+       rounded card below, so a watch scrolling underneath never peeks out
+       around its corners or past its top edge before the padding here
+       clears it. The bottom padding is the dock's own 14px + 57px + safe
+       area (see the .toast comment above for where 81px comes from), so the
+       curtain reaches exactly down to the bottom-tabs dock and no further. */
+    padding:0 8px calc(81px + var(--safe-bottom));
+    background:var(--bg);
   }
   #snapDock .quick-log-box{
-    margin-bottom:0;
-    background:var(--accent);
-    border-color:var(--accent);
+    max-width:444px;
+    margin:0 auto;
+    padding:12px 16px;
+    background:var(--hero-bg);
+    border-color:var(--hero-bg);
   }
   #snapDock .quick-log-box .hint{
     color:rgba(255,255,255,0.85);
@@ -975,7 +1028,7 @@
   @media (prefers-reduced-motion: reduce){
     .snap-flash::after{animation:none; opacity:0;}
   }
-  .quick-log-box .hint{margin-top:0;margin-bottom:12px;text-align:center;}
+  .quick-log-box .hint{margin-top:0;margin-bottom:10px;text-align:center;white-space:nowrap;}
   .quick-btns{
     display:grid;
     grid-template-columns:repeat(4,1fr);
@@ -986,7 +1039,7 @@
     border:1px solid var(--line);
     color:var(--accent);
     border-radius:16px;
-    padding:16px 0;
+    padding:12px 0;
     font-family:'Inter',sans-serif;
     font-size:16px;
     font-weight:600;
@@ -1014,6 +1067,7 @@
        and red the rates use elsewhere — which also sets this frozen reading
        apart from the live white clocks around it. */
     color:var(--accent);
+    margin-top:-3px;
     margin-bottom:4px;
     /* Plays once when the panel appears — the timestamp snaps down onto the
        panel like a shutter closing on the moment it just froze. Ease-out
@@ -1039,8 +1093,8 @@
     text-align:center;
     font-size:11.5px;
     color:var(--grey);
-    padding-bottom:12px;
-    margin-bottom:12px;
+    padding-bottom:8px;
+    margin-bottom:8px;
     /* Separates the frozen reading from the fields below it — the panel
        reads as "here's what got captured" over "here's what to fill in",
        rather than one undifferentiated block. */
@@ -1328,6 +1382,20 @@
     display:flex;
     flex-direction:column;
     gap:12px;
+  }
+  /* The Data tab's own scroll region (see sizeDataWatchScroll in app.js) —
+     its height is set inline in JS, so only the scroll mechanics live here.
+     Scrolling this instead of the page keeps the big reference clock above
+     it fully expanded, since window scroll never moves. */
+  .data-watch-scroll{
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+  }
+  .data-watch-scroll::-webkit-scrollbar{
+    display:none;
   }
   .collection-add-btn{
     display:block;
@@ -1638,25 +1706,36 @@
   .data-watch-card.selected{
     border-color:var(--accent);
   }
+  /* While a snap is under way against another watch, the rest of the list
+     is inert — dimmed and unclickable — so it reads as unavailable rather
+     than just quietly ignoring taps. */
+  .data-watch-card.locked{
+    opacity:0.2;
+    pointer-events:none;
+  }
 
   /* Once a snap is under way, the selected watch's card + its pop-up panel
      wrap as one connected, blue-stroked block (see buildDataWatchGroupHtml
      in app.js) — the border lives on the group, not the card, so the shared
      edge between the two reads as one continuous shape instead of two
-     stacked boxes. */
+     stacked boxes. The rounding on the group's own outer corners is drawn
+     by the card and panel themselves (top/bottom respectively) rather than
+     an overflow:hidden clip on the group — a clip there also cut off the
+     Position/Wear/Time dropdowns inside the panel, which need to overflow
+     past its edges to be usable. */
   .data-watch-group{
     position:relative;
     border:1.5px solid var(--accent);
     border-radius:18px;
-    overflow:hidden;
   }
   .data-watch-card.connected{
     border:none;
-    border-radius:0;
+    border-radius:18px 18px 0 0;
   }
   .data-watch-snap-panel{
     border-top:1px solid var(--line);
-    padding:14px;
+    border-radius:0 0 18px 18px;
+    padding:8px 14px 14px;
     background:var(--surface);
   }
   .data-watch-snap-panel .quick-log-box{
@@ -1835,7 +1914,6 @@
      actually doesn't fit. */
   @media (max-width:480px){
     .app{padding-top:calc(var(--safe-top) + 5px);}
-    .app-title{margin-top:3px;margin-bottom:3px;}
     .signout-btn{margin-top:3px;}
     #stickyHeader{padding-top:5px;}
   }

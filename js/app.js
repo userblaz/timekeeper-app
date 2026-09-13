@@ -5,6 +5,7 @@
 let selectedOffsetIdx = null;
 let selectedDriftIdx = null;
 let quickCaptured = null;
+let quickMinuteValue = null;
 let manualMode = false;
 let clockTimer = null;
 let lastExportAt = null;
@@ -144,6 +145,12 @@ function render(){
   const root = document.getElementById('root');
   if(!loaded){ root.innerHTML = 'Loading…'; return; }
 
+  // The Snap tab's watch list scrolls in its own region (see
+  // sizeDataWatchScroll) so the reference clock stays put — the page itself
+  // must not also scroll there, or a touch can land on either scroll area
+  // ambiguously. Every other tab keeps the normal whole-page scroll.
+  document.body.classList.toggle('no-page-scroll', activeTab === 'data');
+
   // Capture scroll position before rebuilding — but if the user was already
   // pinned to the right edge (viewing the newest point), keep it null so it
   // re-pins to the new right edge below, rather than freezing at the old
@@ -181,11 +188,9 @@ function render(){
     if(activeTab === 'data' && watch){
       snapDockEl.innerHTML = buildSnapTriggerHtml();
       snapDockEl.style.display = '';
-      root.style.paddingBottom = (snapDockEl.offsetHeight + 24) + 'px';
     } else {
       snapDockEl.innerHTML = '';
       snapDockEl.style.display = 'none';
-      root.style.paddingBottom = '';
     }
   }
 
@@ -240,6 +245,7 @@ function render(){
   if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
 
   root.innerHTML = buildDataWatchListHtml();
+  sizeDataWatchScroll();
 
   attachHandlers(watch);
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
@@ -253,7 +259,7 @@ function render(){
 // the group's border instead (see buildDataWatchGroupHtml). `selected` is
 // the plain case — this watch is the one a snap will apply to, but no
 // pop-up is open yet — so it just gets its own blue stroke.
-function buildDataWatchCardHtml(w, connected, selected){
+function buildDataWatchCardHtml(w, connected, selected, locked){
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
     : `<div class="collection-photo collection-photo-empty">＋</div>`;
@@ -267,7 +273,7 @@ function buildDataWatchCardHtml(w, connected, selected){
     : '';
   const stateClass = connected ? ' connected' : selected ? ' selected' : '';
   return `
-    <div class="collection-card data-watch-card${stateClass}" data-action="select" data-id="${w.id}">
+    <div class="collection-card data-watch-card${stateClass}${locked ? ' locked' : ''}" data-action="select" data-id="${w.id}">
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${rateHtml}</div>
@@ -312,38 +318,66 @@ function buildDataWatchListHtml(){
     `;
   }
   const popupOpen = !!quickCaptured || manualMode;
-  // While a snap's pop-up is open, the active watch always renders first —
-  // paired with resetting scroll to the very top (see scrollToPageTop),
-  // that's what lands it right under the header without having to measure
-  // and animate to its actual position in the list, which was never quite
-  // right once the clock had partly collapsed or the page was scrolled
-  // somewhere else first. The rest keep their normal relative order below
-  // it either way.
-  let watchesInOrder = state.watches;
-  if(popupOpen){
-    const active = state.watches.find(w => w.id === state.activeId);
-    if(active) watchesInOrder = [active, ...state.watches.filter(w => w.id !== state.activeId)];
-  }
-  const cardsHtml = watchesInOrder.map(w => {
+  // The list keeps its natural order even while a snap pop-up is open —
+  // watches above the active one scroll off above instead of jumping out
+  // of place, and the rest are still reachable below (see
+  // scrollWatchCardToTop, called right after this renders).
+  const cardsHtml = state.watches.map(w => {
     const isActive = w.id === state.activeId;
     if(isActive && popupOpen) return buildDataWatchGroupHtml(w);
-    return buildDataWatchCardHtml(w, false, isActive);
+    return buildDataWatchCardHtml(w, false, isActive, popupOpen);
   }).join('');
   return `
-    <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
-    <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
+    <div class="data-watch-scroll" id="dataWatchScroll">
+      <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
+      <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
+      <div id="dataWatchScrollSpacer"></div>
+    </div>
   `;
 }
+
+// The Data tab's own list scrolls internally instead of the page — the big
+// reference clock above it stays fully expanded rather than collapsing away
+// as the list is browsed, since window scroll never moves. Sized to fill
+// exactly what's left between the sticky header and the fixed snap dock at
+// the bottom; re-measured on every render and on resize since both of those
+// can change height (e.g. the dock hiding when a watch has no readings yet).
+function sizeDataWatchScroll(){
+  const scrollEl = document.getElementById('dataWatchScroll');
+  if(!scrollEl) return;
+  const header = document.getElementById('stickyHeader');
+  const dock = document.getElementById('snapDock');
+  const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+  const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
+  const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
+  scrollEl.style.height = height + 'px';
+
+  // A trailing spacer gives just enough extra scroll room to bring the
+  // snapped watch's card all the way to the top — without it, a short list
+  // (e.g. 2-3 watches) fits entirely inside the container with nothing to
+  // scroll, so paging the snapped card to the top silently no-ops. Sized to
+  // the exact minimum needed rather than a flat screen's worth, so scrolling
+  // still bottoms out with at least one watch and the add-watch button in
+  // view instead of running on into empty space.
+  const spacer = document.getElementById('dataWatchScrollSpacer');
+  if(!spacer) return;
+  const group = document.querySelector('.data-watch-group');
+  if(!group){ spacer.style.height = '0px'; return; }
+  spacer.style.height = '0px';
+  const naturalContentHeight = scrollEl.scrollHeight;
+  const groupOffsetTop = scrollEl.scrollTop + (group.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top);
+  const naturalMaxScroll = Math.max(0, naturalContentHeight - height);
+  const neededMaxScroll = Math.max(naturalMaxScroll, groupOffsetTop);
+  spacer.style.height = Math.max(0, height + neededMaxScroll - naturalContentHeight) + 'px';
+}
+window.addEventListener('resize', sizeDataWatchScroll);
 
 // Resets scroll to the very top over exactly `duration`ms — a fixed,
 // deterministic target rather than measuring a card's position and
 // animating to that, which was never quite right once the clock had partly
 // collapsed or the page started somewhere other than the top: the header's
 // height kept changing mid-scroll, and the target computed at the start
-// went stale by the end. Y=0 is always the same "page load" geometry,
-// which is also why buildDataWatchListHtml puts the active watch first
-// while its pop-up is open — that's what actually lands it under the
-// header, not this scroll on its own. No-ops if already there.
+// went stale by the end. No-ops if already there.
 function scrollToPageTop(duration){
   if(window.scrollY < 2) return;
   const startY = window.scrollY;
@@ -352,6 +386,33 @@ function scrollToPageTop(duration){
     const t = Math.min(1, (now - startTime) / duration);
     const eased = 1 - Math.pow(1 - t, 3);
     window.scrollTo(0, startY * (1 - eased));
+    if(t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// Scrolls the Data tab's own internal list (see sizeDataWatchScroll) so the
+// given watch's card — or its snap group, once the pop-up is open — lands at
+// the same spot the very first card sits at on a fresh load, leaving any
+// cards above it scrolled out of view and the rest still reachable further
+// down. The page itself never scrolls here, so the big reference clock above
+// the list stays fully expanded throughout. The list keeps its natural order
+// (see buildDataWatchListHtml) instead of jumping the active watch to the
+// front.
+function scrollWatchCardToTop(watchId, duration){
+  const container = document.getElementById('dataWatchScroll');
+  const el = document.querySelector(`.data-watch-group[data-id="${watchId}"]`) ||
+    document.querySelector(`.data-watch-card[data-id="${watchId}"]`);
+  if(!container || !el) return;
+  const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  const targetTop = Math.max(0, container.scrollTop + delta);
+  const startTop = container.scrollTop;
+  if(Math.abs(targetTop - startTop) < 2) return;
+  const startTime = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - startTime) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    container.scrollTop = startTop + (targetTop - startTop) * eased;
     if(t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -720,7 +781,7 @@ function updateHistoryScrollbar(){
 function buildSnapTriggerHtml(){
   return `
     <div class="quick-log-box">
-      <p class="hint">Watch your mechanical watch's second hand against the clock above. The instant it crosses a mark, tap it:</p>
+      <p class="hint">Snap when your second hand hits a mark:</p>
       <div class="quick-btns">
         <button type="button" class="quick-btn" data-action="quicksec" data-sec="0">:00</button>
         <button type="button" class="quick-btn" data-action="quicksec" data-sec="15">:15</button>
@@ -736,43 +797,56 @@ function buildSnapTriggerHtml(){
 // — the confirm form after a quick tap, or the manual-entry form. Only
 // meaningful while quickCaptured or manualMode is set (see
 // buildDataWatchGroupHtml, which is the only caller).
+// The full diff (in seconds) between the watch reading currently dialled in
+// — hour fixed to the phone's, minute from the stepper, second from the
+// tapped mark — and the phone's own time at capture. Recomputed live as the
+// minute stepper moves, so it always reflects what "Log" would actually
+// save, not just the accuracy of the tapped second mark.
+function computeQuickOffsetSeconds(){
+  if(!quickCaptured) return 0;
+  const c = quickCaptured.at;
+  const mm = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
+  const phoneSec = c.getHours()*3600 + c.getMinutes()*60 + c.getSeconds();
+  const watchSec = c.getHours()*3600 + mm*60 + quickCaptured.second;
+  let diff = watchSec - phoneSec;
+  while(diff > 43200) diff -= 86400;
+  while(diff <= -43200) diff += 86400;
+  return diff;
+}
+function formatQuickOffsetLabel(diff){
+  if(diff === 0) return 'spot on';
+  const sign = diff > 0 ? '+' : '-';
+  const abs = Math.abs(diff);
+  if(abs < 60) return `${sign}${abs}s`;
+  const mins = Math.floor(abs / 60);
+  const secs = abs % 60;
+  return secs === 0 ? `${sign}${mins}m` : `${sign}${mins}m ${secs}s`;
+}
 function buildSnapPopupHtml(){
   if(manualMode) return buildManualForm();
   if(!quickCaptured) return '';
 
   const c = quickCaptured.at;
-  const timeStr = pad2(c.getHours()) + ':' + pad2(c.getMinutes()) + ':' + pad2(quickCaptured.second);
-  // Seconds the watch is ahead of (+) or behind (-) true time, from the mark
-  // that was tapped against the phone's own seconds. Wrapped into ±30 so a
-  // watch two seconds fast reads as +2 rather than -58. The hour and minute
-  // fields below default to the phone's, so this is the whole of the reading
-  // unless they're overridden.
-  let aheadBy = quickCaptured.second - c.getSeconds();
-  while(aheadBy > 30) aheadBy -= 60;
-  while(aheadBy <= -30) aheadBy += 60;
-  // Seconds, not s/day — a rate needs two readings separated by time, and
-  // this is a single instant. The rate appears on the dial once it can be
-  // worked out.
-  const offsetLabel = aheadBy === 0 ? 'spot on' : `${aheadBy > 0 ? '+' : ''}${aheadBy}s`;
+  const mm = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
+  const aheadBy = computeQuickOffsetSeconds();
+  const offsetLabel = formatQuickOffsetLabel(aheadBy);
   return `
     <div class="quick-log-box">
-      <div class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${timeStr}</div>
-      <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
-      <div class="row2">
-        <div class="field"><label for="qH">Watch hour</label><input type="number" id="qH" min="0" max="23" placeholder="${pad2(c.getHours())}" /></div>
-        <div class="field"><label for="qM">Watch min</label><input type="number" id="qM" min="0" max="59" placeholder="${pad2(c.getMinutes())}" /></div>
+      <div class="confirm-time-label">Dial in your watch's minutes</div>
+      <div class="confirm-time-row">
+        <button type="button" class="zoom-btn" data-action="minutestep" data-dir="-1">−</button>
+        <div id="qConfirmTime" class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${pad2(c.getHours())}:<span id="qMinuteDisplay" class="confirm-time-minute">${pad2(mm)}</span>:${pad2(quickCaptured.second)}</div>
+        <button type="button" class="zoom-btn" data-action="minutestep" data-dir="1">+</button>
       </div>
-      <div class="row3" style="margin-top:12px;">
+      <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span id="qOffsetLabel" class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
+      <div class="row3">
         <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
         <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
         <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
       </div>
-      <div class="note-input-wrap" style="margin-top:12px;">
-        <svg class="note-input-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-        <input type="text" id="qNote" class="note-input" placeholder="Add note (optional)" />
-      </div>
+      <input type="text" id="qNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
       <div class="row2" style="margin-top:12px;">
-        <button type="button" class="btn-secondary" data-action="quickcancel">Cancel</button>
+        <button type="button" class="btn-secondary" data-action="quickcancel" style="flex:1">Cancel</button>
         <button type="button" class="btn-primary" data-action="quickconfirm" style="flex:1">Log</button>
       </div>
     </div>
@@ -813,6 +887,10 @@ function buildManualForm(){
 function attachHandlers(watch){
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => {
+      // A snap in progress is scoped to one watch — switching away mid-snap
+      // would strand the open pop-up against the wrong card, so selecting a
+      // different watch is blocked until it's logged or cancelled.
+      if(quickCaptured || manualMode) return;
       if(tgListening) tgAbort();
       state.activeId = el.dataset.id; selectedOffsetIdx=null; selectedDriftIdx=null; offsetScrollLeft=null; driftScrollLeft=null; editingReadingId=null;
       render();
@@ -829,7 +907,9 @@ function attachHandlers(watch){
     btn.onclick = (e) => { e.stopPropagation(); toggleWearDay(btn.dataset.id, todayStr()); };
   });
   // Jumps straight to this watch's Collection detail page — the same state
-  // a tap on its Collection-list card would leave things in.
+  // a tap on its Collection-list card would leave things in, except its
+  // back button returns here to Snap instead of the Collection list (see
+  // collectionDetailReturnTab, consumed in collection.js's back button).
   document.querySelectorAll('[data-action="viewwatchdetail"]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -837,7 +917,9 @@ function attachHandlers(watch){
       editingCollectionId = null;
       collectionPhotoFile = null;
       collectionDetailJustOpened = true;
-      wearCalendarMonthIndex = new Date().getMonth();
+      collectionDetailReturnTab = 'data';
+      wearCalendarYear = new Date().getFullYear();
+      wearCalendarMonth = new Date().getMonth();
       activeTab = 'collection';
       syncBottomTabs();
       render();
@@ -872,13 +954,13 @@ function attachHandlers(watch){
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
-    manualMode = true; quickCaptured = null;
+    manualMode = true; quickCaptured = null; quickMinuteValue = null;
     render();
-    scrollToPageTop(250);
+    if(watch) scrollWatchCardToTop(watch.id, 125);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
-  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; render(); };
+  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickMinuteValue = null; render(); };
 
   if(watch) attachWatchStatsHandlers(watch);
 
@@ -898,27 +980,72 @@ function attachHandlers(watch){
   document.querySelectorAll('[data-action="quicksec"]').forEach(el=>{
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
+      quickMinuteValue = quickCaptured.at.getMinutes();
       playShutterSound();
       render();
-      scrollToPageTop(250);
+      if(watch) scrollWatchCardToTop(watch.id, 125);
     };
   });
 
   const quickCancelBtn = document.querySelector('[data-action="quickcancel"]');
   if(quickCancelBtn) quickCancelBtn.onclick = () => {
     quickCaptured = null;
+    quickMinuteValue = null;
     render();
   };
+
+  // Press-and-hold on the minute stepper: one step per tap, then after
+  // ~800ms of holding it switches to 5-per-tick so a big correction
+  // doesn't need dozens of taps. Ticks mutate the displayed number
+  // directly rather than calling render(), since a full re-render on
+  // every 150ms tick would be wasteful and can drop pointer capture.
+  document.querySelectorAll('[data-action="minutestep"]').forEach(el=>{
+    let holdTimeout = null;
+    let holdInterval = null;
+    const dir = Number(el.dataset.dir);
+    const step = (amount) => {
+      if(quickMinuteValue === null) return;
+      quickMinuteValue = ((quickMinuteValue + amount) % 60 + 60) % 60;
+      const display = document.getElementById('qMinuteDisplay');
+      if(display) display.textContent = pad2(quickMinuteValue);
+      const aheadBy = computeQuickOffsetSeconds();
+      const side = aheadBy >= 0 ? 'ahead' : 'behind';
+      const timeEl = document.getElementById('qConfirmTime');
+      if(timeEl){
+        timeEl.classList.remove('ahead', 'behind');
+        timeEl.classList.add(side);
+      }
+      const offsetEl = document.getElementById('qOffsetLabel');
+      if(offsetEl){
+        offsetEl.classList.remove('ahead', 'behind');
+        offsetEl.classList.add(side);
+        offsetEl.textContent = formatQuickOffsetLabel(aheadBy);
+      }
+    };
+    const clearHold = () => {
+      if(holdTimeout) clearTimeout(holdTimeout);
+      if(holdInterval) clearInterval(holdInterval);
+      holdTimeout = null; holdInterval = null;
+    };
+    el.onpointerdown = (e) => {
+      e.preventDefault();
+      step(dir);
+      holdTimeout = setTimeout(() => {
+        holdInterval = setInterval(() => step(dir * 5), 150);
+      }, 800);
+    };
+    el.onpointerup = clearHold;
+    el.onpointerleave = clearHold;
+    el.onpointercancel = clearHold;
+  });
 
   const quickConfirmBtn = document.querySelector('[data-action="quickconfirm"]');
   if(quickConfirmBtn) quickConfirmBtn.onclick = () => {
     if(!quickCaptured) return;
     const c = quickCaptured.at;
-    const qH = document.getElementById('qH');
-    const qM = document.getElementById('qM');
     const qNote = document.getElementById('qNote');
-    const h = qH.value === '' ? c.getHours() : Number(qH.value);
-    const m = qM.value === '' ? c.getMinutes() : Number(qM.value);
+    const h = c.getHours();
+    const m = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
     const note = qNote ? qNote.value : '';
     const phoneSec = c.getHours()*3600 + c.getMinutes()*60 + c.getSeconds();
     const watchSec = h*3600 + m*60 + quickCaptured.second;
@@ -928,6 +1055,7 @@ function attachHandlers(watch){
     const date = c.toISOString().slice(0,10);
     const conditions = readConditionInputs('q');
     quickCaptured = null;
+    quickMinuteValue = null;
     addReading(watch.id, date, diff, note, conditions);
   };
 }
