@@ -684,15 +684,18 @@ function scrollWatchCardToTop(watchId, duration){
   const el = document.querySelector(`.data-watch-group[data-id="${watchId}"]`) ||
     document.querySelector(`.data-watch-card[data-id="${watchId}"]`);
   if(!container || !el) return;
-  // Already the first card in the list (e.g. the only watch there is) — with
-  // nothing above it to scroll out of the way, it's already sitting at "the
-  // same spot the very first card sits at on a fresh load" by definition.
-  // Scrolling it anyway would only eat the list's own small top margin (see
-  // the inline margin-top in buildDataWatchListHtml), a scroll position the
-  // container can't hold once the pop-up closes and that margin stops
-  // counting as spare room — producing a pointless couple-pixel settle down,
-  // then a bounce back up, with nothing to actually show for it.
-  if(!el.previousElementSibling) return;
+  // The first card in the list, still sitting at the untouched top of the
+  // scroll region (scrollTop 0) — that's already "the same spot the very
+  // first card sits at on a fresh load" by definition, nothing above it to
+  // scroll out of the way. Scrolling it anyway would only eat the list's own
+  // small top margin (see the inline margin-top in buildDataWatchListHtml),
+  // a scroll position the container can't hold once the pop-up closes and
+  // that margin stops counting as spare room — a pointless couple-pixel
+  // settle down, then a bounce back up, with nothing to show for it. But if
+  // the list has actually been scrolled away from the top — the first watch
+  // scrolled out of view, then snapped — it still needs to scroll back like
+  // any other card would, so this only skips the genuinely-already-there case.
+  if(!el.previousElementSibling && container.scrollTop === 0) return;
   const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
   const targetTop = Math.max(0, container.scrollTop + delta);
   const startTop = container.scrollTop;
