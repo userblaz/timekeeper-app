@@ -605,22 +605,39 @@
     font-size:11.5px;
     color:var(--grey);
   }
-  /* The catalog search field's label and its "add manually instead" link
-     share one line instead of the link getting its own row below — the
-     label stays put, the link is free to shrink or wrap onto a second
-     line on a narrow phone before it'd ever push the label off to fit. */
+  /* The catalog search field's back button, its label, and the "add
+     manually" link all share this one line instead of a separate Cancel
+     row below and the link getting its own row of its own — the button
+     stays a fixed circle, the label sits right after it, and the link is
+     pushed to the far right by its own auto margin rather than splitting
+     the leftover space into two even gaps (which is what justify-content:
+     space-between would do with three items here). */
   .field-label-row{
     display:flex;
-    align-items:baseline;
-    justify-content:space-between;
+    align-items:center;
     gap:8px;
+    margin-bottom:8px;
   }
-  .field-label-row label{flex-shrink:0;}
-  .manual-link-inline{
-    display:inline;
-    margin:0;
-    text-align:right;
+  .field-label-row .zoom-btn{flex-shrink:0;}
+  /* A small pill button rather than plain underlined link text — reads as
+     an equal third action alongside the back button and the label, not a
+     lesser thing tucked beside them. display:inline-flex (not the plain
+     inline .manual-link normally uses) is what lets .field-label-row's own
+     align-items:center actually center it against the other two instead of
+     sitting on the text baseline, which is what read as "lower" before. */
+  .manual-link.manual-link-inline{
+    display:inline-flex;
+    align-items:center;
+    margin:0 0 0 auto;
+    padding:6px 12px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--surface-2);
+    color:var(--ink);
+    text-decoration:none;
+    flex-shrink:0;
   }
+  .manual-link.manual-link-inline:active{background:rgba(255,255,255,0.06);}
   /* Sits right after a locked field's label — never its own line, so a
      locked field reads as "the normal field, with a small note" rather
      than a visually distinct thing to learn the meaning of. */
