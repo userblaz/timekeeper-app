@@ -414,6 +414,40 @@ function sizeDataWatchScroll(){
 }
 window.addEventListener('resize', sizeDataWatchScroll);
 
+// The on-screen keyboard shrinks the visual viewport without the page
+// itself reflowing (especially on iOS Safari), so a focused field low in
+// the Snap tab's confirm popup — the note field, most often — can end up
+// hidden behind it with nothing scrolling it back into view. Whenever the
+// visual viewport resizes (the keyboard opening, closing, or changing
+// height), nudge the list's own scroll region just enough to keep whatever
+// is currently focused in it above the keyboard.
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', () => {
+    const container = document.getElementById('dataWatchScroll');
+    if(!container) return;
+    const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
+    const active = document.activeElement;
+    const focusedInList = active && container.contains(active);
+    if(keyboardHeight < 40 || !focusedInList){
+      // Keyboard closed (or nothing in the list is focused) — drop back to
+      // the normal, capped scroll room (see sizeDataWatchScroll) instead of
+      // leaving the temporary keyboard-clearance spacer below behind.
+      sizeDataWatchScroll();
+      return;
+    }
+    // The list's own scroll room is normally capped to just what's needed
+    // to bring a snapped watch to the top (see sizeDataWatchScroll) — with
+    // only one or two watches, that can be nowhere near enough to also
+    // scroll a low field up above the keyboard, so stretch it here for as
+    // long as the keyboard is actually up.
+    const spacer = document.getElementById('dataWatchScrollSpacer');
+    if(spacer) spacer.style.height = Math.max(parseFloat(spacer.style.height) || 0, keyboardHeight) + 'px';
+    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
+    const overflow = active.getBoundingClientRect().bottom - visibleBottom;
+    if(overflow > 0) container.scrollTop += overflow + 12;
+  });
+}
+
 // Resets scroll to the very top over exactly `duration`ms — a fixed,
 // deterministic target rather than measuring a card's position and
 // animating to that, which was never quite right once the clock had partly
