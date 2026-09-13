@@ -1057,6 +1057,17 @@
     opacity:0;
     pointer-events:none;
   }
+  /* Belt-and-suspenders for the same thing, driven purely by native focus
+     state rather than any JS event (see the class above, toggled in
+     app.js) — if a focus/blur/visualViewport listener ever misses its
+     moment on some browser, this still gets it right on its own, and
+     un-hides itself the instant nothing inside the list has focus with no
+     JS involved at all. #snapDock lives as a sibling of .app, not inside it
+     (see index.html), so this has to reach it via a shared ancestor. */
+  body:has(#dataWatchScroll input:focus) #snapDock{
+    opacity:0;
+    pointer-events:none;
+  }
   #snapDock .quick-log-box{
     max-width:444px;
     margin:0 auto;
