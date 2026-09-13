@@ -1092,11 +1092,18 @@ function attachHandlers(watch){
   // Tapping a field in the time readout (hour/minute/second) switches which
   // one the +/- stepper below acts on — it's the only visible state here,
   // shown by which field is pulsing (see .confirm-time-field-selected).
+  // Toggled directly on the existing elements rather than through render():
+  // a full re-render recreates the confirm-time element and the group's
+  // one-shot snap-flash overlay, retriggering both of their entrance
+  // animations on every tap — a jarring flash for what should be a quiet
+  // selection change.
   document.querySelectorAll('[data-action="selecttimefield"]').forEach(el=>{
     el.onclick = (e) => {
       e.stopPropagation();
       quickSelectedField = el.dataset.field;
-      render();
+      document.querySelectorAll('.confirm-time-field').forEach(f => {
+        f.classList.toggle('confirm-time-field-selected', f.dataset.field === quickSelectedField);
+      });
     };
   });
 
