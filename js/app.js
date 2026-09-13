@@ -133,6 +133,19 @@ function positionEscapedMenu(menu, toggle){
   }
 }
 
+// A portaled menu's position is only ever recomputed in response to a
+// scroll/resize *event* — on iOS that fires well behind the compositor's own
+// buttery-smooth momentum scrolling of the list underneath it, so the menu
+// visibly lags and then snaps to catch up, reading as a wobble against the
+// otherwise-still trigger and background. Rather than trying to keep pace
+// with that, just stop the list from scrolling at all for as long as its
+// menu is open — the trigger can't move, so there's nothing to chase and
+// nothing to wobble.
+function setListScrollFrozen(frozen){
+  const container = document.getElementById('dataWatchScroll');
+  if(container) container.style.overflowY = frozen ? 'hidden' : '';
+}
+
 function stopTrackingEscapedMenu(){
   if(!escapedMenuTracker) return;
   // `true` here is capture, not bubble — scroll events don't bubble, but a
@@ -153,10 +166,12 @@ function stopTrackingEscapedMenu(){
 // would orphan that menu there forever, invisible but never cleaned up.
 function closeSelectMenu(menu){
   const wrap = findSelectWrap(menu);
+  const wasEscaped = menu.classList.contains('select-menu-escaped');
   menu.hidden = true;
-  if(menu.classList.contains('select-menu-escaped') && wrap){
+  if(wasEscaped && wrap){
     wrap.appendChild(menu);
   }
+  if(wasEscaped) setListScrollFrozen(false);
   menu.classList.remove('select-menu-escaped', 'drop-up');
   menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
   if(wrap){
@@ -207,6 +222,7 @@ document.addEventListener('click', (e) => {
     if(wrap.closest('.data-watch-scroll')){
       document.body.appendChild(menu);
       menu.classList.add('select-menu-escaped');
+      setListScrollFrozen(true);
       positionEscapedMenu(menu, toggle);
       escapedMenuTracker = () => positionEscapedMenu(menu, toggle);
       document.addEventListener('scroll', escapedMenuTracker, true);
