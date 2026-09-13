@@ -811,7 +811,7 @@
   .select-menu-compact{
     max-height:none;
     overflow-y:visible;
-    padding:4px 6px;
+    padding:3px 4px;
     top:100%;
     /* The trigger's own bottom border is the seam line in the normal
        (opens-down) case — dropping the menu's matching top edge here is
@@ -860,11 +860,12 @@
     color:var(--ink);
     font-size:13px;
   }
-  /* ~44px total row height (13px text, line-height 1.2, plus this padding)
-     — tight for a small phone viewport but not below the usual accessible
-     tap-target floor. */
+  /* ~36px total row height (13px text, line-height 1.2, plus this padding)
+     — noticeably tighter than the plain .select-option's ~35px-with-loose-
+     feel default, for a list that's meant to look dense on a small phone
+     viewport rather than like a set of full-size buttons. */
   .select-option-compact{
-    padding:14px 12px;
+    padding:8px 10px;
     line-height:1.2;
   }
   .select-option.selected{
