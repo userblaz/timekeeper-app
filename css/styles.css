@@ -1037,7 +1037,12 @@
   @media (prefers-reduced-motion: reduce){
     .snap-flash::after{animation:none; opacity:0;}
   }
-  .quick-log-box .hint{margin-top:0;margin-bottom:10px;text-align:center;white-space:nowrap;}
+  /* Scoped to #snapDock specifically — the trigger dock's hint is a short,
+     deliberately one-line sentence, but this same .quick-log-box class also
+     wraps much longer hint text elsewhere (the Timegrapher panel's), which
+     a bare `.quick-log-box .hint` rule here previously forced onto one
+     endless unwrapped line, blowing out the whole page's width. */
+  #snapDock .quick-log-box .hint{margin-top:0;margin-bottom:10px;text-align:center;white-space:nowrap;}
   .quick-btns{
     display:grid;
     grid-template-columns:repeat(4,1fr);
