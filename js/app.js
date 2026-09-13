@@ -940,7 +940,7 @@ function attachHandlers(watch){
   if(toggleBtn) toggleBtn.onclick = () => {
     manualMode = true; quickCaptured = null; quickMinuteValue = null;
     render();
-    if(watch) scrollWatchCardToTop(watch.id, 250);
+    if(watch) scrollWatchCardToTop(watch.id, 125);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
@@ -967,7 +967,7 @@ function attachHandlers(watch){
       quickMinuteValue = quickCaptured.at.getMinutes();
       playShutterSound();
       render();
-      if(watch) scrollWatchCardToTop(watch.id, 250);
+      if(watch) scrollWatchCardToTop(watch.id, 125);
     };
   });
 
