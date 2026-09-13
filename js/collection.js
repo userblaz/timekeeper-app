@@ -132,7 +132,7 @@ function buildPowerReserveHtml(w){
   // The wind button is always there, so the row always says something —
   // otherwise the button looks like it does nothing.
   if(!w.powerReserveHours){
-    return `<div class="reserve-row"><span class="reserve-label reserve-hint">set a power reserve to track it</span></div>`;
+    return `<div class="reserve-row"><span class="reserve-label reserve-hint">set power reserve</span></div>`;
   }
   const elapsed = powerReserveElapsed(w);
   if(elapsed === null){
