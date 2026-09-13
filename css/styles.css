@@ -841,6 +841,20 @@
     font-weight:600;
   }
   .select-option:active{background:rgba(255,255,255,0.06);}
+  .multi-select-option{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:8px 6px;
+    font-size:13px;
+    color:var(--ink);
+  }
+  .multi-select-option input[type="checkbox"]{
+    width:16px;
+    height:16px;
+    accent-color:var(--accent);
+    flex-shrink:0;
+  }
   .condition-select:focus{
     outline:2px solid var(--accent);
     outline-offset:1px;
@@ -1882,11 +1896,10 @@
      they modify (rather than evenly with everything else in the card)
      reads as "search + its options" instead of three unrelated rows. */
   .watch-catalog-filters{
-    gap:8px;
+    gap:6px;
     margin-top:-4px;
-    flex-wrap:wrap;
   }
-  .watch-catalog-filters .select-wrap{flex:1 1 120px;min-width:0;}
+  .watch-catalog-filters .select-wrap{flex:1 1 0;min-width:0;}
   /* Same boxed, scrollable treatment as .cert-checkbox-list — a bordered
      list living inside the card rather than the card's own edge, since
      unlike everything else in this form it can run to more rows than fit. */
