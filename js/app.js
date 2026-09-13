@@ -994,7 +994,8 @@ function attachHandlers(watch){
       collectionPhotoFile = null;
       collectionDetailJustOpened = true;
       collectionDetailReturnTab = 'data';
-      wearCalendarMonthIndex = new Date().getMonth();
+      wearCalendarYear = new Date().getFullYear();
+      wearCalendarMonth = new Date().getMonth();
       activeTab = 'collection';
       syncBottomTabs();
       render();
