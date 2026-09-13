@@ -540,6 +540,18 @@ if(window.visualViewport){
 // handling above. Guarded on the app screen actually being visible so
 // this never fights showApp/showAuthScreen's own use of the same element
 // on the sign-in screen.
+//
+// The reference clock at the top gets the same treatment, but only while
+// the Collection tab's add-watch search is open — it's the biggest single
+// thing eating into the room a phone's keyboard leaves for search results,
+// bigger than the bottom bar. Scoped to just that view (rather than
+// applied globally like the bottom bar above) so it can't interact with
+// whatever made the Snap tab's own force-collapse behavior get switched
+// off (see CLOCK_FORCE_COLLAPSE_ENABLED in clock.js) — this is a separate,
+// narrower mechanism, not a reuse of that one. Reappears the moment the
+// keyboard closes, whether that's from tapping outside the field or
+// switching away from search mode, since both just mean this same resize
+// (or the tab/mode change re-running this check) sees the keyboard gone.
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', () => {
     const bar = document.getElementById('bottomTabs');
@@ -548,7 +560,14 @@ if(window.visualViewport){
     const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
     const active = document.activeElement;
     const isTextInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
-    bar.style.display = (keyboardHeight > 40 && isTextInput) ? 'none' : '';
+    const keyboardOpen = keyboardHeight > 40 && isTextInput;
+    bar.style.display = keyboardOpen ? 'none' : '';
+
+    const clockBox = document.getElementById('masterClockBox');
+    if(clockBox){
+      const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
+      clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
+    }
   });
 }
 
