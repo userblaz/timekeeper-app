@@ -1875,13 +1875,15 @@
     display:flex;
     flex-direction:column;
     align-items:center;
+    justify-content:center;
+    align-self:stretch;
+    gap:3px;
     text-align:center;
   }
   .data-watch-card-body .collection-card-name{
     justify-content:flex-start;
     text-align:left;
     width:100%;
-    margin-top:5px;
   }
   /* Left-aligned, not centered like the name — it lines up with the reserve
      bar's own left edge just below it, and matches the name's size instead
@@ -1889,7 +1891,6 @@
   .data-watch-card-rate{
     width:100%;
     text-align:left;
-    margin-top:3px;
   }
   .data-watch-card-body .card-rate{
     margin-left:0;
@@ -1898,7 +1899,6 @@
   .data-watch-card-body .reserve-row{
     width:100%;
     justify-content:center;
-    margin-top:1px;
   }
   .data-watch-card-body .reserve-hint{
     width:100%;
