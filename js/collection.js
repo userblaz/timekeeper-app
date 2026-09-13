@@ -1173,7 +1173,14 @@ function attachCollectionHandlers(){
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
   if(startEditBtn) startEditBtn.onclick = () => { editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = ''; render(); };
   const cancelBtn = document.querySelector('[data-action="cancelcollection"]');
-  if(cancelBtn) cancelBtn.onclick = () => { editingCollectionId = null; collectionPhotoFile = null; render(); };
+  if(cancelBtn) cancelBtn.onclick = () => {
+    editingCollectionId = null; collectionPhotoFile = null; render();
+    // Same fix as opening a watch from a scrolled-down list (see
+    // viewcollection above) — cancelling out of the edit form drops back
+    // to the detail page, which should land at its own top too, not
+    // wherever the edit form happened to be scrolled to.
+    scrollToPageTop(300);
+  };
   const saveBtn = document.querySelector('[data-action="savecollection"]');
   if(saveBtn) saveBtn.onclick = () => saveCollectionEdit(saveBtn.dataset.id);
   document.querySelectorAll('[data-action="markwound"]').forEach(btn => {
