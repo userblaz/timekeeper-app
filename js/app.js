@@ -72,7 +72,7 @@ function buildSelect(id, options, selectedValue, compact){
   return `
     <div class="select-wrap">
       <input type="hidden" id="${id}" value="${escapeHtml(current)}" />
-      <button type="button" class="condition-select${current ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+      <button type="button" class="condition-select${current ? '' : ' placeholder'}" data-action="toggleselect" data-placeholder="${escapeHtml(options[0][1])}" aria-expanded="false">
         <span class="select-value">${escapeHtml(currentLabel)}</span>
         <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
@@ -184,6 +184,28 @@ function closeAllSelects(except){
 
 // Delegated once at load so it survives every re-render without rewiring.
 document.addEventListener('click', (e) => {
+  // Tapping the already-selected value itself acts as a clear button — the
+  // dropdown otherwise has no way to get back to "no selection" once
+  // something's been picked. Only fires when there's a real value to clear;
+  // with nothing selected the button just shows its placeholder text, and
+  // tapping that should open the menu as usual, not "clear" a non-selection.
+  const valueText = e.target.closest('.select-value');
+  const valueToggle = valueText && valueText.closest('[data-action="toggleselect"]');
+  if(valueToggle && !valueToggle.classList.contains('placeholder')){
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = valueToggle.closest('.select-wrap');
+    const hiddenInput = wrap.querySelector('input[type="hidden"]');
+    const menu = findMenuForWrap(wrap);
+    hiddenInput.value = '';
+    valueText.textContent = valueToggle.dataset.placeholder || '';
+    valueToggle.classList.add('placeholder');
+    if(menu) menu.querySelectorAll('.select-option').forEach(o => o.classList.remove('selected'));
+    stopTrackingEscapedMenu();
+    closeAllSelects(null);
+    return;
+  }
+
   const toggle = e.target.closest('[data-action="toggleselect"]');
   if(toggle){
     e.preventDefault();
