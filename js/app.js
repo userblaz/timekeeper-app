@@ -5,7 +5,13 @@
 let selectedOffsetIdx = null;
 let selectedDriftIdx = null;
 let quickCaptured = null;
+let quickHourValue = null;
 let quickMinuteValue = null;
+let quickSecondValue = null;
+// Which of the three the +/- stepper currently acts on — tapping a field in
+// the confirm popup's time readout (see buildSnapPopupHtml) switches this,
+// and only that field pulses.
+let quickSelectedField = 'minute';
 let manualMode = false;
 let clockTimer = null;
 let lastExportAt = null;
@@ -874,16 +880,19 @@ function buildSnapTriggerHtml(){
 // meaningful while quickCaptured or manualMode is set (see
 // buildDataWatchGroupHtml, which is the only caller).
 // The full diff (in seconds) between the watch reading currently dialled in
-// — hour fixed to the phone's, minute from the stepper, second from the
-// tapped mark — and the phone's own time at capture. Recomputed live as the
-// minute stepper moves, so it always reflects what "Log" would actually
-// save, not just the accuracy of the tapped second mark.
+// — hour, minute and second each independently adjustable via the stepper
+// (see quickSelectedField), defaulting to the tapped mark's captured values
+// — and the phone's own time at capture. Recomputed live as the stepper
+// moves, so it always reflects what "Log" would actually save, not just the
+// accuracy of the tapped second mark.
 function computeQuickOffsetSeconds(){
   if(!quickCaptured) return 0;
   const c = quickCaptured.at;
+  const h = quickHourValue === null ? c.getHours() : quickHourValue;
   const mm = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
+  const ss = quickSecondValue === null ? quickCaptured.second : quickSecondValue;
   const phoneSec = c.getHours()*3600 + c.getMinutes()*60 + c.getSeconds();
-  const watchSec = c.getHours()*3600 + mm*60 + quickCaptured.second;
+  const watchSec = h*3600 + mm*60 + ss;
   let diff = watchSec - phoneSec;
   while(diff > 43200) diff -= 86400;
   while(diff <= -43200) diff += 86400;
@@ -903,16 +912,19 @@ function buildSnapPopupHtml(){
   if(!quickCaptured) return '';
 
   const c = quickCaptured.at;
+  const h = quickHourValue === null ? c.getHours() : quickHourValue;
   const mm = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
+  const ss = quickSecondValue === null ? quickCaptured.second : quickSecondValue;
   const aheadBy = computeQuickOffsetSeconds();
   const offsetLabel = formatQuickOffsetLabel(aheadBy);
+  const fieldHtml = (field, id, value) => `<span id="${id}" class="confirm-time-field${quickSelectedField === field ? ' confirm-time-field-selected' : ''}" data-action="selecttimefield" data-field="${field}">${pad2(value)}</span>`;
   return `
     <div class="quick-log-box">
-      <div class="confirm-time-label">Dial in your watch's minutes</div>
+      <div class="confirm-time-label">Adjust your watch's time</div>
       <div class="confirm-time-row">
-        <button type="button" class="zoom-btn" data-action="minutestep" data-dir="-1">−</button>
-        <div id="qConfirmTime" class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${pad2(c.getHours())}:<span id="qMinuteDisplay" class="confirm-time-minute">${pad2(mm)}</span>:${pad2(quickCaptured.second)}</div>
-        <button type="button" class="zoom-btn" data-action="minutestep" data-dir="1">+</button>
+        <button type="button" class="zoom-btn" data-action="timestep" data-dir="-1">−</button>
+        <div id="qConfirmTime" class="confirm-time ${aheadBy >= 0 ? 'ahead' : 'behind'}">${fieldHtml('hour', 'qHourDisplay', h)}:${fieldHtml('minute', 'qMinuteDisplay', mm)}:${fieldHtml('second', 'qSecondDisplay', ss)}</div>
+        <button type="button" class="zoom-btn" data-action="timestep" data-dir="1">+</button>
       </div>
       <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span id="qOffsetLabel" class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
       <div class="row3">
@@ -1031,13 +1043,13 @@ function attachHandlers(watch){
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
-    manualMode = true; quickCaptured = null; quickMinuteValue = null;
+    manualMode = true; quickCaptured = null; quickHourValue = null; quickMinuteValue = null; quickSecondValue = null; quickSelectedField = 'minute';
     render();
     if(watch) scrollWatchCardToTop(watch.id, 125);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
-  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickMinuteValue = null; render(); };
+  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickHourValue = null; quickMinuteValue = null; quickSecondValue = null; quickSelectedField = 'minute'; render(); };
 
   if(watch) attachWatchStatsHandlers(watch);
 
@@ -1057,7 +1069,10 @@ function attachHandlers(watch){
   document.querySelectorAll('[data-action="quicksec"]').forEach(el=>{
     el.onclick = () => {
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
+      quickHourValue = quickCaptured.at.getHours();
       quickMinuteValue = quickCaptured.at.getMinutes();
+      quickSecondValue = quickCaptured.second;
+      quickSelectedField = 'minute';
       playShutterSound();
       render();
       if(watch) scrollWatchCardToTop(watch.id, 125);
@@ -1067,24 +1082,48 @@ function attachHandlers(watch){
   const quickCancelBtn = document.querySelector('[data-action="quickcancel"]');
   if(quickCancelBtn) quickCancelBtn.onclick = () => {
     quickCaptured = null;
+    quickHourValue = null;
     quickMinuteValue = null;
+    quickSecondValue = null;
+    quickSelectedField = 'minute';
     render();
   };
 
-  // Press-and-hold on the minute stepper: one step per tap, then after
-  // ~800ms of holding it switches to 5-per-tick so a big correction
-  // doesn't need dozens of taps. Ticks mutate the displayed number
-  // directly rather than calling render(), since a full re-render on
-  // every 150ms tick would be wasteful and can drop pointer capture.
-  document.querySelectorAll('[data-action="minutestep"]').forEach(el=>{
+  // Tapping a field in the time readout (hour/minute/second) switches which
+  // one the +/- stepper below acts on — it's the only visible state here,
+  // shown by which field is pulsing (see .confirm-time-field-selected).
+  document.querySelectorAll('[data-action="selecttimefield"]').forEach(el=>{
+    el.onclick = (e) => {
+      e.stopPropagation();
+      quickSelectedField = el.dataset.field;
+      render();
+    };
+  });
+
+  // Press-and-hold on the stepper: one step per tap, then after ~800ms of
+  // holding it switches to 5-per-tick so a big correction doesn't need
+  // dozens of taps. Ticks mutate the displayed number directly rather than
+  // calling render(), since a full re-render on every 150ms tick would be
+  // wasteful and can drop pointer capture.
+  document.querySelectorAll('[data-action="timestep"]').forEach(el=>{
     let holdTimeout = null;
     let holdInterval = null;
     const dir = Number(el.dataset.dir);
     const step = (amount) => {
-      if(quickMinuteValue === null) return;
-      quickMinuteValue = ((quickMinuteValue + amount) % 60 + 60) % 60;
-      const display = document.getElementById('qMinuteDisplay');
-      if(display) display.textContent = pad2(quickMinuteValue);
+      if(!quickCaptured) return;
+      if(quickSelectedField === 'hour'){
+        quickHourValue = ((quickHourValue + amount) % 24 + 24) % 24;
+      } else if(quickSelectedField === 'second'){
+        quickSecondValue = ((quickSecondValue + amount) % 60 + 60) % 60;
+      } else {
+        quickMinuteValue = ((quickMinuteValue + amount) % 60 + 60) % 60;
+      }
+      const hourDisplay = document.getElementById('qHourDisplay');
+      const minuteDisplay = document.getElementById('qMinuteDisplay');
+      const secondDisplay = document.getElementById('qSecondDisplay');
+      if(hourDisplay) hourDisplay.textContent = pad2(quickHourValue);
+      if(minuteDisplay) minuteDisplay.textContent = pad2(quickMinuteValue);
+      if(secondDisplay) secondDisplay.textContent = pad2(quickSecondValue);
       const aheadBy = computeQuickOffsetSeconds();
       const side = aheadBy >= 0 ? 'ahead' : 'behind';
       const timeEl = document.getElementById('qConfirmTime');
@@ -1121,18 +1160,22 @@ function attachHandlers(watch){
     if(!quickCaptured) return;
     const c = quickCaptured.at;
     const qNote = document.getElementById('qNote');
-    const h = c.getHours();
+    const h = quickHourValue === null ? c.getHours() : quickHourValue;
     const m = quickMinuteValue === null ? c.getMinutes() : quickMinuteValue;
+    const s = quickSecondValue === null ? quickCaptured.second : quickSecondValue;
     const note = qNote ? qNote.value : '';
     const phoneSec = c.getHours()*3600 + c.getMinutes()*60 + c.getSeconds();
-    const watchSec = h*3600 + m*60 + quickCaptured.second;
+    const watchSec = h*3600 + m*60 + s;
     let diff = watchSec - phoneSec;
     while(diff > 43200) diff -= 86400;
     while(diff <= -43200) diff += 86400;
     const date = c.toISOString().slice(0,10);
     const conditions = readConditionInputs('q');
     quickCaptured = null;
+    quickHourValue = null;
     quickMinuteValue = null;
+    quickSecondValue = null;
+    quickSelectedField = 'minute';
     addReading(watch.id, date, diff, note, conditions);
   };
 }

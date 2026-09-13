@@ -652,15 +652,21 @@
     margin-top:0;
     margin-bottom:0;
   }
-  .confirm-time-minute{
+  /* Each of hour/minute/second in the confirm popup's time readout is one of
+     these — tappable so the stepper below can be pointed at any of the
+     three (see quickSelectedField), with only the selected one pulsing. */
+  .confirm-time-field{
     display:inline-block;
     font-variant-numeric:tabular-nums;
-    animation:minute-pulse 1.8s ease-in-out infinite;
+    cursor:pointer;
+  }
+  .confirm-time-field-selected{
+    animation:confirm-time-pulse 1.8s ease-in-out infinite;
   }
   @media (prefers-reduced-motion: reduce){
-    .confirm-time-minute{animation:none;}
+    .confirm-time-field-selected{animation:none;}
   }
-  @keyframes minute-pulse{
+  @keyframes confirm-time-pulse{
     0%, 100%{opacity:1;}
     50%{opacity:0.3;}
   }
