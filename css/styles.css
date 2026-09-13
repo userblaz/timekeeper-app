@@ -85,6 +85,7 @@
      land on either scroll area ambiguously. */
   body.no-page-scroll{
     height:100vh;
+    height:100dvh;
     overflow:hidden;
   }
   .app{

@@ -434,8 +434,38 @@ window.addEventListener('resize', sizeDataWatchScroll);
 // visual viewport resizes (the keyboard opening, closing, or changing
 // height), nudge the list's own scroll region just enough to keep whatever
 // is currently focused in it above the keyboard.
+// Some mobile browsers scroll the *page* to reveal a focused input even
+// though body.no-page-scroll sets overflow:hidden on it — that CSS blocks
+// user-driven touch scrolling but not the browser's own automatic
+// scroll-into-view on focus. Since the Data tab has nothing to scroll back
+// with (page scroll is meant to never move there), any such nudge just gets
+// stuck once the keyboard closes. Snapping window scroll back to 0 whenever
+// this fires is a no-op everywhere else and cheap insurance here.
+function resetPageScrollOnDataTab(){
+  if(activeTab === 'data' && window.scrollY !== 0) window.scrollTo(0, 0);
+}
+
+// The visualViewport listener above only nudges the list's scroll region
+// once the keyboard has already finished opening (it fires on resize). A
+// field near the bottom of the confirm/manual popup can still start out
+// hidden for the ~300ms the iOS keyboard takes to animate in, since nothing
+// scrolls until that resize event lands. Wiring focus directly gets it
+// moving immediately, and the delay lets the keyboard settle first so the
+// browser's own layout numbers (used by scrollIntoView) are final rather
+// than mid-animation.
+function scrollFieldAboveKeyboard(el){
+  if(!el) return;
+  el.addEventListener('focus', () => {
+    setTimeout(() => {
+      resetPageScrollOnDataTab();
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  });
+}
+
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', () => {
+    resetPageScrollOnDataTab();
     const container = document.getElementById('dataWatchScroll');
     if(!container) return;
     const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
@@ -1061,6 +1091,9 @@ function attachHandlers(watch){
     if(!date || offset === '') return;
     addReading(watch.id, date, offset, note, readConditionInputs('r'));
   };
+  scrollFieldAboveKeyboard(document.getElementById('rOffset'));
+  scrollFieldAboveKeyboard(document.getElementById('rNote'));
+  scrollFieldAboveKeyboard(document.getElementById('qNote'));
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
