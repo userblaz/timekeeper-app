@@ -36,7 +36,7 @@ const POSITION_OPTIONS = [
   ['CD', 'Crown down'], ['CL', 'Crown left'], ['CU', 'Crown up']
 ];
 const WEAR_STATE_OPTIONS = [
-  ['', 'Wear state'], ['worn', 'Worn on wrist'], ['rest', 'At rest'],
+  ['', 'Wear state'], ['worn', 'On wrist'], ['rest', 'At rest'],
   ['winder', 'In a winder'], ['mixed', 'Mixed']
 ];
 const TIME_OF_DAY_OPTIONS = [
