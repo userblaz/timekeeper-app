@@ -778,6 +778,15 @@
     top:auto;
     bottom:calc(100% + 6px);
   }
+  /* Escapes the Snap tab's overflow:auto watch-list container (see the
+     toggleselect handler in app.js) — positioned in viewport coordinates
+     instead of relative to its wrap, with a z-index above the fixed snap
+     dock and bottom tab bar so it's never clipped or drawn under them. */
+  .select-menu.select-menu-escaped{
+    position:fixed;
+    right:auto;
+    z-index:70;
+  }
   /* Position/Wear/Time lists in the snap confirm popup are short enough to
      show in full rather than scroll — unlike the generic select-menu (used
      for longer lists like currencies), which stays capped and scrollable. */

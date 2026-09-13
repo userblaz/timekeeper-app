@@ -56,7 +56,13 @@ function buildSelect(id, options, selectedValue){
 function closeAllSelects(except){
   document.querySelectorAll('.select-wrap').forEach(wrap => {
     if(wrap === except) return;
-    wrap.querySelector('.select-menu').hidden = true;
+    const menu = wrap.querySelector('.select-menu');
+    menu.hidden = true;
+    // Undo the escape-to-fixed positioning (see the toggleselect handler
+    // below) so the menu goes back to its normal, wrap-relative layout the
+    // next time it opens somewhere that doesn't need it.
+    menu.classList.remove('select-menu-escaped');
+    menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
     wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
   });
 }
@@ -81,7 +87,25 @@ document.addEventListener('click', (e) => {
       const spaceBelow = window.innerHeight - box.bottom;
       const spaceAbove = box.top;
       const needed = menu.getBoundingClientRect().height + 12;
-      if(needed > spaceBelow && spaceAbove > spaceBelow) menu.classList.add('drop-up');
+      const dropUp = needed > spaceBelow && spaceAbove > spaceBelow;
+      if(dropUp) menu.classList.add('drop-up');
+
+      // The Snap tab's own watch list scrolls inside an overflow:auto
+      // container (see sizeDataWatchScroll) that would otherwise clip a
+      // menu extending past its edge — the confirm popup's Position/Wear/
+      // Time dropdowns are tall enough to do exactly that. Escaping to
+      // viewport-fixed coordinates here lets the menu draw over everything,
+      // trigger dock and bottom tabs included, instead of being cut off.
+      if(wrap.closest('.data-watch-scroll')){
+        menu.classList.add('select-menu-escaped');
+        menu.style.left = box.left + 'px';
+        menu.style.width = box.width + 'px';
+        if(dropUp){
+          menu.style.bottom = (window.innerHeight - box.top + 6) + 'px';
+        } else {
+          menu.style.top = (box.bottom + 6) + 'px';
+        }
+      }
     }
     return;
   }
