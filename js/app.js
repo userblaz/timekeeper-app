@@ -583,10 +583,20 @@ if(window.visualViewport){
   window.visualViewport.addEventListener('resize', () => {
     resetPageScrollOnDataTab();
     const container = document.getElementById('dataWatchScroll');
-    if(!container) return;
+    const dock = document.getElementById('snapDock');
     const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
     const active = document.activeElement;
-    const focusedInList = active && container.contains(active);
+    const focusedInList = container && active && container.contains(active);
+    // The trigger dock is fixed to the bottom of the *visual* viewport, so it
+    // rides up and keeps sitting right above the keyboard rather than being
+    // covered by it once one opens — while the confirm/manual popup is also
+    // open and being typed into, that just plants an opaque box over
+    // whatever field is near the bottom of it. There's also no real use for
+    // re-tapping a quick-snap mark or "enter manually" while already mid-edit
+    // in the open popup, so hiding the dock for as long as the keyboard is up
+    // costs nothing and clears the overlap outright.
+    if(dock) dock.classList.toggle('dock-hidden-for-keyboard', keyboardHeight >= 40 && !!focusedInList);
+    if(!container) return;
     if(keyboardHeight < 40 || !focusedInList){
       // Keyboard closed (or nothing in the list is focused) — drop back to
       // the normal, capped scroll room (see sizeDataWatchScroll) instead of
@@ -601,15 +611,10 @@ if(window.visualViewport){
     // long as the keyboard is actually up.
     const spacer = document.getElementById('dataWatchScrollSpacer');
     if(spacer) spacer.style.height = Math.max(parseFloat(spacer.style.height) || 0, keyboardHeight) + 'px';
-    // The trigger dock is fixed to the bottom of the *visual* viewport, so on
-    // iOS it rides up and keeps sitting right above the keyboard instead of
-    // being covered by it — still occupying real screen space there, not
-    // free room a focused field can safely sit in. Without subtracting it,
-    // a field could measure as "already above the keyboard" while the dock
-    // is still drawn directly over it.
-    const dock = document.getElementById('snapDock');
-    const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
-    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop - dockHeight;
+    // The dock is hidden above for as long as this branch runs, so the full
+    // visual viewport is genuinely free space now — nothing left to reserve
+    // room for.
+    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
     const overflow = active.getBoundingClientRect().bottom - visibleBottom;
     if(overflow > 0) container.scrollTop += overflow + 12;
   });

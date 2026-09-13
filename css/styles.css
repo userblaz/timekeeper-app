@@ -1045,6 +1045,17 @@
        curtain reaches exactly down to the bottom-tabs dock and no further. */
     padding:0 8px calc(81px + var(--safe-bottom));
     background:var(--bg);
+    transition:opacity 150ms ease;
+  }
+  /* Hidden for as long as the keyboard is up and a field inside the open
+     confirm/manual popup is focused (see the visualViewport listener in
+     app.js) — it would otherwise ride up with the keyboard and land as an
+     opaque box over whatever's being typed into. Opacity rather than
+     display:none so render()'s own display toggling (shows/hides the whole
+     dock based on tab and watch selection) never fights with this. */
+  #snapDock.dock-hidden-for-keyboard{
+    opacity:0;
+    pointer-events:none;
   }
   #snapDock .quick-log-box{
     max-width:444px;
