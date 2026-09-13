@@ -70,7 +70,50 @@ function buildSelect(id, options, selectedValue){
   `;
 }
 
+// While an escaped (viewport-fixed) menu is open, its position has to be
+// recomputed live — a static left/top captured once at open time goes stale
+// the instant the list it's anchored to scrolls (or the keyboard resizes the
+// viewport), leaving the menu floating wherever the button used to be
+// instead of tracking it. Only one select can be open at a time, so a single
+// tracked listener set is enough.
+let escapedMenuTracker = null;
+
+function positionEscapedMenu(menu, toggle){
+  menu.classList.remove('drop-up');
+  const box = toggle.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - box.bottom;
+  const spaceAbove = box.top;
+  // The menu is never scrollable, so when it doesn't fit below, open it
+  // upward — but only if there's actually more room up there.
+  const needed = menu.getBoundingClientRect().height + 12;
+  const dropUp = needed > spaceBelow && spaceAbove > spaceBelow;
+  menu.classList.toggle('drop-up', dropUp);
+  menu.style.left = box.left + 'px';
+  menu.style.width = box.width + 'px';
+  if(dropUp){
+    menu.style.bottom = (window.innerHeight - box.top + 6) + 'px';
+    menu.style.top = '';
+  } else {
+    menu.style.top = (box.bottom + 6) + 'px';
+    menu.style.bottom = '';
+  }
+}
+
+function stopTrackingEscapedMenu(){
+  if(!escapedMenuTracker) return;
+  // `true` here is capture, not bubble — scroll events don't bubble, but a
+  // capture-phase listener on document still sees every descendant's scroll
+  // (including the watch list's own internal container), which is what lets
+  // one listener cover any scrollable ancestor the menu happens to be near
+  // without having to know which one it is.
+  document.removeEventListener('scroll', escapedMenuTracker, true);
+  window.removeEventListener('resize', escapedMenuTracker);
+  if(window.visualViewport) window.visualViewport.removeEventListener('resize', escapedMenuTracker);
+  escapedMenuTracker = null;
+}
+
 function closeAllSelects(except){
+  stopTrackingEscapedMenu();
   document.querySelectorAll('.select-wrap').forEach(wrap => {
     if(wrap === except) return;
     const menu = wrap.querySelector('.select-menu');
@@ -78,7 +121,7 @@ function closeAllSelects(except){
     // Undo the escape-to-fixed positioning (see the toggleselect handler
     // below) so the menu goes back to its normal, wrap-relative layout the
     // next time it opens somewhere that doesn't need it.
-    menu.classList.remove('select-menu-escaped');
+    menu.classList.remove('select-menu-escaped', 'drop-up');
     menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
     wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
   });
@@ -98,7 +141,10 @@ document.addEventListener('click', (e) => {
     toggle.setAttribute('aria-expanded', String(willOpen));
     if(willOpen){
       // The menu is never scrollable, so when it doesn't fit below, open it
-      // upward — but only if there's actually more room up there.
+      // upward — but only if there's actually more room up there. (Plain,
+      // wrap-relative menus get this decided once here; escaped ones redo it
+      // on every reposition below, since the room available can change as
+      // the button moves.)
       menu.classList.remove('drop-up');
       const box = toggle.getBoundingClientRect();
       const spaceBelow = window.innerHeight - box.bottom;
@@ -115,13 +161,11 @@ document.addEventListener('click', (e) => {
       // trigger dock and bottom tabs included, instead of being cut off.
       if(wrap.closest('.data-watch-scroll')){
         menu.classList.add('select-menu-escaped');
-        menu.style.left = box.left + 'px';
-        menu.style.width = box.width + 'px';
-        if(dropUp){
-          menu.style.bottom = (window.innerHeight - box.top + 6) + 'px';
-        } else {
-          menu.style.top = (box.bottom + 6) + 'px';
-        }
+        positionEscapedMenu(menu, toggle);
+        escapedMenuTracker = () => positionEscapedMenu(menu, toggle);
+        document.addEventListener('scroll', escapedMenuTracker, true);
+        window.addEventListener('resize', escapedMenuTracker);
+        if(window.visualViewport) window.visualViewport.addEventListener('resize', escapedMenuTracker);
       }
     }
     return;
@@ -131,13 +175,17 @@ document.addEventListener('click', (e) => {
   if(option){
     e.preventDefault();
     e.stopPropagation();
+    stopTrackingEscapedMenu();
     const wrap = option.closest('.select-wrap');
     const button = wrap.querySelector('[data-action="toggleselect"]');
+    const menu = wrap.querySelector('.select-menu');
     wrap.querySelector('input[type="hidden"]').value = option.dataset.value;
     wrap.querySelector('.select-value').textContent = option.textContent;
     button.classList.toggle('placeholder', !option.dataset.value);
     wrap.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
-    wrap.querySelector('.select-menu').hidden = true;
+    menu.hidden = true;
+    menu.classList.remove('select-menu-escaped', 'drop-up');
+    menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
     button.setAttribute('aria-expanded', 'false');
     return;
   }
@@ -185,6 +233,11 @@ function readConditionInputs(prefix){
 function render(){
   const root = document.getElementById('root');
   if(!loaded){ root.innerHTML = 'Loading…'; return; }
+
+  // Rebuilding #root below (innerHTML) destroys any open select-menu along
+  // with the rest of the DOM under it — stop tracking it now rather than
+  // leaving its scroll/resize listeners repositioning a detached element.
+  stopTrackingEscapedMenu();
 
   // The Snap tab's watch list scrolls in its own region (see
   // sizeDataWatchScroll) so the reference clock stays put — the page itself
