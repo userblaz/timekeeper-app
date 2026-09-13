@@ -9,7 +9,7 @@ Live at [timekeeper.geegee.si](https://timekeeper.geegee.si).
 - **Data** — log offset readings by tapping the reference clock at :00/:15/:30/:45, or enter one manually. Tracks drift trend and overall rate per watch, with reset points for post-service regulation.
 - **Timegrapher** (experimental) — mic-based beat rate and beat error estimate. Accuracy is limited on iOS specifically (see Known limitations).
 - **Clock** — a synced reference clock (time.io) with an analog face, for setting a watch by hand.
-- **Collection** — per-watch details: purchase price/currency, purchase date, condition notes, factory accuracy spec, certifications, and a power-reserve tracker (tap "wind" when fully wound; nothing is inferred automatically).
+- **Collection** — per-watch details: purchase price/currency, purchase date, condition notes, factory accuracy spec, certifications, and a power-reserve tracker (tap "wind" when fully wound; nothing is inferred automatically). Adding a watch searches a shared reference catalog by brand/model/reference and pre-fills its known specs, with a manual name-only fallback for anything not in the catalog yet. Cards can also be dragged into whatever order you like.
 - **Profile** — account settings (email change with confirmation, password change requiring the current one, optional name/birth date/phone), an FAQ, and a light/dark theme toggle that follows the OS on first visit and otherwise follows the signed-in account across devices.
 - Installable as a PWA (standalone, no browser chrome) via "Add to Home Screen."
 
@@ -64,7 +64,22 @@ alter table watches
   add column if not exists accuracy_spec text,
   add column if not exists certifications text,
   add column if not exists power_reserve_hours integer,
-  add column if not exists last_wound_at timestamptz;
+  add column if not exists last_wound_at timestamptz,
+  add column if not exists sort_order integer;
+
+-- One-time backfill for sort_order (Collection tab drag-to-reorder) — run
+-- once after the column is added. Numbers each user's existing watches by
+-- their current created_at order, so nothing visibly reshuffles the first
+-- time this ships. New watches get their sort_order set directly by the
+-- app at insert time, so this backfill never needs to run again.
+with ranked as (
+  select id, row_number() over (partition by user_id order by created_at asc) as rn
+  from watches
+  where sort_order is null
+)
+update watches set sort_order = ranked.rn
+from ranked
+where watches.id = ranked.id;
 
 alter table readings
   add column if not exists position text,
@@ -97,6 +112,82 @@ using (bucket_id = 'watch-photos' and (storage.foldername(name))[1] = auth.uid()
 create policy "Anyone can view watch photos"
 on storage.objects for select
 using (bucket_id = 'watch-photos');
+```
+
+### Watch reference catalog
+
+Backs the Collection tab's "Add watch" search (`ensureCatalogLoaded`,
+`addWatchFromCatalog` in `data.js`) — a shared, read-only table of real
+watch specs, separate from `watches` (which stays exactly what one user
+personally owns). Grows only through migrations like this one, run
+directly in the SQL editor, not through the app itself — keeps quality
+consistent rather than user-editable.
+
+```sql
+create table if not exists watch_catalog (
+  id uuid primary key default gen_random_uuid(),
+  brand text not null,
+  model text not null,
+  reference text,
+  production_years text,
+  case_size_mm numeric,
+  case_material text,
+  movement text,
+  movement_type text,        -- 'automatic' | 'manual' | 'quartz'
+  power_reserve_hours integer,
+  accuracy_spec text,
+  certifications text,       -- comma-separated, same convention as watches.certifications
+  water_resistance_m integer,
+  crystal text,
+  dial_color text,
+  notes text,                -- for things like "discontinued 2021" that don't fit a field
+  created_at timestamptz default now()
+);
+
+alter table watch_catalog enable row level security;
+
+create policy "Anyone signed in can read the catalog"
+on watch_catalog for select
+to authenticated
+using (true);
+
+-- No insert/update/delete policy for regular users — see the note above.
+
+-- Must run after the table above exists (it references watch_catalog.id),
+-- so it lives here rather than in the main watches block further up.
+alter table watches
+  add column if not exists catalog_id uuid references watch_catalog(id) on delete set null;
+
+-- Added after the initial seed below already shipped — installs that ran
+-- this migration before dial_color existed need this to pick it up too.
+alter table watch_catalog
+  add column if not exists dial_color text;
+
+insert into watch_catalog
+  (brand, model, reference, production_years, case_size_mm, case_material, movement, movement_type, power_reserve_hours, accuracy_spec, certifications, water_resistance_m, crystal, dial_color, notes)
+values
+  ('Rolex', 'Submariner (No-Date)', '124060', '2020–present', 41, 'Steel', 'Caliber 3230', 'automatic', 70, '-2/+2 s/day', 'COSC,Rolex Superlative Chronometer', 300, 'Sapphire', 'Black', null),
+  ('Rolex', 'GMT-Master II', '126710', '2018–present', 40, 'Steel', 'Caliber 3285', 'automatic', 70, '-2/+2 s/day', 'COSC,Rolex Superlative Chronometer', 100, 'Sapphire', 'Black', 'Family includes Pepsi/Batman/Bruce Wayne bezel colourways'),
+  ('Rolex', 'Cosmograph Daytona', '126500LN', '2016–present', 40, 'Steel', 'Caliber 4130', 'automatic', 72, '-2/+2 s/day', 'COSC,Rolex Superlative Chronometer', 100, 'Sapphire', null, 'Some sources report an updated Caliber 4131 from ~2023 — unconfirmed; dial left blank, black and white "Panda" variants both exist under this reference'),
+  ('Rolex', 'Day-Date 40', '228238', 'current', 40, 'Yellow Gold', 'Caliber 3255', 'automatic', 70, '-2/+2 s/day', 'COSC,Rolex Superlative Chronometer', 100, 'Sapphire', null, 'Dial left blank — several dial options ship under this reference'),
+  ('Rolex', 'Explorer', '124270', '2021–present', 36, 'Steel', 'Caliber 3230', 'automatic', 70, '-2/+2 s/day', 'COSC,Rolex Superlative Chronometer', 100, 'Sapphire', 'Black', null),
+  ('Omega', 'Speedmaster Professional Moonwatch', '310.30.42.50.01.001', '2021–present', 42, 'Steel', 'Caliber 3861', 'manual', 50, null, 'METAS Co-Axial Master Chronometer', 50, 'Hesalite', 'Black', null),
+  ('Omega', 'Seamaster Diver 300M', '210.30.42.20.01.001', 'current', 42, 'Steel', 'Caliber 8800', 'automatic', 55, null, 'METAS Co-Axial Master Chronometer', 300, 'Sapphire', 'Black', null),
+  ('Patek Philippe', 'Nautilus', '5711/1A', 'discontinued 2021', 40, 'Steel', 'Caliber 26-330 S C', 'automatic', 45, null, 'Patek Philippe Seal', 120, 'Sapphire', 'Blue', 'Discontinued — replaced by Ref. 5811/1G; secondhand only'),
+  ('Audemars Piguet', 'Royal Oak Selfwinding', '15500ST', '2019–present', 41, 'Steel', 'Caliber 4302', 'automatic', 70, null, null, 50, 'Sapphire', null, 'Dial left blank — blue and black variants both exist under this reference');
+```
+
+For an install that already ran the seed insert above (so these 9 rows already exist without a dial), backfill the confident ones by reference:
+
+```sql
+update watch_catalog set dial_color = 'Black' where reference = '124060';
+update watch_catalog set dial_color = 'Black' where reference = '126710';
+update watch_catalog set dial_color = 'Black' where reference = '124270';
+update watch_catalog set dial_color = 'Black' where reference = '310.30.42.50.01.001';
+update watch_catalog set dial_color = 'Black' where reference = '210.30.42.20.01.001';
+update watch_catalog set dial_color = 'Blue' where reference = '5711/1A';
+-- Left null on purpose: 126500LN (Daytona), 228238 (Day-Date 40), 15500ST
+-- (Royal Oak Selfwinding) — each reference covers multiple dial colors.
 ```
 
 ### Auth settings

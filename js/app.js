@@ -116,12 +116,19 @@ document.addEventListener('click', (e) => {
     e.stopPropagation();
     const wrap = option.closest('.select-wrap');
     const button = wrap.querySelector('[data-action="toggleselect"]');
-    wrap.querySelector('input[type="hidden"]').value = option.dataset.value;
+    const hidden = wrap.querySelector('input[type="hidden"]');
+    hidden.value = option.dataset.value;
     wrap.querySelector('.select-value').textContent = option.textContent;
     button.classList.toggle('placeholder', !option.dataset.value);
     wrap.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
     wrap.querySelector('.select-menu').hidden = true;
     button.setAttribute('aria-expanded', 'false');
+    // A real <select> fires 'change' on its own when the value changes;
+    // this one has to do it itself, since setting .value on the hidden
+    // input programmatically doesn't. Nothing listened for it before the
+    // Collection tab's catalog search filters (collection.js) — purely
+    // additive, so every existing select keeps working exactly as before.
+    hidden.dispatchEvent(new Event('change', { bubbles: true }));
     return;
   }
 

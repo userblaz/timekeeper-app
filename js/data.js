@@ -11,11 +11,53 @@ let state = { watches: [], activeId: null };
 let loaded = false;
 let saveStatus = '';
 
+// The shared reference catalog behind the Collection tab's "Add watch"
+// search (see collection.js) — read-only reference data, not personal
+// watches, so it's cached at module level here rather than living on
+// `state`. null means "not fetched yet", not "empty catalog".
+let watchCatalog = null;
+let watchCatalogLoading = false;
+
+async function ensureCatalogLoaded(){
+  if(watchCatalog || watchCatalogLoading) return watchCatalog;
+  watchCatalogLoading = true;
+  try{
+    const { data, error } = await sb.from('watch_catalog').select('*')
+      .order('brand', { ascending: true }).order('model', { ascending: true });
+    if(error) throw error;
+    watchCatalog = data || [];
+  }catch(e){
+    // Table not migrated yet on this install, or a network hiccup — same
+    // "don't take the rest of the app down with you" treatment as
+    // wear_days and sort_order above. The manual "add a watch" path never
+    // depended on this table, so it still works either way.
+    watchCatalog = [];
+  }
+  watchCatalogLoading = false;
+  return watchCatalog;
+}
+
 async function loadState(){
   try{
-    const { data: watchRows, error: wErr } = await sb
-      .from('watches').select('*').order('created_at', { ascending: true });
-    if(wErr) throw wErr;
+    // sort_order drives the Collection tab's drag-to-reorder; created_at is
+    // the tiebreaker for however many watches predate that column. Ordering
+    // by it can 404 on an install that hasn't run the README's migration
+    // yet — same situation as wear_days below, so it gets the same
+    // "fall back, don't take the whole app down" treatment rather than
+    // throwing straight into the outer catch and wiping every watch.
+    let watchRows;
+    {
+      const primary = await sb.from('watches').select('*')
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
+      if(primary.error){
+        const fallback = await sb.from('watches').select('*').order('created_at', { ascending: true });
+        if(fallback.error) throw fallback.error;
+        watchRows = fallback.data;
+      }else{
+        watchRows = primary.data;
+      }
+    }
     const { data: readingRows, error: rErr } = await sb
       .from('readings').select('*').order('date', { ascending: true });
     if(rErr) throw rErr;
@@ -37,6 +79,12 @@ async function loadState(){
       name: w.name,
       model: w.model || '',
       reference: w.reference || '',
+      sortOrder: w.sort_order === null || w.sort_order === undefined ? null : Number(w.sort_order),
+      // Which catalog entry this watch was created from, if any — null for
+      // a manually-added watch. Drives the Collection tab's edit form: the
+      // fields a catalog entry supplied stay locked, so they can't drift
+      // out of sync with the real spec (collection.js).
+      catalogId: w.catalog_id || null,
       shareStats: !!w.share_stats,
       purchasePrice: w.purchase_price === null || w.purchase_price === undefined ? null : Number(w.purchase_price),
       purchaseCurrency: w.purchase_currency || 'EUR',
@@ -176,12 +224,18 @@ function overallStats(watch){
 
 async function addWatch(name){
   saveStatus = 'saving'; render();
+  // Goes on the end of the Collection tab's order, same place a new watch
+  // has always landed (previously that fell out of created_at for free;
+  // sort_order needs it done explicitly).
+  const nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0) + 1;
   const { data, error } = await sb.from('watches')
-    .insert({ user_id: currentUser.id, name: name.trim() })
+    .insert({ user_id: currentUser.id, name: name.trim(), sort_order: nextOrder })
     .select().single();
   if(error){ saveStatus = 'error'; render(); return; }
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
+    sortOrder: data.sort_order === null || data.sort_order === undefined ? nextOrder : Number(data.sort_order),
+    catalogId: null,
     shareStats: !!data.share_stats,
     purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
     accuracySpec: '', powerReserveHours: null, lastWoundAt: null, certifications: [],
@@ -191,6 +245,78 @@ async function addWatch(name){
   state.watches.push(w);
   state.activeId = w.id;
   saveState();
+}
+
+// The Collection tab's "Add watch" search calls this instead of addWatch()
+// when the user picked a catalog result rather than typing a name from
+// scratch. Only the specs a catalog entry can actually know about get
+// filled in (accuracy spec, power reserve, certifications) — everything
+// personal (price, date, condition, photo) is left blank for the owner,
+// same as a manually-added watch, per the original design for this
+// feature (see the project handoff notes).
+async function addWatchFromCatalog(entry){
+  saveStatus = 'saving'; render();
+  const nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0) + 1;
+  const { data, error } = await sb.from('watches')
+    .insert({
+      user_id: currentUser.id,
+      name: entry.brand,
+      model: entry.model || '',
+      reference: entry.reference || '',
+      accuracy_spec: entry.accuracy_spec || '',
+      power_reserve_hours: entry.power_reserve_hours === null || entry.power_reserve_hours === undefined ? null : entry.power_reserve_hours,
+      certifications: entry.certifications || '',
+      sort_order: nextOrder,
+      catalog_id: entry.id
+    })
+    .select().single();
+  if(error){ saveStatus = 'error'; render(); return; }
+  const w = {
+    id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
+    sortOrder: data.sort_order === null || data.sort_order === undefined ? nextOrder : Number(data.sort_order),
+    catalogId: data.catalog_id || null,
+    shareStats: !!data.share_stats,
+    purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
+    accuracySpec: data.accuracy_spec || '',
+    powerReserveHours: data.power_reserve_hours === null || data.power_reserve_hours === undefined ? null : Number(data.power_reserve_hours),
+    lastWoundAt: null,
+    certifications: data.certifications ? data.certifications.split(',').filter(Boolean) : [],
+    wornDates: new Set(),
+    readings: []
+  };
+  state.watches.push(w);
+  state.activeId = w.id;
+  saveState();
+  return w;
+}
+
+// Called once a Collection tab drag settles on a new position. state.watches
+// is already in its new order by then (collection.js reorders it before
+// calling this) — this just renumbers everyone 1..n to match and writes only
+// the rows whose number actually changed, rather than the whole collection
+// every time.
+async function persistWatchOrder(){
+  const updates = [];
+  state.watches.forEach((w, i) => {
+    const order = i + 1;
+    if(w.sortOrder !== order){
+      w.sortOrder = order;
+      updates.push(
+        sb.from('watches').update({ sort_order: order }).eq('id', w.id)
+          .then(({ error }) => error)
+      );
+    }
+  });
+  if(!updates.length) return;
+  const errors = (await Promise.all(updates)).filter(Boolean);
+  if(errors.length){
+    // The drag already happened on screen and can't be undone from here —
+    // this only warns that the *stored* order didn't take, so it reverts
+    // next time these watches load (most likely cause: the README's
+    // sort_order migration hasn't been run yet, so this column write 404s
+    // the same way loadState's read of it already has its own fallback for).
+    showToast(errors[0].message || "Couldn't save the new order — it may not stick after you sign out.", 'error');
+  }
 }
 
 async function addReading(watchId, date, offset, note, conditions){
