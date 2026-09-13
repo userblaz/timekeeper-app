@@ -1291,9 +1291,19 @@ function attachCollectionHandlers(){
 }
 
 function focusAddWatchInput(){
+  // Focusing the input the normal way scrolls it into view by whatever
+  // rule the browser picks for a field that isn't already at the top of
+  // the page — on mobile that's often centering it, which cuts off the
+  // reference clock above and makes the freshly-opened form look like
+  // it's landed mid-scroll rather than at the top. preventScroll skips
+  // that, and the explicit scrollTo(0,0) (before and after focusing, since
+  // focus can still fire its own scroll asynchronously right after) is
+  // what actually puts the page back at the top instead.
+  window.scrollTo(0, 0);
   setTimeout(() => {
     const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
-    if(inp) inp.focus();
+    if(inp) inp.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
   }, 0);
 }
 
