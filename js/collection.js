@@ -79,7 +79,7 @@ function buildCollectionTabHtml(){
       <div class="collection-list">
         ${watchesHtml}
         ${addHtml}
-        ${typeof buildDemoWatchButtonHtml === 'function' ? buildDemoWatchButtonHtml() : ''}
+        ${(!addingCollectionWatch && typeof buildDemoWatchButtonHtml === 'function') ? buildDemoWatchButtonHtml() : ''}
       </div>
     </div>
   `;
@@ -187,14 +187,16 @@ function buildAddWatchHtml(){
     return `
     <div class="collection-card collection-card-edit">
       <div class="field">
-        <label for="newCollectionWatchName">Brand</label>
+        <div class="field-label-row">
+          <button type="button" class="zoom-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          </button>
+          <label for="newCollectionWatchName">Brand</label>
+          <button type="button" class="manual-link manual-link-inline" data-action="switchtocatalogsearch">Search the catalog</button>
+        </div>
         <input type="text" id="newCollectionWatchName" placeholder="e.g. Rolex, Omega, Seiko…" />
       </div>
-      <button type="button" class="manual-link" data-action="switchtocatalogsearch">Search the catalog instead</button>
-      <div class="row2" style="margin-top:6px;">
-        <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch">Cancel</button>
-        <button type="button" class="btn-primary" data-action="addcollectionwatch" style="flex:1">Add watch</button>
-      </div>
+      <button type="button" class="btn-primary" data-action="addcollectionwatch">Add watch</button>
     </div>
     `;
   }
@@ -202,16 +204,16 @@ function buildAddWatchHtml(){
   <div class="collection-card collection-card-edit">
     <div class="field">
       <div class="field-label-row">
+        <button type="button" class="zoom-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+        </button>
         <label for="watchCatalogSearch">Find your watch</label>
-        <button type="button" class="manual-link manual-link-inline" data-action="switchtomanualadd">Can't find it? Add manually instead</button>
+        <button type="button" class="manual-link manual-link-inline" data-action="switchtomanualadd">Add manually</button>
       </div>
       <input type="text" id="watchCatalogSearch" placeholder="Brand, model, or reference…" autocomplete="off" value="${escapeHtml(watchSearchQuery)}" />
     </div>
     <div id="watchCatalogFilters">${buildCatalogFiltersHtml()}</div>
     <div id="watchCatalogResults" class="watch-catalog-results">${buildCatalogResultsHtml()}</div>
-    <div class="row2" style="margin-top:6px;">
-      <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch" style="flex:1">Cancel</button>
-    </div>
   </div>
   `;
 }
