@@ -51,7 +51,11 @@ const TIME_OF_DAY_OPTIONS = [
 function buildSelect(id, options, selectedValue){
   const current = selectedValue || '';
   const currentLabel = (options.find(([value]) => value === current) || options[0])[1];
-  const optionsHtml = options.map(([value, label]) =>
+  // The first entry (empty value) is a placeholder label for the closed
+  // button, not a real choice — listing it in the open menu just repeated
+  // that same word ("Position", "Wear", "Time"...) as a bogus, always-first
+  // option with nothing behind it.
+  const optionsHtml = options.filter(([value]) => value !== '').map(([value, label]) =>
     `<button type="button" class="select-option${value===current?' selected':''}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
   ).join('');
   return `
