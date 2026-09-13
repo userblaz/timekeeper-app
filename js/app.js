@@ -275,8 +275,9 @@ function buildDataWatchCardHtml(w, connected, selected, locked){
   return `
     <div class="collection-card data-watch-card${stateClass}${locked ? ' locked' : ''}" data-action="select" data-id="${w.id}">
       ${photoHtml}
-      <div class="collection-card-body">
-        <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${rateHtml}</div>
+      <div class="collection-card-body data-watch-card-body">
+        <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span></div>
+        ${rateHtml ? `<div class="data-watch-card-rate">${rateHtml}</div>` : ''}
         ${buildPowerReserveHtml(w)}
       </div>
       <div class="collection-card-actions data-watch-card-actions">

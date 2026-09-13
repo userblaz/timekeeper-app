@@ -1866,6 +1866,36 @@
     color:var(--accent);
   }
 
+  /* Snap tab's watch card: name, drift and the reserve bar (or its hint,
+     when there's no reserve set — see buildPowerReserveHtml) stack as their
+     own centered lines instead of the name/rate sharing a row, which was
+     truncating the name. The reserve row itself stays full-width so its bar
+     keeps its usual long look; only the block as a whole is centered. */
+  .data-watch-card-body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+  }
+  .data-watch-card-body .collection-card-name{
+    justify-content:center;
+    width:100%;
+  }
+  .data-watch-card-rate{
+    margin-top:2px;
+  }
+  .data-watch-card-body .card-rate{
+    margin-left:0;
+  }
+  .data-watch-card-body .reserve-row{
+    width:100%;
+    justify-content:center;
+  }
+  .data-watch-card-body .reserve-hint{
+    width:100%;
+    text-align:center;
+  }
+
   /* Transient messages, floating clear of the layout so showing one never
      shifts anything. Sits just above the bottom dock: 14px gap below the
      dock + the dock's own 57px + 10px of clearance. */
