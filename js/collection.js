@@ -649,7 +649,7 @@ function buildConditionInsightsHtml(watch){
   if(blocks.length === 0){
     return `
       <div class="section">
-        <h2 class="section-title">Insights</h2>
+        <h2 class="section-title">Accuracy Insights</h2>
         <p class="empty-note">Log a few readings with different positions, wear states, or times of day to see whether they affect this watch's rate.</p>
       </div>
     `;
@@ -657,7 +657,7 @@ function buildConditionInsightsHtml(watch){
 
   return `
     <div class="section">
-      <h2 class="section-title">Insights</h2>
+      <h2 class="section-title">Accuracy Insights</h2>
       ${pointers.length > 0 ? `<p class="hint" style="margin-bottom:16px;">${pointers.map(escapeHtml).join(' ')}</p>` : ''}
       ${blocks.join('')}
     </div>
@@ -696,6 +696,104 @@ function buildWearMonthPageHtml(w, year, m, todayStr){
   `;
 }
 
+// Four quick numbers, as tiles rather than spec-sheet rows since these are
+// meant to be read at a glance, not looked up: the average worn days per
+// month since this watch's first tracked wear day, the most recently
+// completed month's own count next to how it compares to the month before
+// it, how long it's been since the watch was last worn at all, and — with
+// more than one watch being tracked — its share of all the wear logged
+// across the whole collection last month. The monthly figures only ever
+// look at whole, completed calendar months (see computeWearStats and
+// wearShareOfCollection in data.js) — the one in progress right now is
+// left out of all of them, or it would always read as artificially low
+// next to a full month — while "last worn" is naturally as current as
+// today.
+//
+// Below the tiles, a 6-month sparkline of the same monthly counts (see
+// wearMonthlySeries) — the tiles are a snapshot, the sparkline is the
+// trend behind them. Bar height is relative to a 31-day month, not to
+// whichever of these six months happens to be the busiest, so the same
+// watch's bars stay comparable release to release rather than rescaling
+// themselves every time the busiest month ages out of the window.
+//
+// Last, a single plain-language pattern statement (see wearPatternInsight
+// in data.js) when the wear history actually supports one — the most
+// statistically obvious day-of-week skew in how this watch gets worn,
+// rather than every dimension that could theoretically be sliced.
+function buildWearStatsHtml(w){
+  const stats = computeWearStats(w);
+  const lastWornDays = daysSinceLastWorn(w);
+  const sharePct = wearShareOfCollection(w);
+
+  const fmtLastWorn = (days) => {
+    if(days === null) return '—';
+    if(days === 0) return 'Today';
+    if(days === 1) return '1d ago';
+    return `${days}d ago`;
+  };
+
+  let deltaHtml = '';
+  if(stats && stats.deltaPct !== null){
+    const cls = stats.deltaPct > 0 ? 'up' : (stats.deltaPct < 0 ? 'down' : 'flat');
+    const sign = stats.deltaPct > 0 ? '+' : '';
+    deltaHtml = `<div class="wear-stat-delta ${cls}">${sign}${stats.deltaPct}%</div>`;
+  }
+
+  // Only shown once there's more than one watch to actually share wear
+  // with — with a single watch this would always read ~100%, which is
+  // true but tells you nothing.
+  const shareTileHtml = state.watches.length < 2 ? '' : `
+    <div class="wear-stat-tile">
+      <div class="wear-stat-value">${sharePct === null ? '—' : sharePct + '%'}</div>
+      <div class="wear-stat-label">share of wear</div>
+    </div>
+  `;
+
+  const tilesHtml = `
+    <div class="wear-stats-tiles">
+      <div class="wear-stat-tile">
+        <div class="wear-stat-value">${stats ? Math.round(stats.avgPerMonth) : '—'}</div>
+        <div class="wear-stat-label">avg days/mo</div>
+      </div>
+      <div class="wear-stat-tile">
+        <div class="wear-stat-value">${stats ? stats.lastMonthDays : '—'}</div>
+        <div class="wear-stat-label">last month</div>
+        ${deltaHtml}
+      </div>
+      <div class="wear-stat-tile">
+        <div class="wear-stat-value">${fmtLastWorn(lastWornDays)}</div>
+        <div class="wear-stat-label">last worn</div>
+      </div>
+      ${shareTileHtml}
+    </div>
+  `;
+
+  const series = wearMonthlySeries(w, 6);
+  const hasAnySeriesData = series.some(s => s.days > 0);
+  const monthAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sparklineHtml = !hasAnySeriesData ? '' : `
+    <div class="wear-sparkline">
+      ${series.map(s => {
+        const pct = Math.max(6, Math.round((s.days / 31) * 100));
+        const monthName = WEAR_CALENDAR_MONTH_LABELS[s.month];
+        return `
+          <div class="wear-sparkline-col" title="${monthName} ${s.year}: ${s.days} day${s.days===1?'':'s'} worn">
+            <div class="wear-sparkline-bar${s.days>0?' has-wear':''}" style="height:${pct}%"></div>
+            <div class="wear-sparkline-label">${monthAbbr[s.month]}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  // Always rendered, even when there's nothing notable to report — a
+  // blank space where a pattern might have shown up reads as broken, not
+  // as "nothing to say" (see wearPatternInsight's own comment in data.js).
+  const patternHtml = `<p class="hint" style="margin-bottom:14px;">${escapeHtml(wearPatternInsight(w))}</p>`;
+
+  return tilesHtml + sparklineHtml + patternHtml;
+}
+
 // A wear tracker for one real month at a time, with unbounded month/year
 // navigation — arrows step by one month and roll over into the next or
 // previous year rather than stopping at Dec/Jan, and the two dropdowns
@@ -723,6 +821,7 @@ function buildWearCalendarHtml(w){
     <div class="section" style="margin-top:20px;padding-top:16px;">
       <h2 class="section-title">Worn calendar</h2>
       <p class="hint" style="margin-bottom:12px;">Pick any month and year, or tap a day to mark or unmark it as worn.</p>
+      ${buildWearStatsHtml(w)}
       <div class="wear-calendar-controls">
         <button type="button" class="zoom-btn wear-nav-btn" data-action="wearcalnav" data-dir="-1" aria-label="Previous month">${chevron('M15 18l-6-6 6-6')}</button>
         <div class="wear-calendar-select-slot">${buildSelect('wearCalMonthSelect', monthOptions, String(m))}</div>
@@ -786,6 +885,33 @@ function buildCollectionDetailHtml(w){
   // the details below simply move up to fill the gap.
   const hasStats = !!overallStats(w);
 
+  // The accuracy dial gets two quiet companions alongside it rather than
+  // sitting alone — the same average-wear and share-of-wear figures the
+  // calendar section works out further down (see computeWearStats and
+  // wearShareOfCollection in data.js), so the very first thing you see on
+  // a watch's page is "how accurate" next to "how much you actually wear
+  // it", not just the one. Both fall back to a plain — when there isn't
+  // enough history yet, same as their tile counterparts below.
+  const dialWearStats = computeWearStats(w);
+  const avgWearForDial = dialWearStats ? String(Math.round(dialWearStats.avgPerMonth)) : '—';
+  const shareForDial = wearShareOfCollection(w);
+  const shareForDialLabel = shareForDial === null ? '—' : shareForDial + '%';
+  const dialSectionHtml = `
+    <div class="dial-wrap dial-wrap-row">
+      <div class="dial-quick-col">
+        ${bundle.dialHtml}
+      </div>
+      <div class="dial-quick-col">
+        <div class="dial-figure" style="font-size:20px;">${avgWearForDial}</div>
+        <div class="dial-meta">avg days/mo</div>
+      </div>
+      <div class="dial-quick-col">
+        <div class="dial-figure" style="font-size:20px;">${shareForDialLabel}</div>
+        <div class="dial-meta">share of wear</div>
+      </div>
+    </div>
+  `;
+
   const detailRows = [
     ['Brand & model', w.model || null],
     ['Reference number', w.reference || null],
@@ -806,17 +932,17 @@ function buildCollectionDetailHtml(w){
 
   return `
     <div class="collection-detail-body">
-      ${hasStats ? `<div class="dial-wrap">${bundle.dialHtml}</div>` : ''}
+      ${hasStats ? dialSectionHtml : ''}
 
       ${detailsListHtml}
 
       <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit details</button>
 
-      ${buildWearCalendarHtml(w)}
-
       ${buildConditionInsightsHtml(w)}
 
       ${bundle.chartsHtml}
+
+      ${buildWearCalendarHtml(w)}
 
       ${bundle.historySectionHtml}
     </div>
@@ -985,7 +1111,7 @@ function buildCollectionEditForm(w){
         <button type="button" class="btn-secondary" data-action="cancelcollection">Cancel</button>
         <button type="button" class="btn-primary" data-action="savecollection" data-id="${w.id}" style="flex:1">${saveStatus==='saving' ? 'Saving…' : 'Save'}</button>
       </div>
-      <button type="button" class="reset-link" data-action="deletecollectionwatch" data-id="${w.id}" style="margin-top:10px;">Delete "${escapeHtml(w.name)}"</button>
+      <button type="button" class="manual-link manual-link-inline" data-action="deletecollectionwatch" data-id="${w.id}" style="margin:14px auto 0;">Delete "${escapeHtml(w.name)}"</button>
     </div>
   `;
 }

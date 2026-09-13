@@ -673,7 +673,7 @@ function buildWatchStatsBundle(watch){
   const stats = overallStats(watch);
   const dialHtml = stats ? `
     <div class="dial-figure" style="color:${stats.avgRate>=0?'var(--good)':'var(--bad)'}">${fmtRate(stats.avgRate)}<span class="dial-unit"> s/day</span></div>
-    <div class="dial-meta">average over ${stats.days} day${stats.days===1?'':'s'} · ${stats.count} readings${stats.sinceReset ? ' · since reset' : ''}</div>
+    <div class="dial-meta">average over ${stats.days} day${stats.days===1?'':'s'}<br>${stats.count} readings${stats.sinceReset ? ' · since reset' : ''}</div>
   ` : `<div class="empty-dial">Log two readings to see your watch's drift rate.</div>`;
 
   const historyHtml = rated.length === 0 ? '<p class="empty-note">No readings yet.</p>' :
