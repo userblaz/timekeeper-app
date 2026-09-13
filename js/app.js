@@ -944,14 +944,14 @@ function buildManualForm(){
             <input type="number" id="rOffset" step="1" placeholder="e.g. -4 or 12" required />
           </div>
         </div>
-        <p class="hint" style="margin-top:8px;">Negative = slow, positive = fast, since you set it.</p>
-        <div class="row3" style="margin-top:10px;">
+        <p class="hint" style="margin:0;">Negative = slow, positive = fast, since you set it.</p>
+        <div class="row3">
           <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
           <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
           <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
         </div>
-        <input type="text" id="rNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
-        <div class="row2" style="margin-top:12px;">
+        <input type="text" id="rNote" class="note-inline-input" placeholder="+ optional note" />
+        <div class="row2">
           <button type="button" class="btn-secondary" data-action="quickmode" style="flex:1">Cancel</button>
           <button type="submit" class="btn-primary" style="flex:1">Add reading</button>
         </div>
