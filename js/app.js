@@ -145,6 +145,12 @@ function render(){
   const root = document.getElementById('root');
   if(!loaded){ root.innerHTML = 'Loading…'; return; }
 
+  // The Snap tab's watch list scrolls in its own region (see
+  // sizeDataWatchScroll) so the reference clock stays put — the page itself
+  // must not also scroll there, or a touch can land on either scroll area
+  // ambiguously. Every other tab keeps the normal whole-page scroll.
+  document.body.classList.toggle('no-page-scroll', activeTab === 'data');
+
   // Capture scroll position before rebuilding — but if the user was already
   // pinned to the right edge (viewing the newest point), keep it null so it
   // re-pins to the new right edge below, rather than freezing at the old

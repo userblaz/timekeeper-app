@@ -79,6 +79,14 @@
     -webkit-font-smoothing:antialiased;
     min-height:100vh;
   }
+  /* Snap tab only (see render() in app.js): the watch list scrolls in its
+     own region (.data-watch-scroll) so the reference clock stays fully
+     expanded — the page itself must not also scroll there, or a touch could
+     land on either scroll area ambiguously. */
+  body.no-page-scroll{
+    height:100vh;
+    overflow:hidden;
+  }
   .app{
     max-width:480px;
     margin:0 auto;
