@@ -19,6 +19,12 @@ let quickAdjustSeconds = 0;
 // confirm popup's time readout (see buildSnapPopupHtml) switches this, and
 // only that field pulses.
 let quickSelectedField = 'minute';
+// The note currently being written for whichever snap pop-up is open — the
+// confirm form and the manual form are never both up at once (see
+// buildSnapPopupHtml), so one draft covers both. Held here rather than read
+// off the field at save time because the field it belongs to now lives in
+// an overlay that outlives any single render (see openNoteEditor).
+let noteDraft = '';
 let manualMode = false;
 let clockTimer = null;
 let lastExportAt = null;
@@ -36,7 +42,7 @@ const POSITION_OPTIONS = [
   ['CD', 'Crown down'], ['CL', 'Crown left'], ['CU', 'Crown up']
 ];
 const WEAR_STATE_OPTIONS = [
-  ['', 'Wear state'], ['worn', 'Worn on wrist'], ['rest', 'At rest'],
+  ['', 'Wear state'], ['worn', 'On wrist'], ['rest', 'At rest'],
   ['winder', 'In a winder'], ['mixed', 'Mixed']
 ];
 const TIME_OF_DAY_OPTIONS = [
@@ -48,20 +54,156 @@ const TIME_OF_DAY_OPTIONS = [
 // came out unreadable (white-on-white, then dark-on-dark). The chosen value
 // lives in a hidden input carrying the same id the caller asked for, so
 // everything reading `document.getElementById(id).value` still works.
-function buildSelect(id, options, selectedValue){
+// `compact` marks the Snap tab's Position/Wear/Time dropdowns specifically —
+// they live inside the scrollable watch list (see the escape-to-portal logic
+// below) and get the tightened, merged-with-trigger treatment; every other
+// caller (Collection's reading-edit fields, the currency and wear-calendar
+// pickers) keeps the plain, spaced-out look, since those were never part of
+// this request and sit in normal-flow contexts that don't need to escape.
+function buildSelect(id, options, selectedValue, compact){
   const current = selectedValue || '';
   const currentLabel = (options.find(([value]) => value === current) || options[0])[1];
-  const optionsHtml = options.map(([value, label]) =>
-    `<button type="button" class="select-option${value===current?' selected':''}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
+  // The first entry (empty value) is a placeholder label for the closed
+  // button, not a real choice — listing it in the open menu just repeated
+  // that same word ("Position", "Wear", "Time"...) as a bogus, always-first
+  // option with nothing behind it.
+  const optionClass = 'select-option' + (compact ? ' select-option-compact' : '');
+  const optionsHtml = options.filter(([value]) => value !== '').map(([value, label]) =>
+    `<button type="button" class="${optionClass}${value===current?' selected':''}" data-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`
   ).join('');
+  // The hidden input's id is also how a portaled-out menu finds its way back
+  // to the right wrap later (see findSelectWrap) — the menu itself may no
+  // longer be a DOM descendant of the wrap by then, so `.closest()` alone
+  // can't be used for that lookup once it's escaped.
   return `
     <div class="select-wrap">
       <input type="hidden" id="${id}" value="${escapeHtml(current)}" />
-      <button type="button" class="condition-select${current ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+      <button type="button" class="condition-select${current ? '' : ' placeholder'}" data-action="toggleselect" data-placeholder="${escapeHtml(options[0][1])}" aria-expanded="false">
         <span class="select-value">${escapeHtml(currentLabel)}</span>
         <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
-      <div class="select-menu" hidden>${optionsHtml}</div>
+      <div class="select-menu${compact ? ' select-menu-compact' : ''}" data-for="${id}" hidden>${optionsHtml}</div>
+    </div>
+  `;
+}
+
+function findSelectWrap(menu){
+  const owner = document.getElementById(menu.dataset.for);
+  return owner ? owner.closest('.select-wrap') : null;
+}
+
+// The other direction of findSelectWrap — needed because a wrap's menu isn't
+// always its child in the DOM: once escaped it's been moved out to <body>
+// (see the toggleselect handler below), so `wrap.querySelector('.select-menu')`
+// would miss it, e.g. when the same open toggle is tapped again to close it.
+function findMenuForWrap(wrap){
+  const hiddenInput = wrap.querySelector('input[type="hidden"]');
+  if(!hiddenInput) return null;
+  for(const menu of document.querySelectorAll('.select-menu')){
+    if(menu.dataset.for === hiddenInput.id) return menu;
+  }
+  return null;
+}
+
+// An escaped (portaled, viewport-fixed) menu is positioned once, at open
+// time, against wherever its trigger happens to be. Keeping that in sync
+// with a live scroll turned out worse than the staleness it was fixing —
+// recomputing it only on a scroll *event* lags well behind the list's own
+// smooth momentum-scrolling, so the menu visibly snapped to catch up,
+// reading as the text wobbling in place. Simplest fix: leave the list
+// scrollable (nothing here should stop that) and just close the menu the
+// moment a scroll, resize, orientation change or keyboard happens, instead
+// of chasing any of them. Only one select can be open at a time, so a single
+// tracked listener set is enough.
+let escapedMenuTracker = null;
+
+function positionEscapedMenu(menu, toggle){
+  menu.classList.remove('drop-up');
+  const box = toggle.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - box.bottom;
+  const spaceAbove = box.top;
+  // No gap for the compact popup dropdowns — they're styled to read as a
+  // seamless continuation of the trigger (see the CSS), so leaving room for
+  // one here would reopen the gap the styling is trying to close. The
+  // generic (non-compact) case keeps its small breathing gap.
+  const gap = menu.classList.contains('select-menu-compact') ? 0 : 6;
+  // The menu is never scrollable, so when it doesn't fit below, open it
+  // upward — but only if there's actually more room up there.
+  const needed = menu.getBoundingClientRect().height + 12;
+  const dropUp = needed > spaceBelow && spaceAbove > spaceBelow;
+  menu.classList.toggle('drop-up', dropUp);
+  menu.style.left = box.left + 'px';
+  menu.style.width = box.width + 'px';
+  if(dropUp){
+    menu.style.bottom = (window.innerHeight - box.top + gap) + 'px';
+    menu.style.top = '';
+  } else {
+    menu.style.top = (box.bottom + gap) + 'px';
+    menu.style.bottom = '';
+  }
+}
+
+function stopTrackingEscapedMenu(){
+  if(!escapedMenuTracker) return;
+  // `true` here is capture, not bubble — scroll events don't bubble, but a
+  // capture-phase listener on document still sees every descendant's scroll
+  // (including the watch list's own internal container), which is what lets
+  // one listener cover any scrollable ancestor the menu happens to be near
+  // without having to know which one it is.
+  document.removeEventListener('scroll', escapedMenuTracker, true);
+  window.removeEventListener('resize', escapedMenuTracker);
+  window.removeEventListener('orientationchange', escapedMenuTracker);
+  if(window.visualViewport) window.visualViewport.removeEventListener('resize', escapedMenuTracker);
+  escapedMenuTracker = null;
+}
+
+// Hides one menu and, if it was portaled out to <body> (see the toggleselect
+// handler below), moves it back home into its own wrap — otherwise a wrap
+// destroyed by some unrelated render() while its menu was off in <body>
+// would orphan that menu there forever, invisible but never cleaned up.
+function closeSelectMenu(menu){
+  const wrap = findSelectWrap(menu);
+  const wasEscaped = menu.classList.contains('select-menu-escaped');
+  menu.hidden = true;
+  if(wasEscaped && wrap){
+    wrap.appendChild(menu);
+  }
+  menu.classList.remove('select-menu-escaped', 'drop-up');
+  menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
+  if(wrap){
+    wrap.classList.remove('select-open', 'drop-up');
+    wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
+  }
+}
+
+// A multi-choice variant of buildSelect above — same custom-dropdown shell
+// (so it gets the same overflow-escaping, drop-up and outside-click-closes
+// behavior for free, see the delegated handlers below), but checkboxes
+// instead of one-tap-and-close buttons, and a short fixed label instead of
+// echoing back whatever's chosen — there's no length of value list that
+// reads well in the space a button like this has, so it just says how many
+// are checked instead (see the change handler below, which is what keeps
+// that count in sync without a full re-render).
+function buildMultiSelect(id, shortLabel, options, selectedValues){
+  const selected = new Set(selectedValues || []);
+  const optionsHtml = options.map(([value, label]) => `
+    <label class="multi-select-option">
+      <input type="checkbox" data-action="multiselecttoggle" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''} />
+      <span>${escapeHtml(label)}</span>
+    </label>
+  `).join('');
+  // data-for links this menu back to its wrap the same way buildSelect's
+  // does (see findSelectWrap/findMenuForWrap) — without it, a multi-select
+  // menu would be invisible to those lookups and the toggle handler above
+  // would crash trying to read .hidden off a null menu.
+  return `
+    <div class="select-wrap multi-select-wrap" data-short-label="${escapeHtml(shortLabel)}">
+      <input type="hidden" id="${id}" value="${escapeHtml(Array.from(selected).join(','))}" />
+      <button type="button" class="condition-select${selected.size ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+        <span class="select-value">${escapeHtml(shortLabel)}${selected.size ? ` (${selected.size})` : ''}</span>
+        <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      <div class="select-menu multi-select-menu" data-for="${id}" hidden>${optionsHtml}</div>
     </div>
   `;
 }
@@ -95,59 +237,93 @@ function buildMultiSelect(id, shortLabel, options, selectedValues){
 }
 
 function closeAllSelects(except){
-  document.querySelectorAll('.select-wrap').forEach(wrap => {
-    if(wrap === except) return;
-    const menu = wrap.querySelector('.select-menu');
-    menu.hidden = true;
-    // Undo the escape-to-fixed positioning (see the toggleselect handler
-    // below) so the menu goes back to its normal, wrap-relative layout the
-    // next time it opens somewhere that doesn't need it.
-    menu.classList.remove('select-menu-escaped');
-    menu.style.left = menu.style.top = menu.style.bottom = menu.style.width = '';
-    wrap.querySelector('[data-action="toggleselect"]').setAttribute('aria-expanded', 'false');
+  stopTrackingEscapedMenu();
+  // Querying menus directly (rather than each wrap's own child) is what
+  // makes this still find a menu that's currently portaled out to <body> —
+  // it's no longer a descendant of its wrap at that point, so a
+  // wrap-relative lookup would silently miss it.
+  document.querySelectorAll('.select-menu').forEach(menu => {
+    if(findSelectWrap(menu) === except) return;
+    closeSelectMenu(menu);
   });
 }
 
 // Delegated once at load so it survives every re-render without rewiring.
 document.addEventListener('click', (e) => {
+  // Tapping the already-selected value itself acts as a clear button — the
+  // dropdown otherwise has no way to get back to "no selection" once
+  // something's been picked. Only fires when there's a real value to clear;
+  // with nothing selected the button just shows its placeholder text, and
+  // tapping that should open the menu as usual, not "clear" a non-selection.
+  const valueText = e.target.closest('.select-value');
+  const valueToggle = valueText && valueText.closest('[data-action="toggleselect"]');
+  if(valueToggle && !valueToggle.classList.contains('placeholder')){
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = valueToggle.closest('.select-wrap');
+    const hiddenInput = wrap.querySelector('input[type="hidden"]');
+    const menu = findMenuForWrap(wrap);
+    hiddenInput.value = '';
+    valueText.textContent = valueToggle.dataset.placeholder || '';
+    valueToggle.classList.add('placeholder');
+    if(menu) menu.querySelectorAll('.select-option').forEach(o => o.classList.remove('selected'));
+    stopTrackingEscapedMenu();
+    closeAllSelects(null);
+    return;
+  }
+
   const toggle = e.target.closest('[data-action="toggleselect"]');
   if(toggle){
     e.preventDefault();
     e.stopPropagation();
     const wrap = toggle.closest('.select-wrap');
-    const menu = wrap.querySelector('.select-menu');
+    const menu = findMenuForWrap(wrap);
     const willOpen = menu.hidden;
     closeAllSelects(wrap);
-    menu.hidden = !willOpen;
-    toggle.setAttribute('aria-expanded', String(willOpen));
-    if(willOpen){
-      // The menu is never scrollable, so when it doesn't fit below, open it
-      // upward — but only if there's actually more room up there.
+    if(!willOpen){
+      // Tapping the same toggle again while its own menu is open — close it
+      // through the normal path (closeSelectMenu) so an escaped one gets
+      // portaled back home and fully cleaned up, not just hidden in place.
+      closeSelectMenu(menu);
+      return;
+    }
+    menu.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    // The confirm pop-up's Position/Wear/Time dropdowns are tall enough to
+    // reach the bottom of the screen, where the trigger dock and bottom tab
+    // bar are both fixed on top of the page. Escaping — moving the menu
+    // itself to <body> and positioning it in viewport coordinates — lets it
+    // draw over those instead of disappearing behind them, and keeps it
+    // clear of any ancestor's overflow no matter what that ancestor does
+    // later.
+    if(wrap.closest('.data-watch-scroll')){
+      document.body.appendChild(menu);
+      menu.classList.add('select-menu-escaped');
+      positionEscapedMenu(menu, toggle);
+      // Positioned once, above — rather than keep it glued to the trigger
+      // through a live scroll (see the comment on escapedMenuTracker), just
+      // close it as soon as the list moves under it, the keyboard opens, or
+      // the phone rotates. The list itself is never touched here, so
+      // scrolling the page works normally the whole time this is open.
+      escapedMenuTracker = () => closeAllSelects(null);
+      document.addEventListener('scroll', escapedMenuTracker, true);
+      window.addEventListener('resize', escapedMenuTracker);
+      window.addEventListener('orientationchange', escapedMenuTracker);
+      if(window.visualViewport) window.visualViewport.addEventListener('resize', escapedMenuTracker);
+      wrap.classList.toggle('drop-up', menu.classList.contains('drop-up'));
+    } else {
+      // Plain, wrap-relative menus get the drop-up decision made once here
+      // instead — they never move, so there's nothing to re-track.
       menu.classList.remove('drop-up');
       const box = toggle.getBoundingClientRect();
       const spaceBelow = window.innerHeight - box.bottom;
       const spaceAbove = box.top;
       const needed = menu.getBoundingClientRect().height + 12;
       const dropUp = needed > spaceBelow && spaceAbove > spaceBelow;
-      if(dropUp) menu.classList.add('drop-up');
-
-      // The Snap tab's own watch list scrolls inside an overflow:auto
-      // container (see sizeDataWatchScroll) that would otherwise clip a
-      // menu extending past its edge — the confirm popup's Position/Wear/
-      // Time dropdowns are tall enough to do exactly that. Escaping to
-      // viewport-fixed coordinates here lets the menu draw over everything,
-      // trigger dock and bottom tabs included, instead of being cut off.
-      if(wrap.closest('.data-watch-scroll')){
-        menu.classList.add('select-menu-escaped');
-        menu.style.left = box.left + 'px';
-        menu.style.width = box.width + 'px';
-        if(dropUp){
-          menu.style.bottom = (window.innerHeight - box.top + 6) + 'px';
-        } else {
-          menu.style.top = (box.bottom + 6) + 'px';
-        }
-      }
+      menu.classList.toggle('drop-up', dropUp);
+      wrap.classList.toggle('drop-up', dropUp);
     }
+    wrap.classList.add('select-open');
     return;
   }
 
@@ -155,15 +331,16 @@ document.addEventListener('click', (e) => {
   if(option){
     e.preventDefault();
     e.stopPropagation();
-    const wrap = option.closest('.select-wrap');
+    const wrap = option.closest('.select-wrap') || findSelectWrap(option.closest('.select-menu'));
     const button = wrap.querySelector('[data-action="toggleselect"]');
+    const menu = option.closest('.select-menu');
     const hidden = wrap.querySelector('input[type="hidden"]');
     hidden.value = option.dataset.value;
     wrap.querySelector('.select-value').textContent = option.textContent;
     button.classList.toggle('placeholder', !option.dataset.value);
-    wrap.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
-    wrap.querySelector('.select-menu').hidden = true;
-    button.setAttribute('aria-expanded', 'false');
+    menu.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
+    stopTrackingEscapedMenu();
+    closeSelectMenu(menu);
     // A real <select> fires 'change' on its own when the value changes;
     // this one has to do it itself, since setting .value on the hidden
     // input programmatically doesn't. Nothing listened for it before the
@@ -208,7 +385,123 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape') closeAllSelects(null);
+  if(e.key === 'Escape'){
+    if(noteEditorFor){ closeNoteEditor(false); return; }
+    closeAllSelects(null);
+    return;
+  }
+  // Enter commits the note, the way it would submit a one-field form.
+  if(e.key === 'Enter' && noteEditorFor){
+    e.preventDefault();
+    closeNoteEditor(true);
+  }
+});
+
+// --- the note field -----------------------------------------------------
+// A note is written in its own overlay rather than in an inline field.
+// Anchored to the *top* of the screen, where a keyboard rising from the
+// bottom can never cover it — so nothing about this has to reason about how
+// much room the keyboard left, which is what the inline field kept getting
+// wrong on real hardware. It lives in <body> too, so unlike the inline
+// field a render() mid-edit can't destroy what's being typed.
+let noteEditorFor = null;
+
+// The hidden input carries the caller's id, so everything already reading
+// `document.getElementById('qNote').value` keeps working untouched — the
+// same arrangement buildSelect uses to stand in for a native control.
+function buildNoteField(id){
+  return `
+    <input type="hidden" id="${id}" value="${escapeHtml(noteDraft)}" />
+    <button type="button" class="note-inline-btn${noteDraft ? '' : ' placeholder'}" data-action="editnote" data-for="${id}">${noteDraft ? escapeHtml(noteDraft) : '+ optional note'}</button>
+  `;
+}
+
+// Built once, up front rather than on first use: the tap that opens the
+// editor has to focus its field in that same tick to bring the keyboard up
+// (see openNoteEditor), and a field the document has never laid out is the
+// shakiest thing to hand focus to at that moment.
+function ensureNoteEditor(){
+  let el = document.getElementById('noteEditor');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'noteEditor';
+    el.className = 'note-editor';
+    el.innerHTML = `
+      <div class="note-editor-panel">
+        <label class="note-editor-label" for="noteEditorInput">Note</label>
+        <input type="text" id="noteEditorInput" class="note-editor-input" placeholder="Anything worth remembering" autocomplete="off" />
+        <div class="row2">
+          <button type="button" class="btn-secondary" data-action="notecancel" style="flex:1">Cancel</button>
+          <button type="button" class="btn-primary" data-action="notesave" style="flex:1">Done</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+ensureNoteEditor();
+
+function openNoteEditor(id){
+  noteEditorFor = id;
+  const el = ensureNoteEditor();
+  const input = el.querySelector('#noteEditorInput');
+  input.value = noteDraft;
+  el.classList.add('open');
+  // Everything from here has to stay synchronous inside the tap that opened
+  // the editor: iOS only raises the keyboard for a focus() call that happens
+  // within the gesture asking for it, so deferring this by even one frame
+  // (which is what it did before) left the field focused with the keyboard
+  // still down, needing a second tap on it to type. Reading offsetHeight
+  // forces the display:none -> block above to resolve now rather than at the
+  // next paint — an element the browser still considers unrendered can't
+  // take focus at all.
+  void el.offsetHeight;
+  input.focus({ preventScroll: true });
+  // Caret at the end rather than the whole note selected, so reopening a
+  // note to add to it doesn't replace it with the first key pressed.
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+}
+
+function closeNoteEditor(save){
+  const el = document.getElementById('noteEditor');
+  if(!el) return;
+  const id = noteEditorFor;
+  const input = el.querySelector('#noteEditorInput');
+  if(save) noteDraft = input.value.trim();
+  // Blur first so the keyboard is already on its way down as the overlay
+  // goes, rather than being dismissed by the overlay vanishing under it.
+  input.blur();
+  el.classList.remove('open');
+  noteEditorFor = null;
+  if(!save || !id) return;
+  // Written straight through to the open pop-up instead of re-rendering it:
+  // a render() here would rebuild the whole group and replay its entrance
+  // animation for what is only a line of text changing.
+  const hidden = document.getElementById(id);
+  if(hidden) hidden.value = noteDraft;
+  const trigger = document.querySelector(`[data-action="editnote"][data-for="${id}"]`);
+  if(trigger){
+    trigger.textContent = noteDraft || '+ optional note';
+    trigger.classList.toggle('placeholder', !noteDraft);
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const trigger = e.target.closest('[data-action="editnote"]');
+  if(trigger){
+    e.preventDefault();
+    openNoteEditor(trigger.dataset.for);
+    return;
+  }
+  if(e.target.closest('[data-action="notesave"]')){ closeNoteEditor(true); return; }
+  if(e.target.closest('[data-action="notecancel"]')){ closeNoteEditor(false); return; }
+  // Tapping the dimmed area outside the panel keeps what's been typed
+  // rather than throwing it away — losing a note to a stray tap is a worse
+  // outcome than keeping one the user half-meant, and Cancel is right there
+  // for actually discarding it.
+  if(e.target.closest('#noteEditor') && !e.target.closest('.note-editor-panel')) closeNoteEditor(true);
 });
 
 // A transient message that floats above the bottom dock, over everything,
@@ -248,11 +541,13 @@ function render(){
   const root = document.getElementById('root');
   if(!loaded){ root.innerHTML = 'Loading…'; return; }
 
-  // The Snap tab's watch list scrolls in its own region (see
-  // sizeDataWatchScroll) so the reference clock stays put — the page itself
-  // must not also scroll there, or a touch can land on either scroll area
-  // ambiguously. Every other tab keeps the normal whole-page scroll.
-  document.body.classList.toggle('no-page-scroll', activeTab === 'data');
+  // Rebuilding #root below (innerHTML) destroys every select-wrap under it —
+  // including, for a menu currently portaled out to <body> (see
+  // closeAllSelects), the only thing that would otherwise have moved it back
+  // and cleaned it up. Closing here first returns it home before its wrap
+  // disappears, so it gets torn down with everything else instead of being
+  // orphaned in <body> forever.
+  closeAllSelects(null);
 
   // Capture scroll position before rebuilding — but if the user was already
   // pinned to the right edge (viewing the newest point), keep it null so it
@@ -268,15 +563,6 @@ function render(){
     const atEdge = existingDriftScroll.scrollLeft >= existingDriftScroll.scrollWidth - existingDriftScroll.clientWidth - 4;
     driftScrollLeft = atEdge ? null : existingDriftScroll.scrollLeft;
   }
-  // Same idea for the Snap tab's own watch-list scroll region — innerHTML
-  // rebuilds the whole list on every render, including a plain watch
-  // selection, so without this a scrolled-down list would silently snap
-  // back to the top just from picking a different watch. Handlers that
-  // actually want to move the list (see scrollWatchCardToTop) call that
-  // after render() returns, which overrides this restore as intended.
-  const existingDataWatchScroll = document.getElementById('dataWatchScroll');
-  const dataWatchScrollTop = existingDataWatchScroll ? existingDataWatchScroll.scrollTop : 0;
-
   // While the capture panel is open the clock is held collapsed outright,
   // rather than scrolling far enough to collapse it the normal way — that
   // would drag the panel's own top up under the header, and the two can't
@@ -356,9 +642,7 @@ function render(){
   if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
 
   root.innerHTML = buildDataWatchListHtml();
-  sizeDataWatchScroll();
-  const newDataWatchScroll = document.getElementById('dataWatchScroll');
-  if(newDataWatchScroll) newDataWatchScroll.scrollTop = dataWatchScrollTop;
+  sizeSnapDockClearance();
 
   attachHandlers(watch);
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
@@ -445,87 +729,153 @@ function buildDataWatchListHtml(){
     <div class="data-watch-scroll" id="dataWatchScroll">
       <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
       <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
-      <div id="dataWatchScrollSpacer"></div>
     </div>
   `;
 }
 
-// The Data tab's own list scrolls internally instead of the page — the big
-// reference clock above it stays fully expanded rather than collapsing away
-// as the list is browsed, since window scroll never moves. Sized to fill
-// exactly what's left between the sticky header and the fixed snap dock at
-// the bottom; re-measured on every render and on resize since both of those
-// can change height (e.g. the dock hiding when a watch has no readings yet).
-function sizeDataWatchScroll(){
-  const scrollEl = document.getElementById('dataWatchScroll');
-  if(!scrollEl) return;
-  const header = document.getElementById('stickyHeader');
+// The Snap tab scrolls as one ordinary page, like every other tab. It used
+// to lock page scroll and give the watch list its own fixed-height scroll
+// region instead, so the reference clock could stay expanded while the list
+// was browsed — but that meant the region's height had to be re-derived, in
+// pixels, from the viewport, the sticky header, the fixed dock and the
+// on-screen keyboard, none of which hold still on a phone. Worse, browsers
+// scroll the page themselves to reveal a focused field whether or not CSS
+// says overflow:hidden, and with page scroll otherwise frozen there was no
+// way back: the clock ended up stuck half-collapsed with nothing able to
+// scroll it back. Letting the page scroll normally hands all of that to the
+// browser. The only thing still measured here is how much room the fixed
+// dock needs at the bottom, so the end of the list can be scrolled clear of
+// it — a plain "how tall is this element" question, not a viewport one.
+function sizeSnapDockClearance(){
+  const listEl = document.getElementById('dataWatchScroll');
+  if(!listEl) return;
   const dock = document.getElementById('snapDock');
-  const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
-  const dockHeight = (dock && dock.style.display !== 'none') ? dock.offsetHeight : 0;
-  const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
-  scrollEl.style.height = height + 'px';
+  if(!dock || dock.style.display === 'none'){ listEl.style.paddingBottom = '0px'; return; }
+  // .app already ends with enough padding to clear the bottom tab bar on
+  // every tab, and the dock's own box covers that same strip — so only the
+  // difference is needed here. Adding the dock's full height on top of it
+  // would reserve the tab bar's share twice, stopping the end of the list
+  // well short of the dock with the slack showing as dead space.
+  const appEl = document.getElementById('app');
+  const appPadding = appEl ? parseFloat(getComputedStyle(appEl).paddingBottom) || 0 : 0;
+  const base = Math.max(0, dock.offsetHeight + 12 - appPadding);
 
-  // A trailing spacer gives just enough extra scroll room to bring the
-  // snapped watch's card all the way to the top — without it, a short list
-  // (e.g. 2-3 watches) fits entirely inside the container with nothing to
-  // scroll, so paging the snapped card to the top silently no-ops. Sized to
-  // the exact minimum needed rather than a flat screen's worth, so scrolling
-  // still bottoms out with at least one watch and the add-watch button in
-  // view instead of running on into empty space.
-  const spacer = document.getElementById('dataWatchScrollSpacer');
-  if(!spacer) return;
+  // With a pop-up open, the snapped watch also has to be able to reach the
+  // top of the page (see scrollWatchCardToTop) — and for one near the end of
+  // the list there's nothing below it to scroll against, so the page runs out
+  // of travel with the card still stranded halfway down and the pop-up's own
+  // buttons left under the dock. Topping the page's scroll range up by
+  // whatever it falls short by is what the list's old trailing spacer was
+  // for; this is the same idea against the page instead of a private scroll
+  // region, and only while a pop-up is actually open.
+  //
+  // Measured off the content's own bottom edge — the current padding backed
+  // out of it — rather than by writing a smaller padding first and measuring
+  // what that gives. Shrinking the page even for the instant between two
+  // writes lets the browser clamp the scroll position to the shorter
+  // document, and it doesn't come back when the padding does: a scroll
+  // already under way (this runs on focus changes, which a snap fires) would
+  // be quietly cut short partway. One write, no intermediate state.
+  let extra = 0;
   const group = document.querySelector('.data-watch-group');
-  const addBtn = document.querySelector('.data-add-watch-btn');
-  if(!group || !addBtn){ spacer.style.height = '0px'; return; }
-  spacer.style.height = '0px';
-  // scrollHeight can't be used to measure the real content height here — a
-  // scrollable box with shorter content than its own fixed height still
-  // reports scrollHeight === clientHeight, hiding how short the content
-  // actually is. Measuring the add-watch button's own position (the last
-  // real thing in the list) instead gives the true content height.
-  const containerTop = scrollEl.getBoundingClientRect().top;
-  const naturalContentHeight = scrollEl.scrollTop + (addBtn.getBoundingClientRect().bottom - containerTop);
-  const groupOffsetTop = scrollEl.scrollTop + (group.getBoundingClientRect().top - containerTop);
-  const naturalMaxScroll = Math.max(0, naturalContentHeight - height);
-  const neededMaxScroll = Math.max(naturalMaxScroll, groupOffsetTop);
-  spacer.style.height = Math.max(0, height + neededMaxScroll - naturalContentHeight) + 'px';
+  if(group){
+    const currentPad = parseFloat(getComputedStyle(listEl).paddingBottom) || 0;
+    const contentBottom = listEl.getBoundingClientRect().bottom - currentPad;
+    const roomBelowGroup = (contentBottom + base + appPadding) - group.getBoundingClientRect().top;
+    extra = Math.max(0, window.innerHeight - roomBelowGroup);
+  }
+  listEl.style.paddingBottom = (base + extra) + 'px';
 }
-window.addEventListener('resize', sizeDataWatchScroll);
+window.addEventListener('resize', sizeSnapDockClearance);
 
-// The on-screen keyboard shrinks the visual viewport without the page
-// itself reflowing (especially on iOS Safari), so a focused field low in
-// the Snap tab's confirm popup — the note field, most often — can end up
-// hidden behind it with nothing scrolling it back into view. Whenever the
-// visual viewport resizes (the keyboard opening, closing, or changing
-// height), nudge the list's own scroll region just enough to keep whatever
-// is currently focused in it above the keyboard.
-if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', () => {
-    const container = document.getElementById('dataWatchScroll');
-    if(!container) return;
-    const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
-    const active = document.activeElement;
-    const focusedInList = active && container.contains(active);
-    if(keyboardHeight < 40 || !focusedInList){
-      // Keyboard closed (or nothing in the list is focused) — drop back to
-      // the normal, capped scroll room (see sizeDataWatchScroll) instead of
-      // leaving the temporary keyboard-clearance spacer below behind.
-      sizeDataWatchScroll();
-      return;
-    }
-    // The list's own scroll room is normally capped to just what's needed
-    // to bring a snapped watch to the top (see sizeDataWatchScroll) — with
-    // only one or two watches, that can be nowhere near enough to also
-    // scroll a low field up above the keyboard, so stretch it here for as
-    // long as the keyboard is actually up.
-    const spacer = document.getElementById('dataWatchScrollSpacer');
-    if(spacer) spacer.style.height = Math.max(parseFloat(spacer.style.height) || 0, keyboardHeight) + 'px';
-    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
-    const overflow = active.getBoundingClientRect().bottom - visibleBottom;
-    if(overflow > 0) container.scrollTop += overflow + 12;
-  });
+// Keeping a focused field clear of the on-screen keyboard used to be done
+// by hand here — scrolling the list's own region, stretching a spacer,
+// re-measuring against the visual viewport, and snapping window scroll back
+// to 0 because the page was never supposed to move on this tab. All of it
+// existed only because the page couldn't scroll (see sizeSnapDockClearance);
+// now that it can, the browser does this itself, correctly, on every device.
+// The one thing still worth doing is getting the fixed trigger dock out of
+// the way, since a fixed element is exactly what the browser's own
+// scroll-into-view can't account for — that lives in updateKeyboardHideState
+// below, alongside the bottom bar's version of the same decision.
+
+// The bottom nav bar is fixed near the bottom of the layout viewport, but
+// once the on-screen keyboard opens, iOS Safari keeps fixed elements
+// pinned to the shrunken *visual* viewport instead — which is exactly what
+// makes it look like it "jumps up": it ends up floating partway up the
+// page, on top of whatever real content happens to sit there (the
+// Collection tab's catalog search results, most often), rather than at the
+// bottom where there'd be nothing left to cover. Simplest fix is to just
+// get it out of the way for as long as a text field actually has the
+// keyboard open. Guarded on the app screen actually being visible so this
+// never fights showApp/showAuthScreen's own use of the same element on the
+// sign-in screen.
+//
+// The reference clock at the top gets the same treatment, but only while
+// the Collection tab's add-watch search is open — it's the biggest single
+// thing eating into the room a phone's keyboard leaves for search results,
+// bigger than the bottom bar. Scoped to just that view (rather than
+// applied globally like the bottom bar above) so it can't interact with
+// whatever made the Snap tab's own force-collapse behavior get switched
+// off (see CLOCK_FORCE_COLLAPSE_ENABLED in clock.js) — this is a separate,
+// narrower mechanism, not a reuse of that one. Reappears the moment the
+// keyboard closes, whether that's from tapping outside the field or
+// switching away from search mode.
+//
+// This used to key off visualViewport resize (measuring how much the
+// visible area shrank), the same signal the Snap tab logic above uses —
+// but on at least one real iOS device it never fired reliably here, so the
+// bar and clock stayed put with the keyboard fully open. Focus/blur on the
+// field itself is a more direct signal for "is the keyboard actually up"
+// and doesn't depend on the viewport-resize event firing at all: it's
+// driven straight off document.activeElement changing, via the bubbling
+// focusin/focusout events.
+function isKeyboardTextInput(el){
+  if(!el) return false;
+  if(el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
+  // Checkboxes/radios (the multi-select filter options, the reset-point
+  // checkbox, etc.) are <input> elements too but never bring up a keyboard.
+  if(el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return false;
+  return true;
 }
+function updateKeyboardHideState(){
+  const bar = document.getElementById('bottomTabs');
+  const appShown = document.getElementById('app');
+  if(!bar || !appShown || appShown.style.display === 'none') return;
+  const active = document.activeElement;
+  const keyboardOpen = isKeyboardTextInput(active);
+  // The bottom bar stays put for the Snap tab's own fields — it's navigation
+  // the user expects to always have on screen, and nothing on that tab needs
+  // the room taking it away would free.
+  const dataWatchScroll = document.getElementById('dataWatchScroll');
+  const inSnapList = dataWatchScroll && active && dataWatchScroll.contains(active);
+  bar.style.display = (keyboardOpen && !inSnapList) ? 'none' : '';
+
+  // The trigger dock does have to go, though, and it's decided here rather
+  // than anywhere else on purpose: it and the bottom bar are the two fixed
+  // things that can cover a field being typed into, and they got out of sync
+  // — one updated for the keyboard, the other not — every time they were
+  // toggled from separate places. Now it's one focus-driven decision. Focus
+  // rather than a viewport-resize measurement because focus is the thing
+  // that's actually true: a resize event can lag, or never arrive at all.
+  const dock = document.getElementById('snapDock');
+  if(dock){
+    dock.classList.toggle('dock-hidden-for-keyboard', keyboardOpen && !!inSnapList);
+    sizeSnapDockClearance();
+  }
+
+  const clockBox = document.getElementById('masterClockBox');
+  if(clockBox){
+    const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
+    clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
+  }
+}
+document.addEventListener('focusin', updateKeyboardHideState);
+// focusout fires just before activeElement actually clears (it briefly
+// becomes document.body), so check on the next tick once it's settled —
+// otherwise a tap from one field straight to another would flash the bar
+// back on in between.
+document.addEventListener('focusout', () => setTimeout(updateKeyboardHideState, 0));
 
 // The bottom nav bar is fixed near the bottom of the layout viewport, but
 // once the on-screen keyboard opens, iOS Safari keeps fixed elements
@@ -605,31 +955,31 @@ function scrollToPageTop(duration){
   requestAnimationFrame(step);
 }
 
-// Scrolls the Data tab's own internal list (see sizeDataWatchScroll) so the
-// given watch's card — or its snap group, once the pop-up is open — lands at
-// the same spot the very first card sits at on a fresh load, leaving any
-// cards above it scrolled out of view and the rest still reachable further
-// down. The page itself never scrolls here, so the big reference clock above
-// the list stays fully expanded throughout. The list keeps its natural order
-// (see buildDataWatchListHtml) instead of jumping the active watch to the
-// front.
-function scrollWatchCardToTop(watchId, duration){
-  const container = document.getElementById('dataWatchScroll');
+// Brings the snapped watch's card — or its snap group, once the pop-up is
+// open — up under the header, so the thing just captured is what you're
+// looking at, with the cards above it scrolled off and the rest still
+// reachable below. The list keeps its natural order (see
+// buildDataWatchListHtml) rather than jumping the active watch to the front.
+//
+// This scrolls the page now, not a private scroll region, so it hands the
+// job to scrollPanelIntoView — the same helper the Collection tab already
+// uses for exactly this. That one knows the header is sticky AND collapses
+// as the page moves, and re-measures across a few frames until it settles
+// instead of computing one target up front and landing short of it. For the
+// first watch in the list that lands back at the top of the page with the
+// clock full size again: the default view, which is where a snap should
+// always put you.
+function scrollWatchCardToTop(watchId){
   const el = document.querySelector(`.data-watch-group[data-id="${watchId}"]`) ||
     document.querySelector(`.data-watch-card[data-id="${watchId}"]`);
-  if(!container || !el) return;
-  const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
-  const targetTop = Math.max(0, container.scrollTop + delta);
-  const startTop = container.scrollTop;
-  if(Math.abs(targetTop - startTop) < 2) return;
-  const startTime = performance.now();
-  const step = (now) => {
-    const t = Math.min(1, (now - startTime) / duration);
-    const eased = 1 - Math.pow(1 - t, 3);
-    container.scrollTop = startTop + (targetTop - startTop) * eased;
-    if(t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+  if(!el) return;
+  // Nothing above the first card to scroll out of the way, so the top of the
+  // page is already where it belongs — go there rather than pinning it under
+  // the header, which would scroll down by the list's own top margin to close
+  // a gap that's meant to be there. That's a dozen pixels of travel with
+  // nothing to show for it, and it reads as the card twitching on every snap.
+  if(!el.previousElementSibling){ scrollToPageTop(220); return; }
+  scrollPanelIntoView(el, true);
 }
 
 
@@ -806,7 +1156,13 @@ function scrollPanelIntoView(el, pinTop){
       headerBottom = Math.min(rect.bottom, stuckTop + rect.height);
     }
     const topLimit = headerBottom + topGap;
-    const bottomLimit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - 10;
+    // On the Snap tab the trigger dock is fixed above the tab bar and is the
+    // taller of the two, so it's the real bottom edge there; everywhere else
+    // it's display:none and the tab bar is. Measuring whichever is actually
+    // on screen keeps one rule for both.
+    const dock = document.getElementById('snapDock');
+    const bottomEl = (dock && dock.style.display !== 'none') ? dock : tabs;
+    const bottomLimit = (bottomEl ? bottomEl.getBoundingClientRect().top : window.innerHeight) - 10;
     const box = el.getBoundingClientRect();
 
     let delta = 0;
@@ -1073,11 +1429,11 @@ function buildSnapPopupHtml(){
       </div>
       <div class="confirm-sub">captured <b>${pad2(c.getHours())}:${pad2(c.getMinutes())}:${pad2(c.getSeconds())}</b> · <span id="qOffsetLabel" class="confirm-offset ${aheadBy >= 0 ? 'ahead' : 'behind'}">${offsetLabel}</span></div>
       <div class="row3">
-        <div class="field">${buildSelect('qPosition', POSITION_OPTIONS)}</div>
-        <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
-        <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
+        <div class="field">${buildSelect('qPosition', POSITION_OPTIONS, undefined, true)}</div>
+        <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)], undefined, true)}</div>
+        <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)], undefined, true)}</div>
       </div>
-      <input type="text" id="qNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
+      <div style="margin-top:12px;">${buildNoteField('qNote')}</div>
       <div class="row2" style="margin-top:12px;">
         <button type="button" class="btn-secondary" data-action="quickcancel" style="flex:1">Cancel</button>
         <button type="button" class="btn-primary" data-action="quickconfirm" style="flex:1">Log</button>
@@ -1096,18 +1452,22 @@ function buildManualForm(){
             <label for="rDate">Date checked</label>
             <input type="date" id="rDate" required value="${todayStr()}" />
           </div>
-          <div class="field">
-            <label for="rOffset">Cumulative offset (sec)</label>
-            <input type="number" id="rOffset" step="1" placeholder="e.g. -4 or 12" required />
+          <div class="field stepper-row-field">
+            <label for="rOffsetSeconds">Cumulative offset (sec)</label>
+            <div class="stepper-row">
+              <button type="button" class="zoom-btn" data-action="offsetstep" data-dir="-1">−</button>
+              <input type="number" inputmode="numeric" id="rOffsetSeconds" step="1" value="0" required />
+              <button type="button" class="zoom-btn" data-action="offsetstep" data-dir="1">+</button>
+            </div>
           </div>
         </div>
         <p class="hint" style="margin:0;">Negative = slow, positive = fast, since you set it.</p>
         <div class="row3">
-          <div class="field">${buildSelect('rPosition', POSITION_OPTIONS)}</div>
-          <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)])}</div>
-          <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)])}</div>
+          <div class="field">${buildSelect('rPosition', POSITION_OPTIONS, undefined, true)}</div>
+          <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)], undefined, true)}</div>
+          <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)], undefined, true)}</div>
         </div>
-        <input type="text" id="rNote" class="note-inline-input" placeholder="+ optional note" />
+        ${buildNoteField('rNote')}
         <div class="row2">
           <button type="button" class="btn-secondary" data-action="quickmode" style="flex:1">Cancel</button>
           <button type="submit" class="btn-primary" style="flex:1">Add reading</button>
@@ -1180,21 +1540,52 @@ function attachHandlers(watch){
   if(form) form.onsubmit = (e) => {
     e.preventDefault();
     const date = document.getElementById('rDate').value;
-    const offset = document.getElementById('rOffset').value;
+    const seconds = document.getElementById('rOffsetSeconds').value;
     const note = document.getElementById('rNote').value;
-    if(!date || offset === '') return;
-    addReading(watch.id, date, offset, note, readConditionInputs('r'));
+    if(!date || seconds === '') return;
+    noteDraft = '';
+    addReading(watch.id, date, Number(seconds), note, readConditionInputs('r'));
   };
+
+  // Same tap-to-step, hold-to-accelerate interaction as the quick-snap
+  // popup's time stepper (see the "timestep" handler below) — one second per
+  // tap, five per tick once held past 800ms, no bound in either direction.
+  document.querySelectorAll('[data-action="offsetstep"]').forEach(btn => {
+    let holdTimeout = null;
+    let holdInterval = null;
+    const dir = Number(btn.dataset.dir);
+    const step = (steps) => {
+      const input = document.getElementById('rOffsetSeconds');
+      if(!input) return;
+      const current = input.value === '' ? 0 : Number(input.value);
+      input.value = String(current + steps);
+    };
+    const clearHold = () => {
+      if(holdTimeout) clearTimeout(holdTimeout);
+      if(holdInterval) clearInterval(holdInterval);
+      holdTimeout = null; holdInterval = null;
+    };
+    btn.onpointerdown = (e) => {
+      e.preventDefault();
+      step(dir);
+      holdTimeout = setTimeout(() => {
+        holdInterval = setInterval(() => step(dir * 5), 150);
+      }, 800);
+    };
+    btn.onpointerup = clearHold;
+    btn.onpointerleave = clearHold;
+    btn.onpointercancel = clearHold;
+  });
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
-    manualMode = true; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute';
+    manualMode = true; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; noteDraft = '';
     render();
-    if(watch) scrollWatchCardToTop(watch.id, 125);
+    if(watch) scrollWatchCardToTop(watch.id);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
-  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; render(); };
+  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; noteDraft = ''; render(); };
 
   if(watch) attachWatchStatsHandlers(watch);
 
@@ -1216,9 +1607,10 @@ function attachHandlers(watch){
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       quickAdjustSeconds = 0;
       quickSelectedField = 'minute';
+      noteDraft = '';
       playShutterSound();
       render();
-      if(watch) scrollWatchCardToTop(watch.id, 125);
+      if(watch) scrollWatchCardToTop(watch.id);
     };
   });
 
@@ -1227,6 +1619,7 @@ function attachHandlers(watch){
     quickCaptured = null;
     quickAdjustSeconds = 0;
     quickSelectedField = 'minute';
+    noteDraft = '';
     render();
   };
 
@@ -1314,6 +1707,7 @@ function attachHandlers(watch){
     quickCaptured = null;
     quickAdjustSeconds = 0;
     quickSelectedField = 'minute';
+    noteDraft = '';
     addReading(watch.id, date, diff, note, conditions);
   };
 }

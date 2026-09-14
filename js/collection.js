@@ -319,14 +319,16 @@ function wornIconSvg(){
   </svg>`;
 }
 
-// Three dots: jumps straight to this watch's Collection detail page — full
-// specs, charts, history, the wear calendar — everything the Data tab's
-// trimmed-down card leaves out.
+// A forward chevron — the mirror image of the back arrows used elsewhere
+// (collection-back-btn, profile-back-btn) — jumps straight to this watch's
+// Collection detail page: full specs, charts, history, the wear calendar,
+// everything the Data tab's trimmed-down card leaves out. Reads as "go into
+// this" the same way the back arrow reads as "go out of this", where three
+// dots (the previous icon here) read as "more options" and didn't match
+// what tapping it actually does.
 function menuIconSvg(){
-  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="none">
-    <circle cx="12" cy="5.5" r="1.8" />
-    <circle cx="12" cy="12" r="1.8" />
-    <circle cx="12" cy="18.5" r="1.8" />
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 18l6-6-6-6" />
   </svg>`;
 }
 
