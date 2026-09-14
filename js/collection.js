@@ -997,8 +997,17 @@ function attachWearCalendarHandlers(){
 
 function buildCollectionDetailHtml(w){
   if(editingCollectionId === w.id){
+    // Deliberately data-action="cancelcollection", not backtocollectionlist
+    // — this used to jump straight past the detail view to the list (or
+    // even the Data tab, if that's where the watch bar's own back button
+    // would have gone), the same overshoot Cancel below already didn't
+    // have. Reusing that exact action means this and Cancel are now one
+    // button in two places rather than two subtly different ones — see
+    // buildCollectionEditForm, which drops its own copy in favor of this.
     return `
-      <button type="button" class="reset-link back-link" data-action="backtocollectionlist" style="margin:22px 0 14px;">‹ Back to collection</button>
+      <button type="button" class="zoom-btn collection-back-btn" data-action="cancelcollection" aria-label="Cancel and go back" style="margin-bottom:14px;">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+      </button>
       ${buildCollectionEditForm(w)}
     `;
   }
@@ -1231,10 +1240,7 @@ function buildCollectionEditForm(w){
         <input type="text" id="colNotes_${w.id}" value="${escapeHtml(w.conditionNotes || '')}" placeholder="full set, box & papers…" />
       </div>
       ${saveStatus === 'error' ? '<p class="hint" style="color:var(--bad);">Save failed — check your connection, or the database may be missing the collection columns (see the setup SQL).</p>' : ''}
-      <div class="row2" style="margin-top:6px;">
-        <button type="button" class="btn-secondary" data-action="cancelcollection">Cancel</button>
-        <button type="button" class="btn-primary" data-action="savecollection" data-id="${w.id}" style="flex:1">${saveStatus==='saving' ? 'Saving…' : 'Save'}</button>
-      </div>
+      <button type="button" class="btn-primary" data-action="savecollection" data-id="${w.id}" style="width:100%;margin-top:6px;">${saveStatus==='saving' ? 'Saving…' : 'Save'}</button>
       <button type="button" class="manual-link manual-link-inline" data-action="deletecollectionwatch" data-id="${w.id}" style="margin:14px auto 0;">Delete "${escapeHtml(w.name)}"</button>
     </div>
   `;
