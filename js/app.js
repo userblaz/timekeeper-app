@@ -295,7 +295,16 @@ document.addEventListener('click', (e) => {
       // close it as soon as the list moves under it, the keyboard opens, or
       // the phone rotates. The list itself is never touched here, so
       // scrolling the page works normally the whole time this is open.
-      escapedMenuTracker = () => closeAllSelects(null);
+      // Scrolling the *menu's own* option list (catalog filters can have
+      // enough entries to need that — see the max-height/overflow-y on
+      // .select-menu) fires a real 'scroll' event too, captured right along
+      // with everything else here; without the target check below that
+      // closed the menu the instant you tried to scroll its own list,
+      // rather than only when something outside it moved.
+      escapedMenuTracker = (e) => {
+        if(e && e.type === 'scroll' && menu.contains(e.target)) return;
+        closeAllSelects(null);
+      };
       document.addEventListener('scroll', escapedMenuTracker, true);
       window.addEventListener('resize', escapedMenuTracker);
       window.addEventListener('orientationchange', escapedMenuTracker);
