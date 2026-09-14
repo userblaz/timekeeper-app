@@ -261,14 +261,13 @@ document.addEventListener('click', (e) => {
     }
     menu.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
-    // The Snap tab's own watch list scrolls inside an overflow:auto
-    // container (see sizeDataWatchScroll) that would otherwise clip a menu
-    // extending past its edge — the confirm popup's Position/Wear/Time
-    // dropdowns are tall enough to do exactly that. Escaping — moving the
-    // menu itself to <body> and positioning it in viewport coordinates —
-    // lets it draw over everything, trigger dock and bottom tabs included,
-    // instead of being cut off, and stops it being clipped by any
-    // ancestor's overflow no matter what that ancestor does later.
+    // The confirm pop-up's Position/Wear/Time dropdowns are tall enough to
+    // reach the bottom of the screen, where the trigger dock and bottom tab
+    // bar are both fixed on top of the page. Escaping — moving the menu
+    // itself to <body> and positioning it in viewport coordinates — lets it
+    // draw over those instead of disappearing behind them, and keeps it
+    // clear of any ancestor's overflow no matter what that ancestor does
+    // later.
     if(wrap.closest('.data-watch-scroll')){
       document.body.appendChild(menu);
       menu.classList.add('select-menu-escaped');
@@ -371,19 +370,12 @@ document.addEventListener('keydown', (e) => {
 });
 
 // --- the note field -----------------------------------------------------
-// A note is written in its own overlay rather than in an inline field, and
-// that's a deliberate retreat from the inline one. This tab locks page
-// scrolling and puts its list in a fixed-height region sized in JS (see
-// sizeDataWatchScroll), which turns off the browser's own "scroll the
-// focused field into view" handling — so an inline field had to be kept
-// clear of the on-screen keyboard by hand, and that arithmetic has to be
-// right about where a keyboard, a tab bar and a trigger dock all ended up
-// on hardware it can't measure. Repeated attempts to get it right each
-// fixed one case and broke another. The overlay removes the question
-// instead of answering it: it's anchored to the *top* of the screen, and a
-// keyboard only ever rises from the bottom, so there is no clearance left
-// to compute. It lives in <body> too, so unlike the inline field a render()
-// mid-edit can't destroy what's being typed.
+// A note is written in its own overlay rather than in an inline field.
+// Anchored to the *top* of the screen, where a keyboard rising from the
+// bottom can never cover it — so nothing about this has to reason about how
+// much room the keyboard left, which is what the inline field kept getting
+// wrong on real hardware. It lives in <body> too, so unlike the inline
+// field a render() mid-edit can't destroy what's being typed.
 let noteEditorFor = null;
 
 // The hidden input carries the caller's id, so everything already reading
@@ -529,12 +521,6 @@ function render(){
   // orphaned in <body> forever.
   closeAllSelects(null);
 
-  // The Snap tab's watch list scrolls in its own region (see
-  // sizeDataWatchScroll) so the reference clock stays put — the page itself
-  // must not also scroll there, or a touch can land on either scroll area
-  // ambiguously. Every other tab keeps the normal whole-page scroll.
-  document.body.classList.toggle('no-page-scroll', activeTab === 'data');
-
   // Capture scroll position before rebuilding — but if the user was already
   // pinned to the right edge (viewing the newest point), keep it null so it
   // re-pins to the new right edge below, rather than freezing at the old
@@ -549,15 +535,6 @@ function render(){
     const atEdge = existingDriftScroll.scrollLeft >= existingDriftScroll.scrollWidth - existingDriftScroll.clientWidth - 4;
     driftScrollLeft = atEdge ? null : existingDriftScroll.scrollLeft;
   }
-  // Same idea for the Snap tab's own watch-list scroll region — innerHTML
-  // rebuilds the whole list on every render, including a plain watch
-  // selection, so without this a scrolled-down list would silently snap
-  // back to the top just from picking a different watch. Handlers that
-  // actually want to move the list (see scrollWatchCardToTop) call that
-  // after render() returns, which overrides this restore as intended.
-  const existingDataWatchScroll = document.getElementById('dataWatchScroll');
-  const dataWatchScrollTop = existingDataWatchScroll ? existingDataWatchScroll.scrollTop : 0;
-
   // While the capture panel is open the clock is held collapsed outright,
   // rather than scrolling far enough to collapse it the normal way — that
   // would drag the panel's own top up under the header, and the two can't
@@ -637,9 +614,7 @@ function render(){
   if(tabsSlotEl0) tabsSlotEl0.innerHTML = '';
 
   root.innerHTML = buildDataWatchListHtml();
-  sizeDataWatchScroll();
-  const newDataWatchScroll = document.getElementById('dataWatchScroll');
-  if(newDataWatchScroll) newDataWatchScroll.scrollTop = dataWatchScrollTop;
+  sizeSnapDockClearance();
 
   attachHandlers(watch);
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
@@ -726,190 +701,75 @@ function buildDataWatchListHtml(){
     <div class="data-watch-scroll" id="dataWatchScroll">
       <div class="collection-list" style="margin-top:2px;">${cardsHtml}</div>
       <button type="button" class="collection-add-btn data-add-watch-btn" data-action="jumptoaddwatch" style="margin-top:12px;">+ Add watch</button>
-      <div id="dataWatchScrollSpacer"></div>
     </div>
   `;
 }
 
-// The Data tab's own list scrolls internally instead of the page — the big
-// reference clock above it stays fully expanded rather than collapsing away
-// as the list is browsed, since window scroll never moves. Sized to fill
-// exactly what's left between the sticky header and the fixed snap dock at
-// the bottom; re-measured on every render and on resize since both of those
-// can change height (e.g. the dock hiding when a watch has no readings yet).
-function sizeDataWatchScroll(){
-  const scrollEl = document.getElementById('dataWatchScroll');
-  if(!scrollEl) return;
-  const header = document.getElementById('stickyHeader');
+// The Snap tab scrolls as one ordinary page, like every other tab. It used
+// to lock page scroll and give the watch list its own fixed-height scroll
+// region instead, so the reference clock could stay expanded while the list
+// was browsed — but that meant the region's height had to be re-derived, in
+// pixels, from the viewport, the sticky header, the fixed dock and the
+// on-screen keyboard, none of which hold still on a phone. Worse, browsers
+// scroll the page themselves to reveal a focused field whether or not CSS
+// says overflow:hidden, and with page scroll otherwise frozen there was no
+// way back: the clock ended up stuck half-collapsed with nothing able to
+// scroll it back. Letting the page scroll normally hands all of that to the
+// browser. The only thing still measured here is how much room the fixed
+// dock needs at the bottom, so the end of the list can be scrolled clear of
+// it — a plain "how tall is this element" question, not a viewport one.
+function sizeSnapDockClearance(){
+  const listEl = document.getElementById('dataWatchScroll');
+  if(!listEl) return;
   const dock = document.getElementById('snapDock');
-  const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
-  // A dock hidden for the keyboard (see the visualViewport listener below)
-  // is invisible but still `display` non-'none'. Reclaiming its full height
-  // in that case overshot: the dock's box doesn't just cover its own
-  // trigger buttons, its bottom padding also stretches all the way down to
-  // clear the bottom tab bar underneath (see the #snapDock comment in
-  // styles.css) — zeroing out the whole thing let the list run in behind
-  // that padding and behind the tab bar, showing up as a dead gap between
-  // the list's real content and the tab bar. Only the trigger's own
-  // reachable height gets reclaimed; that fixed tab-bar clearance (the same
-  // padding-bottom value, which doesn't change with the dock's opacity)
-  // stays reserved for as long as the tab bar itself is still on screen.
-  const dockHidden = dock && dock.classList.contains('dock-hidden-for-keyboard');
-  const dockVisible = dock && dock.style.display !== 'none';
-  const dockHeight = dockVisible
-    ? (dockHidden ? parseFloat(getComputedStyle(dock).paddingBottom) || 0 : dock.offsetHeight)
-    : 0;
-  // The layout viewport (window.innerHeight) never shrinks for an on-screen
-  // keyboard, but the visual one does — and on the real device this all got
-  // tuned against, fixed-position elements (the dock, the tab bar) end up
-  // pinned to the *visual* viewport's edges once the keyboard is up, not the
-  // full screen (see the visualViewport listener below). Sizing the list
-  // against window.innerHeight while the keyboard is open measured against
-  // the wrong bottom edge — short by the keyboard's own height — and that
-  // gap between the two is exactly what showed up as the open pop-up
-  // getting cut off with dead space left over beneath it.
-  const vv = window.visualViewport;
-  const viewportHeight = vv ? vv.height + vv.offsetTop : window.innerHeight;
-  const height = Math.max(120, viewportHeight - headerBottom - dockHeight);
-  scrollEl.style.height = height + 'px';
+  if(!dock || dock.style.display === 'none'){ listEl.style.paddingBottom = '0px'; return; }
+  // .app already ends with enough padding to clear the bottom tab bar on
+  // every tab, and the dock's own box covers that same strip — so only the
+  // difference is needed here. Adding the dock's full height on top of it
+  // would reserve the tab bar's share twice, stopping the end of the list
+  // well short of the dock with the slack showing as dead space.
+  const appEl = document.getElementById('app');
+  const appPadding = appEl ? parseFloat(getComputedStyle(appEl).paddingBottom) || 0 : 0;
+  const base = Math.max(0, dock.offsetHeight + 12 - appPadding);
 
-  // A trailing spacer gives just enough extra scroll room to bring the
-  // snapped watch's card all the way to the top — without it, a short list
-  // (e.g. 2-3 watches) fits entirely inside the container with nothing to
-  // scroll, so paging the snapped card to the top silently no-ops. Sized to
-  // the exact minimum needed rather than a flat screen's worth, so scrolling
-  // still bottoms out with at least one watch and the add-watch button in
-  // view instead of running on into empty space.
-  const spacer = document.getElementById('dataWatchScrollSpacer');
-  if(!spacer) return;
+  // With a pop-up open, the snapped watch also has to be able to reach the
+  // top of the page (see scrollWatchCardToTop) — and for one near the end of
+  // the list there's nothing below it to scroll against, so the page runs out
+  // of travel with the card still stranded halfway down and the pop-up's own
+  // buttons left under the dock. Topping the page's scroll range up by
+  // whatever it falls short by is what the list's old trailing spacer was
+  // for; this is the same idea against the page instead of a private scroll
+  // region, and only while a pop-up is actually open.
+  //
+  // Measured off the content's own bottom edge — the current padding backed
+  // out of it — rather than by writing a smaller padding first and measuring
+  // what that gives. Shrinking the page even for the instant between two
+  // writes lets the browser clamp the scroll position to the shorter
+  // document, and it doesn't come back when the padding does: a scroll
+  // already under way (this runs on focus changes, which a snap fires) would
+  // be quietly cut short partway. One write, no intermediate state.
+  let extra = 0;
   const group = document.querySelector('.data-watch-group');
-  const addBtn = document.querySelector('.data-add-watch-btn');
-  if(!group || !addBtn){ spacer.style.height = '0px'; return; }
-  spacer.style.height = '0px';
-  // scrollHeight can't be used to measure the real content height here — a
-  // scrollable box with shorter content than its own fixed height still
-  // reports scrollHeight === clientHeight, hiding how short the content
-  // actually is. Measuring the add-watch button's own position (the last
-  // real thing in the list) instead gives the true content height.
-  const containerTop = scrollEl.getBoundingClientRect().top;
-  const naturalContentHeight = scrollEl.scrollTop + (addBtn.getBoundingClientRect().bottom - containerTop);
-  const groupOffsetTop = scrollEl.scrollTop + (group.getBoundingClientRect().top - containerTop);
-  const naturalMaxScroll = Math.max(0, naturalContentHeight - height);
-  const neededMaxScroll = Math.max(naturalMaxScroll, groupOffsetTop);
-  spacer.style.height = Math.max(0, height + neededMaxScroll - naturalContentHeight) + 'px';
+  if(group){
+    const currentPad = parseFloat(getComputedStyle(listEl).paddingBottom) || 0;
+    const contentBottom = listEl.getBoundingClientRect().bottom - currentPad;
+    const roomBelowGroup = (contentBottom + base + appPadding) - group.getBoundingClientRect().top;
+    extra = Math.max(0, window.innerHeight - roomBelowGroup);
+  }
+  listEl.style.paddingBottom = (base + extra) + 'px';
 }
-window.addEventListener('resize', sizeDataWatchScroll);
+window.addEventListener('resize', sizeSnapDockClearance);
 
-// The on-screen keyboard shrinks the visual viewport without the page
-// itself reflowing (especially on iOS Safari), so a focused field low in
-// the Snap tab's confirm popup — the note field, most often — can end up
-// hidden behind it with nothing scrolling it back into view. Whenever the
-// visual viewport resizes (the keyboard opening, closing, or changing
-// height), nudge the list's own scroll region just enough to keep whatever
-// is currently focused in it above the keyboard.
-// Some mobile browsers scroll the *page* to reveal a focused input even
-// though body.no-page-scroll sets overflow:hidden on it — that CSS blocks
-// user-driven touch scrolling but not the browser's own automatic
-// scroll-into-view on focus. Since the Data tab has nothing to scroll back
-// with (page scroll is meant to never move there), any such nudge just gets
-// stuck once the keyboard closes. Snapping window scroll back to 0 whenever
-// this fires is a no-op everywhere else and cheap insurance here.
-function resetPageScrollOnDataTab(){
-  if(activeTab === 'data' && window.scrollY !== 0) window.scrollTo(0, 0);
-}
-
-// The visualViewport listener above only nudges the list's scroll region
-// once the keyboard has already finished opening (it fires on resize). A
-// field near the bottom of the confirm/manual popup can still start out
-// hidden for the ~300ms the iOS keyboard takes to animate in, since nothing
-// scrolls until that resize event lands. Wiring focus directly gets it
-// moving immediately, and the delay lets the keyboard settle first so the
-// browser's own layout numbers (used by scrollIntoView) are final rather
-// than mid-animation.
-function scrollFieldAboveKeyboard(el){
-  if(!el) return;
-  el.addEventListener('focus', () => {
-    // Hidden immediately on focus rather than waiting on the visualViewport
-    // listener below — that only fires once the browser reports the resize,
-    // which on some devices lags or never fires reliably for a field this
-    // deep in a nested scroll container, leaving the dock stuck on-screen
-    // over the keyboard exactly when it shouldn't be. Focus itself is never
-    // unreliable, so it's the sturdier trigger for this.
-    const dock = document.getElementById('snapDock');
-    if(dock) dock.classList.add('dock-hidden-for-keyboard');
-    // The list's own height normally leaves room below it for the dock (see
-    // sizeDataWatchScroll) — with the dock now hidden, that room would
-    // otherwise sit empty as a dead gap above the bottom tab bar until
-    // something else happens to re-measure it.
-    sizeDataWatchScroll();
-    setTimeout(() => {
-      resetPageScrollOnDataTab();
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 300);
-  });
-  el.addEventListener('blur', () => {
-    // A short delay so tabbing straight into another field in the same
-    // popup (still inside the container) doesn't flash the dock back on
-    // between the two focus events.
-    setTimeout(() => {
-      const container = document.getElementById('dataWatchScroll');
-      const active = document.activeElement;
-      const stillFocusedInList = container && active && container.contains(active);
-      if(!stillFocusedInList){
-        const dock = document.getElementById('snapDock');
-        if(dock) dock.classList.remove('dock-hidden-for-keyboard');
-        sizeDataWatchScroll();
-      }
-    }, 50);
-  });
-}
-
-if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', () => {
-    resetPageScrollOnDataTab();
-    const container = document.getElementById('dataWatchScroll');
-    const dock = document.getElementById('snapDock');
-    const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
-    const active = document.activeElement;
-    const focusedInList = container && active && container.contains(active);
-    // The trigger dock is fixed to the bottom of the *visual* viewport, so it
-    // rides up and keeps sitting right above the keyboard rather than being
-    // covered by it once one opens — while the confirm/manual popup is also
-    // open and being typed into, that just plants an opaque box over
-    // whatever field is near the bottom of it. There's also no real use for
-    // re-tapping a quick-snap mark or "enter manually" while already mid-edit
-    // in the open popup, so hiding the dock for as long as the keyboard is up
-    // costs nothing and clears the overlap outright.
-    if(dock) dock.classList.toggle('dock-hidden-for-keyboard', keyboardHeight >= 40 && !!focusedInList);
-    if(!container) return;
-    if(keyboardHeight < 40 || !focusedInList){
-      // Keyboard closed (or nothing in the list is focused) — drop back to
-      // the normal, capped scroll room (see sizeDataWatchScroll) instead of
-      // leaving the temporary keyboard-clearance spacer below behind.
-      sizeDataWatchScroll();
-      return;
-    }
-    // Re-measure the container's own height now that the dock is hidden (see
-    // the toggle above) — otherwise it keeps the height it had while the
-    // dock still reserved room below it, leaving a dead gap where the dock
-    // used to be instead of growing to use that freed space.
-    sizeDataWatchScroll();
-    // The list's own scroll room is normally capped to just what's needed
-    // to bring a snapped watch to the top (see sizeDataWatchScroll) — with
-    // only one or two watches, that can be nowhere near enough to also
-    // scroll a low field up above the keyboard, so stretch it here for as
-    // long as the keyboard is actually up.
-    const spacer = document.getElementById('dataWatchScrollSpacer');
-    if(spacer) spacer.style.height = Math.max(parseFloat(spacer.style.height) || 0, keyboardHeight) + 'px';
-    // sizeDataWatchScroll above already leaves room for the tab bar still
-    // sitting at the bottom of this same visual viewport — this just makes
-    // sure the field actually being typed into ends up above it too, not
-    // merely inside the container's own (now correctly sized) bounds.
-    const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
-    const overflow = active.getBoundingClientRect().bottom - visibleBottom;
-    if(overflow > 0) container.scrollTop += overflow + 12;
-  });
-}
+// Keeping a focused field clear of the on-screen keyboard used to be done
+// by hand here — scrolling the list's own region, stretching a spacer,
+// re-measuring against the visual viewport, and snapping window scroll back
+// to 0 because the page was never supposed to move on this tab. All of it
+// existed only because the page couldn't scroll (see sizeSnapDockClearance);
+// now that it can, the browser does this itself, correctly, on every device.
+// The one thing still worth doing is getting the fixed trigger dock out of
+// the way, since a fixed element is exactly what the browser's own
+// scroll-into-view can't account for — that lives in updateKeyboardHideState
+// below, alongside the bottom bar's version of the same decision.
 
 // The bottom nav bar is fixed near the bottom of the layout viewport, but
 // once the on-screen keyboard opens, iOS Safari keeps fixed elements
@@ -956,15 +816,25 @@ function updateKeyboardHideState(){
   if(!bar || !appShown || appShown.style.display === 'none') return;
   const active = document.activeElement;
   const keyboardOpen = isKeyboardTextInput(active);
-  // The Snap tab's own note/manual-offset fields already manage their own
-  // keyboard clearance (the trigger dock fades out and the list's own
-  // scroll container resizes around it — see sizeDataWatchScroll and the
-  // visualViewport listener below). Hiding the tab bar too on top of that
-  // took away navigation the user expects to always have on screen, for no
-  // reason: nothing on that tab needs the extra room this was clearing.
+  // The bottom bar stays put for the Snap tab's own fields — it's navigation
+  // the user expects to always have on screen, and nothing on that tab needs
+  // the room taking it away would free.
   const dataWatchScroll = document.getElementById('dataWatchScroll');
   const inSnapList = dataWatchScroll && active && dataWatchScroll.contains(active);
   bar.style.display = (keyboardOpen && !inSnapList) ? 'none' : '';
+
+  // The trigger dock does have to go, though, and it's decided here rather
+  // than anywhere else on purpose: it and the bottom bar are the two fixed
+  // things that can cover a field being typed into, and they got out of sync
+  // — one updated for the keyboard, the other not — every time they were
+  // toggled from separate places. Now it's one focus-driven decision. Focus
+  // rather than a viewport-resize measurement because focus is the thing
+  // that's actually true: a resize event can lag, or never arrive at all.
+  const dock = document.getElementById('snapDock');
+  if(dock){
+    dock.classList.toggle('dock-hidden-for-keyboard', keyboardOpen && !!inSnapList);
+    sizeSnapDockClearance();
+  }
 
   const clockBox = document.getElementById('masterClockBox');
   if(clockBox){
@@ -998,43 +868,31 @@ function scrollToPageTop(duration){
   requestAnimationFrame(step);
 }
 
-// Scrolls the Data tab's own internal list (see sizeDataWatchScroll) so the
-// given watch's card — or its snap group, once the pop-up is open — lands at
-// the same spot the very first card sits at on a fresh load, leaving any
-// cards above it scrolled out of view and the rest still reachable further
-// down. The page itself never scrolls here, so the big reference clock above
-// the list stays fully expanded throughout. The list keeps its natural order
-// (see buildDataWatchListHtml) instead of jumping the active watch to the
-// front.
-function scrollWatchCardToTop(watchId, duration){
-  const container = document.getElementById('dataWatchScroll');
+// Brings the snapped watch's card — or its snap group, once the pop-up is
+// open — up under the header, so the thing just captured is what you're
+// looking at, with the cards above it scrolled off and the rest still
+// reachable below. The list keeps its natural order (see
+// buildDataWatchListHtml) rather than jumping the active watch to the front.
+//
+// This scrolls the page now, not a private scroll region, so it hands the
+// job to scrollPanelIntoView — the same helper the Collection tab already
+// uses for exactly this. That one knows the header is sticky AND collapses
+// as the page moves, and re-measures across a few frames until it settles
+// instead of computing one target up front and landing short of it. For the
+// first watch in the list that lands back at the top of the page with the
+// clock full size again: the default view, which is where a snap should
+// always put you.
+function scrollWatchCardToTop(watchId){
   const el = document.querySelector(`.data-watch-group[data-id="${watchId}"]`) ||
     document.querySelector(`.data-watch-card[data-id="${watchId}"]`);
-  if(!container || !el) return;
-  // The first card in the list, still sitting at the untouched top of the
-  // scroll region (scrollTop 0) — that's already "the same spot the very
-  // first card sits at on a fresh load" by definition, nothing above it to
-  // scroll out of the way. Scrolling it anyway would only eat the list's own
-  // small top margin (see the inline margin-top in buildDataWatchListHtml),
-  // a scroll position the container can't hold once the pop-up closes and
-  // that margin stops counting as spare room — a pointless couple-pixel
-  // settle down, then a bounce back up, with nothing to show for it. But if
-  // the list has actually been scrolled away from the top — the first watch
-  // scrolled out of view, then snapped — it still needs to scroll back like
-  // any other card would, so this only skips the genuinely-already-there case.
-  if(!el.previousElementSibling && container.scrollTop === 0) return;
-  const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
-  const targetTop = Math.max(0, container.scrollTop + delta);
-  const startTop = container.scrollTop;
-  if(Math.abs(targetTop - startTop) < 2) return;
-  const startTime = performance.now();
-  const step = (now) => {
-    const t = Math.min(1, (now - startTime) / duration);
-    const eased = 1 - Math.pow(1 - t, 3);
-    container.scrollTop = startTop + (targetTop - startTop) * eased;
-    if(t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+  if(!el) return;
+  // Nothing above the first card to scroll out of the way, so the top of the
+  // page is already where it belongs — go there rather than pinning it under
+  // the header, which would scroll down by the list's own top margin to close
+  // a gap that's meant to be there. That's a dozen pixels of travel with
+  // nothing to show for it, and it reads as the card twitching on every snap.
+  if(!el.previousElementSibling){ scrollToPageTop(220); return; }
+  scrollPanelIntoView(el, true);
 }
 
 
@@ -1211,7 +1069,13 @@ function scrollPanelIntoView(el, pinTop){
       headerBottom = Math.min(rect.bottom, stuckTop + rect.height);
     }
     const topLimit = headerBottom + topGap;
-    const bottomLimit = (tabs ? tabs.getBoundingClientRect().top : window.innerHeight) - 10;
+    // On the Snap tab the trigger dock is fixed above the tab bar and is the
+    // taller of the two, so it's the real bottom edge there; everywhere else
+    // it's display:none and the tab bar is. Measuring whichever is actually
+    // on screen keeps one rule for both.
+    const dock = document.getElementById('snapDock');
+    const bottomEl = (dock && dock.style.display !== 'none') ? dock : tabs;
+    const bottomLimit = (bottomEl ? bottomEl.getBoundingClientRect().top : window.innerHeight) - 10;
     const box = el.getBoundingClientRect();
 
     let delta = 0;
@@ -1596,10 +1460,6 @@ function attachHandlers(watch){
     noteDraft = '';
     addReading(watch.id, date, Number(seconds), note, readConditionInputs('r'));
   };
-  // Only the offset field needs this now — the note fields it used to also
-  // cover are edited in their own overlay (see openNoteEditor), which has
-  // nothing to stay clear of.
-  scrollFieldAboveKeyboard(document.getElementById('rOffsetSeconds'));
 
   // Same tap-to-step, hold-to-accelerate interaction as the quick-snap
   // popup's time stepper (see the "timestep" handler below) — one second per
@@ -1635,7 +1495,7 @@ function attachHandlers(watch){
   if(toggleBtn) toggleBtn.onclick = () => {
     manualMode = true; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; noteDraft = '';
     render();
-    if(watch) scrollWatchCardToTop(watch.id, 125);
+    if(watch) scrollWatchCardToTop(watch.id);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
@@ -1664,7 +1524,7 @@ function attachHandlers(watch){
       noteDraft = '';
       playShutterSound();
       render();
-      if(watch) scrollWatchCardToTop(watch.id, 125);
+      if(watch) scrollWatchCardToTop(watch.id);
     };
   });
 

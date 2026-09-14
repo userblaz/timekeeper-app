@@ -79,15 +79,6 @@
     -webkit-font-smoothing:antialiased;
     min-height:100vh;
   }
-  /* Snap tab only (see render() in app.js): the watch list scrolls in its
-     own region (.data-watch-scroll) so the reference clock stays fully
-     expanded — the page itself must not also scroll there, or a touch could
-     land on either scroll area ambiguously. */
-  body.no-page-scroll{
-    height:100vh;
-    height:100dvh;
-    overflow:hidden;
-  }
   .app{
     max-width:480px;
     margin:0 auto;
@@ -1622,19 +1613,12 @@
     flex-direction:column;
     gap:12px;
   }
-  /* The Data tab's own scroll region (see sizeDataWatchScroll in app.js) —
-     its height is set inline in JS, so only the scroll mechanics live here.
-     Scrolling this instead of the page keeps the big reference clock above
-     it fully expanded, since window scroll never moves. */
+  /* Deliberately not a scroll container any more — the Snap tab scrolls as
+     one ordinary page (see sizeSnapDockClearance in app.js for why). This is
+     just the wrapper the list lives in now; its padding-bottom is set from
+     there to clear the fixed trigger dock. */
   .data-watch-scroll{
-    overflow-y:auto;
-    overflow-x:hidden;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
-    -ms-overflow-style:none;
-  }
-  .data-watch-scroll::-webkit-scrollbar{
-    display:none;
+    overflow:visible;
   }
   .collection-add-btn{
     display:block;
