@@ -1417,10 +1417,37 @@ function attachCollectionHandlers(){
   const cancelAddBtn = document.querySelector('[data-action="canceladdcollectionwatch"]');
   if(cancelAddBtn) cancelAddBtn.onclick = () => { addingCollectionWatch = false; render(); };
 
+  // Whichever field the switch happens from, refocusing its counterpart in
+  // the other mode — synchronously, in the same click handler, right after
+  // render() swaps the DOM — is what keeps the keyboard from ever actually
+  // closing. Skipping that refocus when nothing was focused to begin with
+  // matters just as much: either both modes end the switch with a cursor
+  // in their field, or neither does. One doing it and the other not is
+  // exactly what made the bottom bar and clock (see updateKeyboardHideState
+  // in app.js, which reacts to focus) flash back on and off across a mode
+  // switch, shoving the whole page around each time.
   const switchToManualBtn = document.querySelector('[data-action="switchtomanualadd"]');
-  if(switchToManualBtn) switchToManualBtn.onclick = () => { addWatchMode = 'manual'; render(); resetAddWatchScroll(); };
+  if(switchToManualBtn) switchToManualBtn.onclick = () => {
+    const hadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
+    addWatchMode = 'manual';
+    render();
+    resetAddWatchScroll();
+    if(hadFocus){
+      const field = document.getElementById('newCollectionWatchName');
+      if(field) field.focus();
+    }
+  };
   const switchToSearchBtn = document.querySelector('[data-action="switchtocatalogsearch"]');
-  if(switchToSearchBtn) switchToSearchBtn.onclick = () => { addWatchMode = 'search'; render(); resetAddWatchScroll(); };
+  if(switchToSearchBtn) switchToSearchBtn.onclick = () => {
+    const hadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
+    addWatchMode = 'search';
+    render();
+    resetAddWatchScroll();
+    if(hadFocus){
+      const field = document.getElementById('watchCatalogSearch');
+      if(field) field.focus();
+    }
+  };
 
   const addBtn = document.querySelector('[data-action="addcollectionwatch"]');
   if(addBtn) addBtn.onclick = () => {
