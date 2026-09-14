@@ -683,15 +683,38 @@ function syncCollectionCardHeights(){
   const available = bar.getBoundingClientRect().top - listEl.getBoundingClientRect().top;
   if(available <= 0 || naturalHeight <= 0) return;
 
-  const nFit = Math.floor((available + gap) / (naturalHeight + gap));
+  // Each fitted card claims one gap along with it, the one right after it
+  // — including the last: what should land on the bar is the *next* card's
+  // top edge, not the last fitted card's bottom, and those are gap px
+  // apart. Folding the trailing gap into the space every card (including
+  // the last) gets to stretch into is what actually lands that edge on the
+  // bar instead of gap px short of it.
+  const nFit = Math.floor(available / (naturalHeight + gap));
   if(nFit < 1 || cards.length <= nFit) return; // everything already fits — leave natural
 
-  const stretched = (available - (nFit - 1) * gap) / nFit;
+  const stretched = (available - nFit * gap) / nFit;
   cards.forEach(c => { c.style.height = stretched + 'px'; });
 }
-window.addEventListener('resize', syncCollectionCardHeights);
-window.addEventListener('orientationchange', syncCollectionCardHeights);
-if(document.fonts && document.fonts.ready) document.fonts.ready.then(syncCollectionCardHeights);
+// Only ever recomputed at the very top of the list, on purpose, not on
+// every resize regardless of scroll position (the first version here did
+// exactly that). The reference clock at the top of the page collapses as
+// it scrolls, so the list's own position relative to the page genuinely
+// isn't fixed — it really is closer to the bar once scrolled, not just a
+// stale measurement — which meant a resize firing mid-scroll (the address
+// bar showing or hiding does this on iOS, constantly, on ordinary scrolling)
+// restretched every card to a different height than the one this opened
+// with, in the middle of a scroll gesture. There's also nothing to fix at
+// the bar for a scroll position where the list's top isn't even in view —
+// the whole point is lining up where the list *starts* with the bar, which
+// only means anything while that's what's on screen. Skipping entirely
+// once scrolled means this can only ever change at the one moment it's
+// actually meant to.
+function syncCollectionCardHeightsIfAtTop(){
+  if(window.scrollY < 2) syncCollectionCardHeights();
+}
+window.addEventListener('resize', syncCollectionCardHeightsIfAtTop);
+window.addEventListener('orientationchange', syncCollectionCardHeightsIfAtTop);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(syncCollectionCardHeightsIfAtTop);
 
 // Groups interval rates by each logged condition (position/wear/time-of-day)
 // and writes plain-English pointers where the spread between groups is large
