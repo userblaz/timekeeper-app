@@ -336,11 +336,16 @@ function dragHandleIconSvg(){
 // the assumption it was a watch case, but that one's actually a camera
 // (its whole point is "this tab takes a photo/reading"), and reused here
 // it just read as a camera icon on a photo placeholder.
+// The same watch glyph as the bottom-tabs bar's own Collection icon (see
+// index.html) — reused exactly rather than redrawn, so "no photo yet"
+// reads as the same watch shape already established elsewhere in the app
+// instead of a second, slightly different one only this spot uses.
 function watchPlaceholderIconSvg(){
-  return `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M9.5 3h5" /><path d="M9.5 21h5" />
-    <circle cx="12" cy="12" r="7.5" />
-    <path d="M12 8.5V12l2.3 1.4" />
+  return `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.5 2.5h7l0.6 3.5h-8.2z" />
+    <path d="M8.5 21.5h7l-0.6-3.5h-6.8z" />
+    <circle cx="12" cy="12" r="6.2" />
+    <path d="M12 9v3l2 1.3" />
   </svg>`;
 }
 
