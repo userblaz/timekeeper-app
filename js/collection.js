@@ -1421,7 +1421,15 @@ function attachCollectionHandlers(){
     render();
   };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
-  if(startEditBtn) startEditBtn.onclick = () => { editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = ''; render(); };
+  if(startEditBtn) startEditBtn.onclick = () => {
+    editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = ''; render();
+    // Same fix as opening a watch from a scrolled-down list, and cancelling
+    // back out of this same form (see viewcollection and cancelcollection
+    // below) — entering edit from partway down the detail page otherwise
+    // left the edit form landed wherever that scroll position happened to
+    // be, rather than at its own top.
+    scrollToPageTop(300);
+  };
   const cancelBtn = document.querySelector('[data-action="cancelcollection"]');
   if(cancelBtn) cancelBtn.onclick = () => {
     editingCollectionId = null; collectionPhotoFile = null; render();
