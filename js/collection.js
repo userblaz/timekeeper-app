@@ -633,7 +633,6 @@ function buildCollectionCard(w){
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${buildCollectionCardStats(w)}</div>
         <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
         ${w.conditionNotes ? `<div class="collection-card-note">${escapeHtml(w.conditionNotes)}</div>` : ''}
-        ${buildPowerReserveHtml(w)}
       </div>
       <div class="collection-card-actions">
         <span class="zoom-btn collection-card-chevron" aria-hidden="true">${menuIconSvg()}</span>
