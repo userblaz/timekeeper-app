@@ -622,6 +622,7 @@ function render(){
       attachWatchStatsHandlers(viewedWatch);
       wireChartAndHistoryScroll();
     }
+    if(typeof syncCollectionCardHeights === 'function') syncCollectionCardHeights();
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
     return;
   }
@@ -731,6 +732,38 @@ function buildDataWatchListHtml(){
     </div>
   `;
 }
+
+// .app's own bottom padding (see the CSS) is what keeps every tab's last
+// bit of content clear of the fixed bottom tab bar — nothing scrolls the
+// bar into view on its own, so without it the last item on any tab's list
+// would end up sitting partly behind it. That padding used to be a flat
+// 96px guess at the bar's whole footprint (its own height, the 14px gap
+// below it, the safe area under that) — close most of the time, but not
+// measured against what the bar actually renders at, so a device where the
+// real total ran even a little over the guess left content peeking out
+// from behind it exactly where this doesn't want it to.
+//
+// Measured directly here instead: the bar is position:fixed, so its own
+// getBoundingClientRect().top is already exactly where content needs to
+// clear by the time it reaches the bottom of the viewport — window.
+// innerHeight minus that is the precise gap, safe area included, with
+// nothing left to separately add. Same idea as sizeSnapDockClearance
+// below, just against .app's padding instead of one tab's own list.
+function syncBottomTabsClearance(){
+  const appEl = document.getElementById('app');
+  const bar = document.getElementById('bottomTabs');
+  if(!appEl || !bar || bar.style.display === 'none') return;
+  const clearance = Math.round(window.innerHeight - bar.getBoundingClientRect().top + 12);
+  appEl.style.paddingBottom = clearance + 'px';
+}
+window.addEventListener('resize', syncBottomTabsClearance);
+window.addEventListener('orientationchange', syncBottomTabsClearance);
+// A first measurement can land before the real webfont has swapped in for
+// the fallback one, which renders the bar's labels — and so the bar
+// itself — at a very slightly different height. Re-measuring once the
+// real font is actually ready catches that small a case without needing
+// to guess at how long a font load takes.
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(syncBottomTabsClearance);
 
 // The Snap tab scrolls as one ordinary page, like every other tab. It used
 // to lock page scroll and give the watch list its own fixed-height scroll

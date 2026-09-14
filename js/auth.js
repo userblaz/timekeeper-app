@@ -40,6 +40,9 @@ function showApp(){
   if(appEl) appEl.style.display = '';
   if(bottomTabsEl) bottomTabsEl.style.display = '';
   if(signOutBtnEl) signOutBtnEl.style.display = '';
+  // The bar was just unhidden (was display:none, so had no real size to
+  // measure until now) — see syncBottomTabsClearance (app.js).
+  if(typeof syncBottomTabsClearance === 'function') syncBottomTabsClearance();
 }
 
 function showAuthScreen(){

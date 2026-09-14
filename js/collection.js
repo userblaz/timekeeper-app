@@ -649,6 +649,50 @@ function buildCollectionCard(w){
   `;
 }
 
+// A long enough list always ends with some card only partly visible above
+// the fixed bottom tab bar — ordinarily fine (that's just a scrollable list
+// under a floating bar), but at each card's own natural height that cut
+// lands at a different, arbitrary point on different screens, which read
+// as sloppy rather than intentional. Stretching every card by the same
+// small amount — never shrinking, and never touching an individual card's
+// own height differently from the rest — so that however many cards
+// naturally fit in the space above the bar do so exactly, with the next
+// one's top edge landing right on the bar instead of a few px into it,
+// makes that cut look deliberate on any screen instead of just wherever it
+// happened to fall. Left alone entirely when the whole list already fits
+// without scrolling — there's no next card peeking through to align in
+// that case, and stretching a short list to fill the rest of the screen
+// would look like a bug, not a fix.
+function syncCollectionCardHeights(){
+  if(activeTab !== 'collection' || addingCollectionWatch || viewingCollectionId) return;
+  const listEl = document.querySelector('.collection-list');
+  const bar = document.getElementById('bottomTabs');
+  if(!listEl || !bar || bar.style.display === 'none') return;
+  const cards = listEl.querySelectorAll(':scope > .swipe-row .collection-card');
+  if(!cards.length) return;
+
+  // Reset before measuring, every time — otherwise a second call (a
+  // resize, a watch added or removed) would measure against the previous
+  // call's already-stretched height instead of the card's real, natural
+  // one, and compound taller with each call.
+  cards.forEach(c => { c.style.height = ''; });
+
+  const gapStr = getComputedStyle(listEl).rowGap;
+  const gap = parseFloat(gapStr && gapStr !== 'normal' ? gapStr : getComputedStyle(listEl).gap) || 0;
+  const naturalHeight = cards[0].getBoundingClientRect().height;
+  const available = bar.getBoundingClientRect().top - listEl.getBoundingClientRect().top;
+  if(available <= 0 || naturalHeight <= 0) return;
+
+  const nFit = Math.floor((available + gap) / (naturalHeight + gap));
+  if(nFit < 1 || cards.length <= nFit) return; // everything already fits — leave natural
+
+  const stretched = (available - (nFit - 1) * gap) / nFit;
+  cards.forEach(c => { c.style.height = stretched + 'px'; });
+}
+window.addEventListener('resize', syncCollectionCardHeights);
+window.addEventListener('orientationchange', syncCollectionCardHeights);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(syncCollectionCardHeights);
+
 // Groups interval rates by each logged condition (position/wear/time-of-day)
 // and writes plain-English pointers where the spread between groups is large
 // enough to be worth a second look. An interval's rate is attributed to the
