@@ -610,6 +610,13 @@ function buildCollectionCard(w){
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
     : `<div class="collection-photo collection-photo-empty">${watchPlaceholderIconSvg()}</div>`;
   const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
+  // Condition notes were free text the owner typed once, on a card meant
+  // for a quick scan of the whole collection — this is what actually
+  // answers "am I wearing this one" at a glance instead. Same null-means-
+  // not-enough-history behavior as the detail page's own wear stats (see
+  // computeWearStats, data.js): nothing shown until there's at least one
+  // completed month of wear activity to average.
+  const wearStats = computeWearStats(w);
 
   // The card rides on top of a delete panel that's revealed by swiping it
   // left, the way a mail list works — so the destructive action isn't sitting
@@ -632,7 +639,7 @@ function buildCollectionCard(w){
       <div class="collection-card-body">
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${buildCollectionCardStats(w)}</div>
         <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
-        ${w.conditionNotes ? `<div class="collection-card-note">${escapeHtml(w.conditionNotes)}</div>` : ''}
+        ${wearStats ? `<div class="collection-card-wear">${Math.round(wearStats.avgPerMonth)} days/mo worn</div>` : ''}
       </div>
       <div class="collection-card-actions">
         <span class="zoom-btn collection-card-chevron" aria-hidden="true">${menuIconSvg()}</span>
