@@ -11,9 +11,14 @@ let addingCollectionWatch = false;
 // time the card is opened fresh; see startaddcollectionwatch below.
 let addWatchMode = 'search';
 let watchSearchQuery = '';
-let watchSearchCaseMaterial = '';
-let watchSearchMovementType = '';
-let watchSearchDial = '';
+// Each holds zero or more selected values now (see buildMultiSelect in
+// app.js) rather than one — empty means "no filter", same as before, but
+// picking more than one value within the same filter now widens the
+// match instead of narrowing it (an OR within the filter, an AND across
+// the three).
+let watchSearchCaseMaterials = [];
+let watchSearchMovementTypes = [];
+let watchSearchDials = [];
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -66,14 +71,15 @@ function buildCollectionTabHtml(){
   // the top rather than buried under a full list of owned watches.
   const watchesHtml = addingCollectionWatch ? '' : state.watches.map(w => buildCollectionCard(w)).join('');
   const addHtml = buildAddWatchHtml();
+  const headingHtml = addingCollectionWatch ? '' : `<h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>`;
 
   return `
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
-      <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
+      ${headingHtml}
       <div class="collection-list">
         ${watchesHtml}
         ${addHtml}
-        ${typeof buildDemoWatchButtonHtml === 'function' ? buildDemoWatchButtonHtml() : ''}
+        ${(!addingCollectionWatch && typeof buildDemoWatchButtonHtml === 'function') ? buildDemoWatchButtonHtml() : ''}
       </div>
     </div>
   `;
@@ -99,9 +105,9 @@ function filteredWatchCatalog(){
   const list = watchCatalog || [];
   return list.filter(entry =>
     matchesCatalogQuery(entry, watchSearchQuery) &&
-    (!watchSearchCaseMaterial || entry.case_material === watchSearchCaseMaterial) &&
-    (!watchSearchMovementType || entry.movement_type === watchSearchMovementType) &&
-    (!watchSearchDial || entry.dial_color === watchSearchDial)
+    (!watchSearchCaseMaterials.length || watchSearchCaseMaterials.includes(entry.case_material)) &&
+    (!watchSearchMovementTypes.length || watchSearchMovementTypes.includes(entry.movement_type)) &&
+    (!watchSearchDials.length || watchSearchDials.includes(entry.dial_color))
   );
 }
 
@@ -116,19 +122,23 @@ function catalogFilterOptions(field){
   return Array.from(new Set(list.map(e => e[field]).filter(Boolean))).sort();
 }
 
+// Options come from whatever's actually in the fetched catalog (see
+// catalogFilterOptions), so this list — and therefore what shows up here —
+// grows on its own as more watches are added to watch_catalog, with no
+// code change needed on this end.
 function buildCatalogFiltersHtml(){
   const caseMaterials = catalogFilterOptions('case_material');
   const movementTypes = catalogFilterOptions('movement_type');
   const dialColors = catalogFilterOptions('dial_color');
   if(!caseMaterials.length && !movementTypes.length && !dialColors.length) return '';
-  const caseOptions = [['', 'Any case material'], ...caseMaterials.map(v => [v, v])];
-  const movementOptions = [['', 'Any movement'], ...movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)])];
-  const dialOptions = [['', 'Any dial'], ...dialColors.map(v => [v, v])];
+  const caseOptions = caseMaterials.map(v => [v, v]);
+  const movementOptions = movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)]);
+  const dialOptions = dialColors.map(v => [v, v]);
   return `
-    <div class="row2 watch-catalog-filters">
-      ${buildSelect('catalogFilterCaseMaterial', caseOptions, watchSearchCaseMaterial)}
-      ${buildSelect('catalogFilterMovementType', movementOptions, watchSearchMovementType)}
-      ${buildSelect('catalogFilterDial', dialOptions, watchSearchDial)}
+    <div class="row3 watch-catalog-filters">
+      ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', caseOptions, watchSearchCaseMaterials)}
+      ${buildMultiSelect('catalogFilterMovementType', 'Movement', movementOptions, watchSearchMovementTypes)}
+      ${buildMultiSelect('catalogFilterDial', 'Dial', dialOptions, watchSearchDials)}
     </div>
   `;
 }
@@ -177,29 +187,33 @@ function buildAddWatchHtml(){
     return `
     <div class="collection-card collection-card-edit">
       <div class="field">
-        <label for="newCollectionWatchName">Brand</label>
+        <div class="field-label-row">
+          <button type="button" class="zoom-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          </button>
+          <label for="newCollectionWatchName">Brand</label>
+          <button type="button" class="manual-link manual-link-inline" data-action="switchtocatalogsearch">Search the catalog</button>
+        </div>
         <input type="text" id="newCollectionWatchName" placeholder="e.g. Rolex, Omega, Seiko…" />
       </div>
-      <button type="button" class="manual-link" data-action="switchtocatalogsearch">Search the catalog instead</button>
-      <div class="row2" style="margin-top:6px;">
-        <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch">Cancel</button>
-        <button type="button" class="btn-primary" data-action="addcollectionwatch" style="flex:1">Add watch</button>
-      </div>
+      <button type="button" class="btn-primary" data-action="addcollectionwatch">Add watch</button>
     </div>
     `;
   }
   return `
   <div class="collection-card collection-card-edit">
     <div class="field">
-      <label for="watchCatalogSearch">Find your watch</label>
+      <div class="field-label-row">
+        <button type="button" class="zoom-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+        </button>
+        <label for="watchCatalogSearch">Find your watch</label>
+        <button type="button" class="manual-link manual-link-inline" data-action="switchtomanualadd">Add manually</button>
+      </div>
       <input type="text" id="watchCatalogSearch" placeholder="Brand, model, or reference…" autocomplete="off" value="${escapeHtml(watchSearchQuery)}" />
     </div>
-    ${buildCatalogFiltersHtml()}
+    <div id="watchCatalogFilters">${buildCatalogFiltersHtml()}</div>
     <div id="watchCatalogResults" class="watch-catalog-results">${buildCatalogResultsHtml()}</div>
-    <button type="button" class="manual-link" data-action="switchtomanualadd">Can't find it? Add manually instead</button>
-    <div class="row2" style="margin-top:6px;">
-      <button type="button" class="btn-secondary" data-action="canceladdcollectionwatch" style="flex:1">Cancel</button>
-    </div>
   </div>
   `;
 }
@@ -635,7 +649,7 @@ function buildConditionInsightsHtml(watch){
   if(blocks.length === 0){
     return `
       <div class="section">
-        <h2 class="section-title">Insights</h2>
+        <h2 class="section-title">Accuracy Insights</h2>
         <p class="empty-note">Log a few readings with different positions, wear states, or times of day to see whether they affect this watch's rate.</p>
       </div>
     `;
@@ -643,7 +657,7 @@ function buildConditionInsightsHtml(watch){
 
   return `
     <div class="section">
-      <h2 class="section-title">Insights</h2>
+      <h2 class="section-title">Accuracy Insights</h2>
       ${pointers.length > 0 ? `<p class="hint" style="margin-bottom:16px;">${pointers.map(escapeHtml).join(' ')}</p>` : ''}
       ${blocks.join('')}
     </div>
@@ -682,6 +696,104 @@ function buildWearMonthPageHtml(w, year, m, todayStr){
   `;
 }
 
+// Four quick numbers, as tiles rather than spec-sheet rows since these are
+// meant to be read at a glance, not looked up: the average worn days per
+// month since this watch's first tracked wear day, the most recently
+// completed month's own count next to how it compares to the month before
+// it, how long it's been since the watch was last worn at all, and — with
+// more than one watch being tracked — its share of all the wear logged
+// across the whole collection last month. The monthly figures only ever
+// look at whole, completed calendar months (see computeWearStats and
+// wearShareOfCollection in data.js) — the one in progress right now is
+// left out of all of them, or it would always read as artificially low
+// next to a full month — while "last worn" is naturally as current as
+// today.
+//
+// Below the tiles, a 6-month sparkline of the same monthly counts (see
+// wearMonthlySeries) — the tiles are a snapshot, the sparkline is the
+// trend behind them. Bar height is relative to a 31-day month, not to
+// whichever of these six months happens to be the busiest, so the same
+// watch's bars stay comparable release to release rather than rescaling
+// themselves every time the busiest month ages out of the window.
+//
+// Last, a single plain-language pattern statement (see wearPatternInsight
+// in data.js) when the wear history actually supports one — the most
+// statistically obvious day-of-week skew in how this watch gets worn,
+// rather than every dimension that could theoretically be sliced.
+function buildWearStatsHtml(w){
+  const stats = computeWearStats(w);
+  const lastWornDays = daysSinceLastWorn(w);
+  const sharePct = wearShareOfCollection(w);
+
+  const fmtLastWorn = (days) => {
+    if(days === null) return '—';
+    if(days === 0) return 'Today';
+    if(days === 1) return '1d ago';
+    return `${days}d ago`;
+  };
+
+  let deltaHtml = '';
+  if(stats && stats.deltaPct !== null){
+    const cls = stats.deltaPct > 0 ? 'up' : (stats.deltaPct < 0 ? 'down' : 'flat');
+    const sign = stats.deltaPct > 0 ? '+' : '';
+    deltaHtml = `<div class="wear-stat-delta ${cls}">${sign}${stats.deltaPct}%</div>`;
+  }
+
+  // Only shown once there's more than one watch to actually share wear
+  // with — with a single watch this would always read ~100%, which is
+  // true but tells you nothing.
+  const shareTileHtml = state.watches.length < 2 ? '' : `
+    <div class="wear-stat-tile">
+      <div class="wear-stat-value">${sharePct === null ? '—' : sharePct + '%'}</div>
+      <div class="wear-stat-label">share of wear</div>
+    </div>
+  `;
+
+  const tilesHtml = `
+    <div class="wear-stats-tiles">
+      <div class="wear-stat-tile">
+        <div class="wear-stat-value">${stats ? Math.round(stats.avgPerMonth) : '—'}</div>
+        <div class="wear-stat-label">avg days/mo</div>
+      </div>
+      <div class="wear-stat-tile">
+        <div class="wear-stat-value">${stats ? stats.lastMonthDays : '—'}</div>
+        <div class="wear-stat-label">last month</div>
+        ${deltaHtml}
+      </div>
+      <div class="wear-stat-tile">
+        <div class="wear-stat-value">${fmtLastWorn(lastWornDays)}</div>
+        <div class="wear-stat-label">last worn</div>
+      </div>
+      ${shareTileHtml}
+    </div>
+  `;
+
+  const series = wearMonthlySeries(w, 6);
+  const hasAnySeriesData = series.some(s => s.days > 0);
+  const monthAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sparklineHtml = !hasAnySeriesData ? '' : `
+    <div class="wear-sparkline">
+      ${series.map(s => {
+        const pct = Math.max(6, Math.round((s.days / 31) * 100));
+        const monthName = WEAR_CALENDAR_MONTH_LABELS[s.month];
+        return `
+          <div class="wear-sparkline-col" title="${monthName} ${s.year}: ${s.days} day${s.days===1?'':'s'} worn">
+            <div class="wear-sparkline-bar${s.days>0?' has-wear':''}" style="height:${pct}%"></div>
+            <div class="wear-sparkline-label">${monthAbbr[s.month]}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  // Always rendered, even when there's nothing notable to report — a
+  // blank space where a pattern might have shown up reads as broken, not
+  // as "nothing to say" (see wearPatternInsight's own comment in data.js).
+  const patternHtml = `<p class="hint" style="margin-bottom:14px;">${escapeHtml(wearPatternInsight(w))}</p>`;
+
+  return tilesHtml + sparklineHtml + patternHtml;
+}
+
 // A wear tracker for one real month at a time, with unbounded month/year
 // navigation — arrows step by one month and roll over into the next or
 // previous year rather than stopping at Dec/Jan, and the two dropdowns
@@ -709,6 +821,7 @@ function buildWearCalendarHtml(w){
     <div class="section" style="margin-top:20px;padding-top:16px;">
       <h2 class="section-title">Worn calendar</h2>
       <p class="hint" style="margin-bottom:12px;">Pick any month and year, or tap a day to mark or unmark it as worn.</p>
+      ${buildWearStatsHtml(w)}
       <div class="wear-calendar-controls">
         <button type="button" class="zoom-btn wear-nav-btn" data-action="wearcalnav" data-dir="-1" aria-label="Previous month">${chevron('M15 18l-6-6 6-6')}</button>
         <div class="wear-calendar-select-slot">${buildSelect('wearCalMonthSelect', monthOptions, String(m))}</div>
@@ -772,6 +885,33 @@ function buildCollectionDetailHtml(w){
   // the details below simply move up to fill the gap.
   const hasStats = !!overallStats(w);
 
+  // The accuracy dial gets two quiet companions alongside it rather than
+  // sitting alone — the same average-wear and share-of-wear figures the
+  // calendar section works out further down (see computeWearStats and
+  // wearShareOfCollection in data.js), so the very first thing you see on
+  // a watch's page is "how accurate" next to "how much you actually wear
+  // it", not just the one. Both fall back to a plain — when there isn't
+  // enough history yet, same as their tile counterparts below.
+  const dialWearStats = computeWearStats(w);
+  const avgWearForDial = dialWearStats ? String(Math.round(dialWearStats.avgPerMonth)) : '—';
+  const shareForDial = wearShareOfCollection(w);
+  const shareForDialLabel = shareForDial === null ? '—' : shareForDial + '%';
+  const dialSectionHtml = `
+    <div class="dial-wrap dial-wrap-row">
+      <div class="dial-quick-col">
+        ${bundle.dialHtml}
+      </div>
+      <div class="dial-quick-col">
+        <div class="dial-figure" style="font-size:20px;">${avgWearForDial}</div>
+        <div class="dial-meta">avg days/mo</div>
+      </div>
+      <div class="dial-quick-col">
+        <div class="dial-figure" style="font-size:20px;">${shareForDialLabel}</div>
+        <div class="dial-meta">share of wear</div>
+      </div>
+    </div>
+  `;
+
   const detailRows = [
     ['Brand & model', w.model || null],
     ['Reference number', w.reference || null],
@@ -792,17 +932,17 @@ function buildCollectionDetailHtml(w){
 
   return `
     <div class="collection-detail-body">
-      ${hasStats ? `<div class="dial-wrap">${bundle.dialHtml}</div>` : ''}
+      ${hasStats ? dialSectionHtml : ''}
 
       ${detailsListHtml}
 
       <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit details</button>
 
-      ${buildWearCalendarHtml(w)}
-
       ${buildConditionInsightsHtml(w)}
 
       ${bundle.chartsHtml}
+
+      ${buildWearCalendarHtml(w)}
 
       ${bundle.historySectionHtml}
     </div>
@@ -971,7 +1111,7 @@ function buildCollectionEditForm(w){
         <button type="button" class="btn-secondary" data-action="cancelcollection">Cancel</button>
         <button type="button" class="btn-primary" data-action="savecollection" data-id="${w.id}" style="flex:1">${saveStatus==='saving' ? 'Saving…' : 'Save'}</button>
       </div>
-      <button type="button" class="reset-link" data-action="deletecollectionwatch" data-id="${w.id}" style="margin-top:10px;">Delete "${escapeHtml(w.name)}"</button>
+      <button type="button" class="manual-link manual-link-inline" data-action="deletecollectionwatch" data-id="${w.id}" style="margin:14px auto 0;">Delete "${escapeHtml(w.name)}"</button>
     </div>
   `;
 }
@@ -1137,6 +1277,11 @@ function attachCollectionHandlers(){
       wearCalendarYear = new Date().getFullYear();
       wearCalendarMonth = new Date().getMonth();
       render();
+      // Opening a watch straight off a scrolled-down list otherwise leaves
+      // the detail page landed wherever the list happened to be scrolled
+      // to, rather than at its own top — scrollToPageTop (app.js) is the
+      // same eased scroll-to-top already written for exactly this.
+      scrollToPageTop(300);
     };
   });
   wireCollectionSwipe();
@@ -1154,7 +1299,14 @@ function attachCollectionHandlers(){
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
   if(startEditBtn) startEditBtn.onclick = () => { editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = ''; render(); };
   const cancelBtn = document.querySelector('[data-action="cancelcollection"]');
-  if(cancelBtn) cancelBtn.onclick = () => { editingCollectionId = null; collectionPhotoFile = null; render(); };
+  if(cancelBtn) cancelBtn.onclick = () => {
+    editingCollectionId = null; collectionPhotoFile = null; render();
+    // Same fix as opening a watch from a scrolled-down list (see
+    // viewcollection above) — cancelling out of the edit form drops back
+    // to the detail page, which should land at its own top too, not
+    // wherever the edit form happened to be scrolled to.
+    scrollToPageTop(300);
+  };
   const saveBtn = document.querySelector('[data-action="savecollection"]');
   if(saveBtn) saveBtn.onclick = () => saveCollectionEdit(saveBtn.dataset.id);
   document.querySelectorAll('[data-action="markwound"]').forEach(btn => {
@@ -1218,9 +1370,9 @@ function attachCollectionHandlers(){
     addingCollectionWatch = true;
     addWatchMode = 'search';
     watchSearchQuery = '';
-    watchSearchCaseMaterial = '';
-    watchSearchMovementType = '';
-    watchSearchDial = '';
+    watchSearchCaseMaterials = [];
+    watchSearchMovementTypes = [];
+    watchSearchDials = [];
     // Called before render(), not after: ensureCatalogLoaded() sets its
     // "loading" flag synchronously (an async function body runs up to its
     // first await immediately, not on a later tick), so the render() right
@@ -1229,18 +1381,21 @@ function attachCollectionHandlers(){
     // only corrects itself once the fetch finishes. A no-op, loading
     // nothing, if the catalog is already cached from earlier this session.
     ensureCatalogLoaded().then(() => {
-      if(addingCollectionWatch && addWatchMode === 'search') refreshCatalogResults();
+      if(addingCollectionWatch && addWatchMode === 'search'){
+        refreshCatalogFilters();
+        refreshCatalogResults();
+      }
     });
     render();
-    focusAddWatchInput();
+    resetAddWatchScroll();
   };
   const cancelAddBtn = document.querySelector('[data-action="canceladdcollectionwatch"]');
   if(cancelAddBtn) cancelAddBtn.onclick = () => { addingCollectionWatch = false; render(); };
 
   const switchToManualBtn = document.querySelector('[data-action="switchtomanualadd"]');
-  if(switchToManualBtn) switchToManualBtn.onclick = () => { addWatchMode = 'manual'; render(); focusAddWatchInput(); };
+  if(switchToManualBtn) switchToManualBtn.onclick = () => { addWatchMode = 'manual'; render(); resetAddWatchScroll(); };
   const switchToSearchBtn = document.querySelector('[data-action="switchtocatalogsearch"]');
-  if(switchToSearchBtn) switchToSearchBtn.onclick = () => { addWatchMode = 'search'; render(); focusAddWatchInput(); };
+  if(switchToSearchBtn) switchToSearchBtn.onclick = () => { addWatchMode = 'search'; render(); resetAddWatchScroll(); };
 
   const addBtn = document.querySelector('[data-action="addcollectionwatch"]');
   if(addBtn) addBtn.onclick = () => {
@@ -1268,33 +1423,50 @@ function attachCollectionHandlers(){
       if(first) selectCatalogWatch(first.id);
     });
   }
-  // Only fires because app.js's select-option handler now dispatches
-  // 'change' on the hidden input when a value is picked (see app.js) — a
-  // real <select> does this on its own, this custom one didn't used to
-  // need to.
+  wireCatalogFilterHandlers();
+  wireCatalogResultButtons();
+}
+
+// Only fires because app.js's multi-select/select-option handlers dispatch
+// 'change' on the hidden input when a value is picked (see app.js) — a real
+// <select> does this on its own, these custom ones didn't used to need to.
+// Pulled out on its own (rather than left inline in attachCollectionHandlers
+// above) so refreshCatalogFilters() below can rewire the exact same three
+// listeners after it rebuilds #watchCatalogFilters from scratch, instead of
+// a second, easily-drifting copy of this.
+function wireCatalogFilterHandlers(){
   const caseMaterialFilter = document.getElementById('catalogFilterCaseMaterial');
   if(caseMaterialFilter) caseMaterialFilter.addEventListener('change', () => {
-    watchSearchCaseMaterial = caseMaterialFilter.value;
+    watchSearchCaseMaterials = caseMaterialFilter.value ? caseMaterialFilter.value.split(',') : [];
     refreshCatalogResults();
   });
   const movementTypeFilter = document.getElementById('catalogFilterMovementType');
   if(movementTypeFilter) movementTypeFilter.addEventListener('change', () => {
-    watchSearchMovementType = movementTypeFilter.value;
+    watchSearchMovementTypes = movementTypeFilter.value ? movementTypeFilter.value.split(',') : [];
     refreshCatalogResults();
   });
   const dialFilter = document.getElementById('catalogFilterDial');
   if(dialFilter) dialFilter.addEventListener('change', () => {
-    watchSearchDial = dialFilter.value;
+    watchSearchDials = dialFilter.value ? dialFilter.value.split(',') : [];
     refreshCatalogResults();
   });
-  wireCatalogResultButtons();
 }
 
-function focusAddWatchInput(){
-  setTimeout(() => {
-    const inp = document.getElementById(addWatchMode === 'manual' ? 'newCollectionWatchName' : 'watchCatalogSearch');
-    if(inp) inp.focus();
-  }, 0);
+// Used to also auto-focus the field (the name says as much) so the
+// keyboard was ready the instant the form opened — but on iOS that
+// programmatic focus reliably left the field looking focused (cursor,
+// highlight) with the keyboard never actually appearing, no matter how
+// the focus() call was timed or invoked, and no fix found for that in a
+// few rounds of trying was worth chasing further. Dropping the
+// auto-focus entirely sidesteps it: the field just sits there unfocused
+// until the user taps it themselves, which is an ordinary direct tap on
+// a text input and opens the keyboard the normal way. What's left here is
+// only the part that still matters without it — putting the page back at
+// the top, since the freshly-opened form landing mid-scroll (behind the
+// clock) was its own separate bug.
+function resetAddWatchScroll(){
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => window.scrollTo(0, 0));
 }
 
 // Rebuilds only the results list, never the whole card — see the "Add
@@ -1305,6 +1477,13 @@ function refreshCatalogResults(){
   if(!results) return;
   results.innerHTML = buildCatalogResultsHtml();
   wireCatalogResultButtons();
+}
+
+function refreshCatalogFilters(){
+  const filters = document.getElementById('watchCatalogFilters');
+  if(!filters) return;
+  filters.innerHTML = buildCatalogFiltersHtml();
+  wireCatalogFilterHandlers();
 }
 
 function wireCatalogResultButtons(){

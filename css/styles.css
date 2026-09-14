@@ -202,6 +202,22 @@
        its box and crowd the rule above. This is that missing leading. */
     padding:10px 0 0;
   }
+  /* The Collection detail page's variant — the accuracy dial plus its two
+     wear-stat companions (see buildCollectionDetailHtml), side by side
+     instead of the single centered column above. */
+  .dial-wrap.dial-wrap-row{
+    flex-direction:row;
+    align-items:flex-start;
+    justify-content:center;
+    gap:18px;
+  }
+  .dial-quick-col{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    flex:1 1 0;
+    min-width:0;
+  }
   .dial-figure{
     font-family:'Inter',sans-serif;
     font-size:24px;
@@ -590,7 +606,7 @@
   form{
     display:flex;
     flex-direction:column;
-    gap:12px;
+    gap:8px;
   }
   .field{
     display:flex;
@@ -605,6 +621,39 @@
     font-size:11.5px;
     color:var(--grey);
   }
+  /* The catalog search field's back button, its label, and the "add
+     manually" link all share this one line instead of a separate Cancel
+     row below and the link getting its own row of its own — the button
+     stays a fixed circle, the label sits right after it, and the link is
+     pushed to the far right by its own auto margin rather than splitting
+     the leftover space into two even gaps (which is what justify-content:
+     space-between would do with three items here). */
+  .field-label-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .field-label-row .zoom-btn{flex-shrink:0;}
+  /* A small pill button rather than plain underlined link text — reads as
+     an equal third action alongside the back button and the label, not a
+     lesser thing tucked beside them. display:inline-flex (not the plain
+     inline .manual-link normally uses) is what lets .field-label-row's own
+     align-items:center actually center it against the other two instead of
+     sitting on the text baseline, which is what read as "lower" before. */
+  .manual-link.manual-link-inline{
+    display:inline-flex;
+    align-items:center;
+    margin:0 0 0 auto;
+    padding:6px 12px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--surface-2);
+    color:var(--ink);
+    text-decoration:none;
+    flex-shrink:0;
+  }
+  .manual-link.manual-link-inline:active{background:rgba(255,255,255,0.06);}
   /* Sits right after a locked field's label — never its own line, so a
      locked field reads as "the normal field, with a small note" rather
      than a visually distinct thing to learn the meaning of. */
@@ -672,15 +721,21 @@
     margin-top:0;
     margin-bottom:0;
   }
-  .confirm-time-minute{
+  /* Each of hour/minute/second in the confirm popup's time readout is one of
+     these — tappable so the stepper below can be pointed at any of the
+     three (see quickSelectedField), with only the selected one pulsing. */
+  .confirm-time-field{
     display:inline-block;
     font-variant-numeric:tabular-nums;
-    animation:minute-pulse 1.8s ease-in-out infinite;
+    cursor:pointer;
+  }
+  .confirm-time-field-selected{
+    animation:confirm-time-pulse 1.8s ease-in-out infinite;
   }
   @media (prefers-reduced-motion: reduce){
-    .confirm-time-minute{animation:none;}
+    .confirm-time-field-selected{animation:none;}
   }
-  @keyframes minute-pulse{
+  @keyframes confirm-time-pulse{
     0%, 100%{opacity:1;}
     50%{opacity:0.3;}
   }
@@ -835,6 +890,20 @@
     font-weight:600;
   }
   .select-option:active{background:rgba(255,255,255,0.06);}
+  .multi-select-option{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:8px 6px;
+    font-size:13px;
+    color:var(--ink);
+  }
+  .multi-select-option input[type="checkbox"]{
+    width:16px;
+    height:16px;
+    accent-color:var(--accent);
+    flex-shrink:0;
+  }
   .condition-select:focus{
     outline:2px solid var(--accent);
     outline-offset:1px;
@@ -1460,6 +1529,84 @@
     cursor:pointer;
   }
 
+  /* The three at-a-glance wear numbers above the calendar (see
+     buildWearStatsHtml in collection.js) — tiles rather than spec-sheet
+     rows since these are meant to be read in one glance, not looked up. */
+  .wear-stats-tiles{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .wear-stat-tile{
+    flex:1 1 0;
+    min-width:0;
+    background:var(--surface-2);
+    border-radius:12px;
+    padding:10px 6px;
+    text-align:center;
+  }
+  .wear-stat-value{
+    font-family:'Inter',sans-serif;
+    font-size:18px;
+    font-weight:700;
+    color:var(--ink);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .wear-stat-label{
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    color:var(--grey);
+    margin-top:2px;
+  }
+  .wear-stat-delta{
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    font-weight:600;
+    margin-top:2px;
+  }
+  .wear-stat-delta.up{color:var(--good);}
+  .wear-stat-delta.down,
+  .wear-stat-delta.flat{color:var(--grey);}
+
+  /* Six-month trend behind the tiles above — same monthly worn-day counts
+     (see wearMonthlySeries in data.js), scaled against a 31-day month
+     rather than against each other, so a given month's bar always means
+     the same thing release to release instead of rescaling itself as the
+     window slides forward. */
+  .wear-sparkline{
+    display:flex;
+    align-items:flex-end;
+    gap:5px;
+    height:44px;
+    margin-bottom:14px;
+    padding:0 2px;
+  }
+  .wear-sparkline-col{
+    flex:1 1 0;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    height:100%;
+    gap:4px;
+  }
+  .wear-sparkline-bar{
+    width:100%;
+    max-width:18px;
+    border-radius:4px 4px 2px 2px;
+    background:var(--line);
+  }
+  .wear-sparkline-bar.has-wear{background:var(--accent);}
+  .wear-sparkline-label{
+    font-family:'Inter',sans-serif;
+    font-size:9.5px;
+    color:var(--grey);
+    white-space:nowrap;
+  }
+
   /* Year-at-a-glance wear tracker on the Collection detail page: one real,
      weekday-aligned month at a time, swiped or arrow-stepped between (see
      attachWearCalendarHandlers in collection.js). scroll-snap plus native
@@ -1876,11 +2023,10 @@
      they modify (rather than evenly with everything else in the card)
      reads as "search + its options" instead of three unrelated rows. */
   .watch-catalog-filters{
-    gap:8px;
+    gap:6px;
     margin-top:-4px;
-    flex-wrap:wrap;
   }
-  .watch-catalog-filters .select-wrap{flex:1 1 120px;min-width:0;}
+  .watch-catalog-filters .select-wrap{flex:1 1 0;min-width:0;}
   /* Same boxed, scrollable treatment as .cert-checkbox-list — a bordered
      list living inside the card rather than the card's own edge, since
      unlike everything else in this form it can run to more rows than fit. */
