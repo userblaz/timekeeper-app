@@ -214,7 +214,7 @@ function buildAddWatchHtml(){
     <div class="collection-card collection-card-edit">
       <div class="field">
         <div class="field-label-row">
-          <button type="button" class="zoom-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
+          <button type="button" class="zoom-btn collection-addwatch-back-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
           <label for="newCollectionWatchName">Brand</label>
@@ -230,7 +230,7 @@ function buildAddWatchHtml(){
   <div class="collection-card collection-card-edit">
     <div class="field">
       <div class="field-label-row">
-        <button type="button" class="zoom-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
+        <button type="button" class="zoom-btn collection-addwatch-back-btn" data-action="canceladdcollectionwatch" aria-label="Back to collection">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
         <label for="watchCatalogSearch">Find your watch</label>
