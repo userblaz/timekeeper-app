@@ -813,8 +813,17 @@ function updateKeyboardHideState(){
   const bar = document.getElementById('bottomTabs');
   const appShown = document.getElementById('app');
   if(!bar || !appShown || appShown.style.display === 'none') return;
-  const keyboardOpen = isKeyboardTextInput(document.activeElement);
-  bar.style.display = keyboardOpen ? 'none' : '';
+  const active = document.activeElement;
+  const keyboardOpen = isKeyboardTextInput(active);
+  // The Snap tab's own note/manual-offset fields already manage their own
+  // keyboard clearance (the trigger dock fades out and the list's own
+  // scroll container resizes around it — see sizeDataWatchScroll and the
+  // visualViewport listener below). Hiding the tab bar too on top of that
+  // took away navigation the user expects to always have on screen, for no
+  // reason: nothing on that tab needs the extra room this was clearing.
+  const dataWatchScroll = document.getElementById('dataWatchScroll');
+  const inSnapList = dataWatchScroll && active && dataWatchScroll.contains(active);
+  bar.style.display = (keyboardOpen && !inSnapList) ? 'none' : '';
 
   const clockBox = document.getElementById('masterClockBox');
   if(clockBox){
