@@ -32,7 +32,21 @@ let chartZoom = 1;
 let offsetScrollLeft = null;
 let driftScrollLeft = null;
 let editingReadingId = null;
-let activeTab = 'data';
+// Restored across a plain page refresh so reloading mid-task (e.g. on the
+// Collection tab) doesn't dump you back on Snap — but NOT across an actual
+// sign-out/sign-in, which still always lands on Data on purpose (see
+// handleSignedIn, auth.js). A refresh and a fresh sign-in both run through
+// the exact same startup code, so telling them apart has to happen there,
+// not here — this just supplies whatever the last real tab switch (see
+// switchToTab below) left behind, or 'data' the very first time there's
+// nothing saved yet.
+const VALID_TABS = ['data', 'timegrapher', 'clock', 'collection', 'profile'];
+let activeTab = (() => {
+  try{
+    const saved = localStorage.getItem('timekeeper-active-tab');
+    return VALID_TABS.includes(saved) ? saved : 'data';
+  }catch(e){ return 'data'; }
+})();
 
 // The 5 standard COSC test positions — rate varies by orientation since
 // gravity pulls differently on the balance wheel. Crown right is omitted:
@@ -539,6 +553,14 @@ function readConditionInputs(prefix){
 function render(){
   const root = document.getElementById('root');
   if(!loaded){ root.innerHTML = 'Loading…'; return; }
+
+  // Saved on every render rather than only where activeTab is assigned —
+  // there are a few of those (switchToTab, jumping here from a Data-tab
+  // shortcut, …) and render() runs after every one of them anyway, so this
+  // is the one place that's guaranteed to see every real tab change without
+  // needing to touch each call site. See the activeTab declaration above
+  // for the other half of this (restoring it across a refresh).
+  try{ localStorage.setItem('timekeeper-active-tab', activeTab); }catch(e){}
 
   // Rebuilding #root below (innerHTML) destroys every select-wrap under it —
   // including, for a menu currently portaled out to <body> (see
