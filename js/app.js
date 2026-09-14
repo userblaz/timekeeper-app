@@ -396,8 +396,11 @@ function buildNoteField(id){
   `;
 }
 
-function openNoteEditor(id){
-  noteEditorFor = id;
+// Built once, up front rather than on first use: the tap that opens the
+// editor has to focus its field in that same tick to bring the keyboard up
+// (see openNoteEditor), and a field the document has never laid out is the
+// shakiest thing to hand focus to at that moment.
+function ensureNoteEditor(){
   let el = document.getElementById('noteEditor');
   if(!el){
     el = document.createElement('div');
@@ -415,13 +418,30 @@ function openNoteEditor(id){
     `;
     document.body.appendChild(el);
   }
+  return el;
+}
+ensureNoteEditor();
+
+function openNoteEditor(id){
+  noteEditorFor = id;
+  const el = ensureNoteEditor();
   const input = el.querySelector('#noteEditorInput');
   input.value = noteDraft;
   el.classList.add('open');
-  // Focused on the next frame rather than immediately: the keyboard should
-  // come up against the overlay already painted, not against the layout it
-  // replaced.
-  requestAnimationFrame(() => input.focus());
+  // Everything from here has to stay synchronous inside the tap that opened
+  // the editor: iOS only raises the keyboard for a focus() call that happens
+  // within the gesture asking for it, so deferring this by even one frame
+  // (which is what it did before) left the field focused with the keyboard
+  // still down, needing a second tap on it to type. Reading offsetHeight
+  // forces the display:none -> block above to resolve now rather than at the
+  // next paint — an element the browser still considers unrendered can't
+  // take focus at all.
+  void el.offsetHeight;
+  input.focus({ preventScroll: true });
+  // Caret at the end rather than the whole note selected, so reopening a
+  // note to add to it doesn't replace it with the first key pressed.
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
 }
 
 function closeNoteEditor(save){
