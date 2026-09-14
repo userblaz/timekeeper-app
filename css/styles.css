@@ -2147,6 +2147,18 @@
     margin-top:-4px;
   }
   .watch-catalog-filters .select-wrap{flex:1 1 0;min-width:0;}
+  /* The square-touching-corners treatment above (.select-wrap.select-open
+     .condition-select) reads as one continuous shape with the menu right
+     below a single trigger — it stops making sense here since an open
+     catalog filter's menu spans the whole row instead of sitting flush
+     under just its own third (see positionEscapedMenu's widthBox in
+     app.js), floating below all three rather than touching this one.
+     Restoring the plain, fully-rounded default corners keeps it reading
+     as a separate floating panel, matching every other full-width menu. */
+  .watch-catalog-filters .select-wrap.select-open .condition-select,
+  .watch-catalog-filters .select-wrap.select-open.drop-up .condition-select{
+    border-radius:12px;
+  }
   /* Same boxed, scrollable treatment as .cert-checkbox-list — a bordered
      list living inside the card rather than the card's own edge, since
      unlike everything else in this form it can run to more rows than fit. */
