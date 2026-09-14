@@ -1417,18 +1417,27 @@ function attachCollectionHandlers(){
   const cancelAddBtn = document.querySelector('[data-action="canceladdcollectionwatch"]');
   if(cancelAddBtn) cancelAddBtn.onclick = () => { addingCollectionWatch = false; render(); };
 
-  // Whichever field the switch happens from, refocusing its counterpart in
-  // the other mode — synchronously, in the same click handler, right after
-  // render() swaps the DOM — is what keeps the keyboard from ever actually
-  // closing. Skipping that refocus when nothing was focused to begin with
-  // matters just as much: either both modes end the switch with a cursor
-  // in their field, or neither does. One doing it and the other not is
-  // exactly what made the bottom bar and clock (see updateKeyboardHideState
-  // in app.js, which reacts to focus) flash back on and off across a mode
-  // switch, shoving the whole page around each time.
+  // Whichever field the switch happens from, ending on its counterpart
+  // focused in the other mode — or on neither field focused, if neither
+  // was to begin with — is what stops the bottom bar and clock (see
+  // updateKeyboardHideState in app.js, which reacts to focus) from
+  // flashing back on and off across a mode switch and shoving the page
+  // around. A plain "refocus the new field after render()" turned out not
+  // to be enough on iOS: render() tears down and rebuilds the whole card,
+  // so the field mid-edit is an actual DOM node getting removed while
+  // still focused, not just blurred — that alone seems to trigger the
+  // keyboard's close animation right at removal, before any refocus
+  // afterward gets a chance to stop it. Routing focus through #focusRelay
+  // (a real, invisible text input living outside #root, so no render()
+  // ever removes it — see index.html) first keeps every hop a transfer
+  // between two fields that both still exist in the document at the
+  // moment of the call, never a field-to-nothing one, which is what
+  // actually keeps the keyboard from ever animating shut in between.
   const switchToManualBtn = document.querySelector('[data-action="switchtomanualadd"]');
   if(switchToManualBtn) switchToManualBtn.onclick = () => {
     const hadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
+    const relay = document.getElementById('focusRelay');
+    if(hadFocus && relay) relay.focus();
     addWatchMode = 'manual';
     render();
     resetAddWatchScroll();
@@ -1440,6 +1449,8 @@ function attachCollectionHandlers(){
   const switchToSearchBtn = document.querySelector('[data-action="switchtocatalogsearch"]');
   if(switchToSearchBtn) switchToSearchBtn.onclick = () => {
     const hadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
+    const relay = document.getElementById('focusRelay');
+    if(hadFocus && relay) relay.focus();
     addWatchMode = 'search';
     render();
     resetAddWatchScroll();

@@ -34,7 +34,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=153"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="css/styles.css?v=154"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="authScreen" style="display:none;">
@@ -73,6 +73,20 @@
 </div>
 
 <div id="snapDock" style="display:none;"></div>
+
+<!-- Focus relay for the Add Watch catalog/manual switch (see
+     switchtomanualadd/switchtocatalogsearch in collection.js): a render()
+     tears down and rebuilds the whole card, so the field being typed into
+     is an actual DOM node getting removed while focused, not just blurred
+     — on iOS that seems to trigger the keyboard's close animation right at
+     removal, before any refocus afterward has a chance to stop it. Hopping
+     focus through this real (but invisible) text input first — itself
+     never removed by any render() since it lives outside #root — means
+     every focus change is a direct field-to-still-in-document-field
+     transfer instead of a field-to-nothing one, which is what actually
+     keeps the keyboard from ever animating shut in between. -->
+<input id="focusRelay" type="text" tabindex="-1" aria-hidden="true" autocomplete="off"
+  style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0; border:none; padding:0; pointer-events:none;" />
 
 <div class="bottom-tabs" id="bottomTabs" style="display:none;">
   <button type="button" class="bottom-tab active" data-tab="data">
@@ -137,14 +151,14 @@
   </button>
 </div>
 
-<script src="js/utils.js?v=153"></script>
-<script src="js/data.js?v=153"></script>
-<script src="js/charts.js?v=153"></script>
-<script src="js/timegrapher.js?v=153"></script>
-<script src="js/clock.js?v=153"></script>
-<script src="js/collection.js?v=153"></script>
-<script src="js/demo.js?v=153"></script>
-<script src="js/app.js?v=153"></script>
-<script src="js/auth.js?v=153"></script>
-<script src="js/profile.js?v=153"></script></body>
+<script src="js/utils.js?v=154"></script>
+<script src="js/data.js?v=154"></script>
+<script src="js/charts.js?v=154"></script>
+<script src="js/timegrapher.js?v=154"></script>
+<script src="js/clock.js?v=154"></script>
+<script src="js/collection.js?v=154"></script>
+<script src="js/demo.js?v=154"></script>
+<script src="js/app.js?v=154"></script>
+<script src="js/auth.js?v=154"></script>
+<script src="js/profile.js?v=154"></script></body>
 </html>
