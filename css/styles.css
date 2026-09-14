@@ -2005,6 +2005,18 @@
     width:25px;
     height:25px;
   }
+  /* Purely decorative now — the card underneath already opens on any tap,
+     the same "go into this" chevron the Data tab's card uses as its own
+     explicit button (.data-menu-btn), sized to match it here too. */
+  .collection-card-chevron{
+    width:36px;
+    height:36px;
+    color:var(--grey);
+  }
+  .collection-card-chevron svg{
+    width:16px;
+    height:16px;
+  }
   .data-worn-btn{
     width:36px;
     height:36px;

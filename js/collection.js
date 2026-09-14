@@ -616,9 +616,7 @@ function buildCollectionCard(w){
         ${buildPowerReserveHtml(w)}
       </div>
       <div class="collection-card-actions">
-        <button type="button" class="zoom-btn collection-wind-btn" data-action="markwound" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as fully wound" title="Fully wound now">
-          ${windIconSvg()}
-        </button>
+        <span class="zoom-btn collection-card-chevron" aria-hidden="true">${menuIconSvg()}</span>
       </div>
     </div>
   </div>
@@ -1337,15 +1335,13 @@ function attachCollectionHandlers(){
   };
   const saveBtn = document.querySelector('[data-action="savecollection"]');
   if(saveBtn) saveBtn.onclick = () => saveCollectionEdit(saveBtn.dataset.id);
-  document.querySelectorAll('[data-action="markwound"]').forEach(btn => {
-    btn.onclick = (e) => {
-      // The card underneath opens the detail view, so this must not bubble.
-      e.stopPropagation();
-      // A swipe that started on this button ends in a click on it.
-      if(Date.now() - swipeEndedAt < 300) return;
-      markFullyWound(btn.dataset.id);
-    };
-  });
+  // No markwound wiring here — the Collection list's own card dropped that
+  // button (see buildCollectionCardHtml above) in favor of the same plain
+  // forward chevron the Data tab's card uses, since this card already
+  // opens the detail view on any tap and a separate wind action doesn't
+  // belong on this list. The Data tab's own wind button (app.js) is
+  // unrelated and still wired there — this only ever covered this tab's
+  // now-removed copy.
   document.querySelectorAll('[data-action="togglewearday"]').forEach(btn => {
     if(btn.disabled) return;
     btn.onclick = (e) => {
