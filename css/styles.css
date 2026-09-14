@@ -1165,6 +1165,22 @@
      breathing room. Its own content is constant (see buildSnapTriggerHtml),
      so unlike the old fixed panel this never needs to grow — the confirm
      and manual forms open against the selected watch's card instead. */
+  /* Same curtain #snapDock's own padding draws below the Snap tab's dock,
+     just always on instead of tied to that dock's own content — see the
+     comment above it in index.html for why every tab needs this, not just
+     Snap. Sized to the same 81px + safe-area strip so it reaches exactly
+     to the screen edge and no further, behind the floating bottom-tabs
+     bar (z-index 30) either way. */
+  #bottomBarCurtain{
+    position:fixed;
+    left:0;
+    right:0;
+    bottom:0;
+    height:calc(81px + var(--safe-bottom));
+    background:var(--bg);
+    z-index:25;
+    pointer-events:none;
+  }
   #snapDock{
     position:fixed;
     left:0;

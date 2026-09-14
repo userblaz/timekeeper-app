@@ -34,7 +34,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=169"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="css/styles.css?v=170"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="authScreen" style="display:none;">
@@ -73,6 +73,22 @@
 </div>
 
 <div id="snapDock" style="display:none;"></div>
+
+<!-- The bottom tab bar is translucent with a blur (see .bottom-tabs) and
+     floats a little clear of the screen edge rather than sitting flush
+     against it — by design, on every tab, so scrolled content shows
+     through it a little as it passes, the ordinary "frosted glass" look.
+     #snapDock (above) already backs that with a solid, page-matching
+     curtain on the Snap tab, for an unrelated reason (stopping the
+     selected watch's rounded card from peeking out around the dock's own
+     corners) — but that curtain only exists while snapDock itself is
+     shown, i.e. only on Snap. Every other tab had nothing behind that
+     floating gap at all, so a long enough list scrolled a card far enough
+     to become visible in the strip below the bar, not just blurred
+     through it. This is that same curtain, decoupled from snapDock's own
+     content and left always on, so every tab gets it — including Snap
+     itself, where it just sits harmlessly behind snapDock's own copy. -->
+<div id="bottomBarCurtain"></div>
 
 <!-- Focus relay for the Add Watch catalog/manual switch (see
      switchtomanualadd/switchtocatalogsearch in collection.js): a render()
@@ -151,14 +167,14 @@
   </button>
 </div>
 
-<script src="js/utils.js?v=169"></script>
-<script src="js/data.js?v=169"></script>
-<script src="js/charts.js?v=169"></script>
-<script src="js/timegrapher.js?v=169"></script>
-<script src="js/clock.js?v=169"></script>
-<script src="js/collection.js?v=169"></script>
-<script src="js/demo.js?v=169"></script>
-<script src="js/app.js?v=169"></script>
-<script src="js/auth.js?v=169"></script>
-<script src="js/profile.js?v=169"></script></body>
+<script src="js/utils.js?v=170"></script>
+<script src="js/data.js?v=170"></script>
+<script src="js/charts.js?v=170"></script>
+<script src="js/timegrapher.js?v=170"></script>
+<script src="js/clock.js?v=170"></script>
+<script src="js/collection.js?v=170"></script>
+<script src="js/demo.js?v=170"></script>
+<script src="js/app.js?v=170"></script>
+<script src="js/auth.js?v=170"></script>
+<script src="js/profile.js?v=170"></script></body>
 </html>
