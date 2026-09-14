@@ -615,12 +615,21 @@ function sizeDataWatchScroll(){
   const dock = document.getElementById('snapDock');
   const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
   // A dock hidden for the keyboard (see the visualViewport listener below)
-  // is invisible but still `display` non-'none' — without also checking for
-  // that, the list would keep leaving room below it for a box that isn't
-  // being drawn there any more, showing up as a dead gap above the bottom
-  // tab bar for as long as the keyboard is up.
+  // is invisible but still `display` non-'none'. Reclaiming its full height
+  // in that case overshot: the dock's box doesn't just cover its own
+  // trigger buttons, its bottom padding also stretches all the way down to
+  // clear the bottom tab bar underneath (see the #snapDock comment in
+  // styles.css) — zeroing out the whole thing let the list run in behind
+  // that padding and behind the tab bar, showing up as a dead gap between
+  // the list's real content and the tab bar. Only the trigger's own
+  // reachable height gets reclaimed; that fixed tab-bar clearance (the same
+  // padding-bottom value, which doesn't change with the dock's opacity)
+  // stays reserved for as long as the tab bar itself is still on screen.
   const dockHidden = dock && dock.classList.contains('dock-hidden-for-keyboard');
-  const dockHeight = (dock && dock.style.display !== 'none' && !dockHidden) ? dock.offsetHeight : 0;
+  const dockVisible = dock && dock.style.display !== 'none';
+  const dockHeight = dockVisible
+    ? (dockHidden ? parseFloat(getComputedStyle(dock).paddingBottom) || 0 : dock.offsetHeight)
+    : 0;
   const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
   scrollEl.style.height = height + 'px';
 
