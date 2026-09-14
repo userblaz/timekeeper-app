@@ -328,14 +328,19 @@ function dragHandleIconSvg(){
 // a card in a list, never a spot that's itself clickable to add one (that's
 // a proper "Add photo" button, in the edit form only — see
 // buildCollectionEditForm). A "+" there read as "tap to add a photo" on a
-// card that doesn't do that; a plain watch shape (the same case-and-dial
-// silhouette as the Snap tab's own bottom-bar icon, for a shape already
-// established elsewhere in the app as "this is a watch") just says "no
-// photo" without implying a tap does anything.
+// card that doesn't do that; a plain wristwatch face (a case with two
+// hands, plus a short strap mark top and bottom so it doesn't read as a
+// generic wall clock) just says "no photo" without implying a tap does
+// anything. Deliberately its own icon rather than a reuse of an existing
+// one elsewhere — the first attempt here borrowed the Snap tab's icon on
+// the assumption it was a watch case, but that one's actually a camera
+// (its whole point is "this tab takes a photo/reading"), and reused here
+// it just read as a camera icon on a photo placeholder.
 function watchPlaceholderIconSvg(){
   return `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M4 8a2 2 0 0 1 2-2h1.2l0.9-1.4a1.6 1.6 0 0 1 1.35-0.6h5.1a1.6 1.6 0 0 1 1.35 0.6L16.8 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-    <circle cx="12" cy="13" r="3.6" />
+    <path d="M9.5 3h5" /><path d="M9.5 21h5" />
+    <circle cx="12" cy="12" r="7.5" />
+    <path d="M12 8.5V12l2.3 1.4" />
   </svg>`;
 }
 
