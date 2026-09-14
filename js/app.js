@@ -658,7 +658,7 @@ function render(){
 function buildDataWatchCardHtml(w, connected, selected, locked){
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
-    : `<div class="collection-photo collection-photo-empty">＋</div>`;
+    : `<div class="collection-photo collection-photo-empty">${watchPlaceholderIconSvg()}</div>`;
   const wornToday = isDayWorn(w, todayStr());
   // Just the measured rate here, not the factory spec badge alongside it
   // (buildCollectionCardStats shows both) — this card is about how the
