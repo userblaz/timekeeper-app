@@ -1554,6 +1554,23 @@ function attachCollectionHandlers(){
   function wireAddWatchModeSwitch(btn, onPointerDown){
     if(!btn) return;
     btn.addEventListener('pointerdown', onPointerDown);
+    // Separate from the pointerdown capture above on purpose: without
+    // this, the browser's own default mousedown behavior focuses this
+    // button a moment later (mousedown always follows pointerdown) —
+    // after the relay hop above, undoing it — and since a plain button
+    // isn't a text field, that transient focus read as "keyboard just
+    // closed" to updateKeyboardHideState (app.js), un-hiding the
+    // reference clock and shoving the card up between mousedown and
+    // mouseup. Desktop and Android both require mousedown and mouseup to
+    // land on the same element for click to fire at all, so that shift
+    // silently killed the click there — iOS's touch-to-click synthesis
+    // happened to be forgiving of it, which is the only reason this ever
+    // looked fixed on that one platform. preventDefault specifically on
+    // mousedown (never on pointerdown/touchstart) is the standard way to
+    // stop an element from taking focus on click without also cancelling
+    // the click itself — touchstart's preventDefault would suppress the
+    // touch-synthesized click entirely, which mousedown's does not.
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
   }
   function captureAddWatchFocusForSwitch(){
     addWatchSwitchHadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);

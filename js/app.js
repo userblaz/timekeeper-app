@@ -895,52 +895,13 @@ window.addEventListener('resize', sizeSnapDockClearance);
 // focusin/focusout events.
 function isKeyboardTextInput(el){
   if(!el) return false;
-  // #focusRelay (collection.js's Add Watch mode-switch bridge) is never
-  // actually looked at by anyone — its whole job is to hold focus for an
-  // instant between two real fields so the keyboard doesn't visibly close
-  // between them. Counting it here made updateKeyboardHideState hide the
-  // reference clock the moment it was focused, shifting the whole Add
-  // Watch card up mid-gesture — after pointerdown but before the browser
-  // decided where mouseup/click would land, which is exactly what broke
-  // the click on desktop and Android (mouse/touch there require mousedown
-  // and mouseup to land on the same element; iOS's touch-to-click
-  // synthesis turned out to be more forgiving of the shift, which is why
-  // this only ever showed up on the other two). The keyboard itself stays
-  // open regardless — that's the OS reacting to a real focused input, not
-  // to anything this function decides.
-  if(el.id === 'focusRelay') return false;
   if(el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
   // Checkboxes/radios (the multi-select filter options, the reset-point
   // checkbox, etc.) are <input> elements too but never bring up a keyboard.
   if(el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return false;
   return true;
 }
-// Deferred to the next frame rather than applied the instant focus
-// changes: clicking any button while a real field is focused sets off a
-// rapid, entirely internal burst of focus changes before anything settles
-// — the field blurs, the clicked button transiently takes focus as the
-// browser's own default mousedown behavior (before this app's own click
-// handler ever runs), then whatever real field the click was headed to
-// (if any — see the Add Watch mode switch, collection.js) takes over.
-// Reacting to each of those synchronously used to un-hide the clock for
-// that transient middle step (a button isn't a text input, so
-// isKeyboardTextInput says no), shifting the whole card up between
-// mousedown and mouseup — which is exactly what stopped the click from
-// ever registering on desktop and Android (mouse/touch there require
-// mousedown and mouseup to land on the same element; iOS's touch-to-click
-// synthesis is more forgiving of a mid-gesture shift, which is why this
-// only ever showed up on the other two). Deferring means only the
-// *settled* state after a whole burst of focus changes ever actually gets
-// applied — nothing from partway through it.
-let keyboardHideStateFrame = null;
 function updateKeyboardHideState(){
-  if(keyboardHideStateFrame) return;
-  keyboardHideStateFrame = requestAnimationFrame(() => {
-    keyboardHideStateFrame = null;
-    applyKeyboardHideState();
-  });
-}
-function applyKeyboardHideState(){
   const bar = document.getElementById('bottomTabs');
   const appShown = document.getElementById('app');
   if(!bar || !appShown || appShown.style.display === 'none') return;
