@@ -117,7 +117,13 @@ function findMenuForWrap(wrap){
 // tracked listener set is enough.
 let escapedMenuTracker = null;
 
-function positionEscapedMenu(menu, toggle){
+// widthBox lets a caller size/position the menu against a wider box than
+// the toggle itself — the catalog filters (see the toggleselect handler
+// below) pass their whole three-across row so an open menu spans all
+// three columns instead of just its own third, since there's nothing else
+// there to use that space while it's open anyway. Left unset, the menu
+// sizes to the toggle like every other escaped menu always has.
+function positionEscapedMenu(menu, toggle, widthBox){
   menu.classList.remove('drop-up');
   const box = toggle.getBoundingClientRect();
   const spaceBelow = window.innerHeight - box.bottom;
@@ -125,15 +131,19 @@ function positionEscapedMenu(menu, toggle){
   // No gap for the compact popup dropdowns — they're styled to read as a
   // seamless continuation of the trigger (see the CSS), so leaving room for
   // one here would reopen the gap the styling is trying to close. The
-  // generic (non-compact) case keeps its small breathing gap.
-  const gap = menu.classList.contains('select-menu-compact') ? 0 : 6;
+  // generic (non-compact) case keeps its small breathing gap — a couple of
+  // px more for a widthBox menu, since it's sitting below the other two
+  // triggers in the row too, not just its own, and the plain 6px read as
+  // slightly crowding into them.
+  const gap = menu.classList.contains('select-menu-compact') ? 0 : (widthBox ? 10 : 6);
   // The menu is never scrollable, so when it doesn't fit below, open it
   // upward — but only if there's actually more room up there.
   const needed = menu.getBoundingClientRect().height + 12;
   const dropUp = needed > spaceBelow && spaceAbove > spaceBelow;
   menu.classList.toggle('drop-up', dropUp);
-  menu.style.left = box.left + 'px';
-  menu.style.width = box.width + 'px';
+  const sizeBox = widthBox || box;
+  menu.style.left = sizeBox.left + 'px';
+  menu.style.width = sizeBox.width + 'px';
   if(dropUp){
     menu.style.bottom = (window.innerHeight - box.top + gap) + 'px';
     menu.style.top = '';
@@ -268,10 +278,18 @@ document.addEventListener('click', (e) => {
     // draw over those instead of disappearing behind them, and keeps it
     // clear of any ancestor's overflow no matter what that ancestor does
     // later.
-    if(wrap.closest('.data-watch-scroll')){
+    // The Add Watch catalog filters (Case/Movement/Dial) stay inline,
+    // three across, while closed — that's the whole point of them there.
+    // But there's nothing else in that row for the other two triggers to
+    // do while one's open, so the open menu spans the full row instead of
+    // just its own third: same escape-to-<body> mechanism as the
+    // data-watch-scroll case below, just sized against the row
+    // (catalogFiltersRow) instead of the toggle it came from.
+    const catalogFiltersRow = wrap.closest('.watch-catalog-filters');
+    if(wrap.closest('.data-watch-scroll') || catalogFiltersRow){
       document.body.appendChild(menu);
       menu.classList.add('select-menu-escaped');
-      positionEscapedMenu(menu, toggle);
+      positionEscapedMenu(menu, toggle, catalogFiltersRow ? catalogFiltersRow.getBoundingClientRect() : null);
       // Positioned once, above — rather than keep it glued to the trigger
       // through a live scroll (see the comment on escapedMenuTracker), just
       // close it as soon as the list moves under it, the keyboard opens, or
