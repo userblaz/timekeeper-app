@@ -127,6 +127,22 @@ function catalogFilterOptions(field){
 // grows on its own as more watches are added to watch_catalog, with no
 // code change needed on this end.
 function buildCatalogFiltersHtml(){
+  // While the catalog fetch is still in flight, watchCatalog is null and
+  // every option list below would be empty — rendering nothing here until
+  // it resolves is what used to make this row pop into existence (and
+  // shove the results below it down) the instant the fetch finished.
+  // Rendering the same row with empty option lists instead reserves its
+  // real height from the very first paint, so refreshCatalogFilters()
+  // just fills it in place once the data lands, with nothing to shift.
+  if(watchCatalog === null){
+    return `
+      <div class="row3 watch-catalog-filters">
+        ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', [], watchSearchCaseMaterials)}
+        ${buildMultiSelect('catalogFilterMovementType', 'Movement', [], watchSearchMovementTypes)}
+        ${buildMultiSelect('catalogFilterDial', 'Dial', [], watchSearchDials)}
+      </div>
+    `;
+  }
   const caseMaterials = catalogFilterOptions('case_material');
   const movementTypes = catalogFilterOptions('movement_type');
   const dialColors = catalogFilterOptions('dial_color');

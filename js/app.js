@@ -208,34 +208,6 @@ function buildMultiSelect(id, shortLabel, options, selectedValues){
   `;
 }
 
-// A multi-choice variant of buildSelect above — same custom-dropdown shell
-// (so it gets the same overflow-escaping, drop-up and outside-click-closes
-// behavior for free, see the delegated handlers below), but checkboxes
-// instead of one-tap-and-close buttons, and a short fixed label instead of
-// echoing back whatever's chosen — there's no length of value list that
-// reads well in the space a button like this has, so it just says how many
-// are checked instead (see the change handler below, which is what keeps
-// that count in sync without a full re-render).
-function buildMultiSelect(id, shortLabel, options, selectedValues){
-  const selected = new Set(selectedValues || []);
-  const optionsHtml = options.map(([value, label]) => `
-    <label class="multi-select-option">
-      <input type="checkbox" data-action="multiselecttoggle" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''} />
-      <span>${escapeHtml(label)}</span>
-    </label>
-  `).join('');
-  return `
-    <div class="select-wrap multi-select-wrap" data-short-label="${escapeHtml(shortLabel)}">
-      <input type="hidden" id="${id}" value="${escapeHtml(Array.from(selected).join(','))}" />
-      <button type="button" class="condition-select${selected.size ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
-        <span class="select-value">${escapeHtml(shortLabel)}${selected.size ? ` (${selected.size})` : ''}</span>
-        <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-      </button>
-      <div class="select-menu multi-select-menu" hidden>${optionsHtml}</div>
-    </div>
-  `;
-}
-
 function closeAllSelects(except){
   stopTrackingEscapedMenu();
   // Querying menus directly (rather than each wrap's own child) is what
@@ -863,65 +835,6 @@ function updateKeyboardHideState(){
     dock.classList.toggle('dock-hidden-for-keyboard', keyboardOpen && !!inSnapList);
     sizeSnapDockClearance();
   }
-
-  const clockBox = document.getElementById('masterClockBox');
-  if(clockBox){
-    const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
-    clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
-  }
-}
-document.addEventListener('focusin', updateKeyboardHideState);
-// focusout fires just before activeElement actually clears (it briefly
-// becomes document.body), so check on the next tick once it's settled —
-// otherwise a tap from one field straight to another would flash the bar
-// back on in between.
-document.addEventListener('focusout', () => setTimeout(updateKeyboardHideState, 0));
-
-// The bottom nav bar is fixed near the bottom of the layout viewport, but
-// once the on-screen keyboard opens, iOS Safari keeps fixed elements
-// pinned to the shrunken *visual* viewport instead — which is exactly what
-// makes it look like it "jumps up": it ends up floating partway up the
-// page, on top of whatever real content happens to sit there (the
-// Collection tab's catalog search results, most often), rather than at the
-// bottom where there'd be nothing left to cover. Simplest fix is to just
-// get it out of the way for as long as a text field actually has the
-// keyboard open. Guarded on the app screen actually being visible so this
-// never fights showApp/showAuthScreen's own use of the same element on the
-// sign-in screen.
-//
-// The reference clock at the top gets the same treatment, but only while
-// the Collection tab's add-watch search is open — it's the biggest single
-// thing eating into the room a phone's keyboard leaves for search results,
-// bigger than the bottom bar. Scoped to just that view (rather than
-// applied globally like the bottom bar above) so it can't interact with
-// whatever made the Snap tab's own force-collapse behavior get switched
-// off (see CLOCK_FORCE_COLLAPSE_ENABLED in clock.js) — this is a separate,
-// narrower mechanism, not a reuse of that one. Reappears the moment the
-// keyboard closes, whether that's from tapping outside the field or
-// switching away from search mode.
-//
-// This used to key off visualViewport resize (measuring how much the
-// visible area shrank), the same signal the Snap tab logic above uses —
-// but on at least one real iOS device it never fired reliably here, so the
-// bar and clock stayed put with the keyboard fully open. Focus/blur on the
-// field itself is a more direct signal for "is the keyboard actually up"
-// and doesn't depend on the viewport-resize event firing at all: it's
-// driven straight off document.activeElement changing, via the bubbling
-// focusin/focusout events.
-function isKeyboardTextInput(el){
-  if(!el) return false;
-  if(el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
-  // Checkboxes/radios (the multi-select filter options, the reset-point
-  // checkbox, etc.) are <input> elements too but never bring up a keyboard.
-  if(el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return false;
-  return true;
-}
-function updateKeyboardHideState(){
-  const bar = document.getElementById('bottomTabs');
-  const appShown = document.getElementById('app');
-  if(!bar || !appShown || appShown.style.display === 'none') return;
-  const keyboardOpen = isKeyboardTextInput(document.activeElement);
-  bar.style.display = keyboardOpen ? 'none' : '';
 
   const clockBox = document.getElementById('masterClockBox');
   if(clockBox){
