@@ -10,6 +10,9 @@ let addingCollectionWatch = false;
 // (default) or the plain name-only fallback form. Reset to 'search' every
 // time the card is opened fresh; see startaddcollectionwatch below.
 let addWatchMode = 'search';
+// Set on pointerdown, not click, on the catalog/manual switch buttons —
+// see the comment above wireAddWatchModeSwitch below for why.
+let addWatchSwitchHadFocus = false;
 let watchSearchQuery = '';
 // Each holds zero or more selected values now (see buildMultiSelect in
 // app.js) rather than one — empty means "no filter", same as before, but
@@ -1422,22 +1425,39 @@ function attachCollectionHandlers(){
   // was to begin with — is what stops the bottom bar and clock (see
   // updateKeyboardHideState in app.js, which reacts to focus) from
   // flashing back on and off across a mode switch and shoving the page
-  // around. A plain "refocus the new field after render()" turned out not
-  // to be enough on iOS: render() tears down and rebuilds the whole card,
-  // so the field mid-edit is an actual DOM node getting removed while
-  // still focused, not just blurred — that alone seems to trigger the
-  // keyboard's close animation right at removal, before any refocus
-  // afterward gets a chance to stop it. Routing focus through #focusRelay
-  // (a real, invisible text input living outside #root, so no render()
-  // ever removes it — see index.html) first keeps every hop a transfer
-  // between two fields that both still exist in the document at the
-  // moment of the call, never a field-to-nothing one, which is what
-  // actually keeps the keyboard from ever animating shut in between.
+  // around.
+  //
+  // Two rounds of this still weren't enough: checking document.activeElement
+  // inside the button's click handler always read as unfocused, even when
+  // the field visibly had the cursor a moment before the tap. On a touch
+  // device, tapping a button that isn't the focused field blurs that field
+  // as part of the tap gesture itself — on touchend/pointerup, well before
+  // the click handler that follows ever runs — so by the time this code
+  // checked, the browser had already blurred it natively. The fix has to
+  // read (and act on) focus earlier than that: on pointerdown, the very
+  // first event in the gesture, before any native blur has happened yet.
+  // Hopping onto #focusRelay (a real, invisible text input living outside
+  // #root, so no render() ever removes it — see index.html) right there
+  // pre-empts that native blur entirely — the transfer is a direct
+  // field-to-relay one, not a field-to-nothing one, which is what actually
+  // keeps the keyboard open through the tap. The click handler then just
+  // reads the flag this set and, after render() rebuilds the card, hops
+  // from the relay onto whichever field belongs to the new mode.
+  function wireAddWatchModeSwitch(btn, onPointerDown){
+    if(!btn) return;
+    btn.addEventListener('pointerdown', onPointerDown);
+  }
+  function captureAddWatchFocusForSwitch(){
+    addWatchSwitchHadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
+    if(addWatchSwitchHadFocus){
+      const relay = document.getElementById('focusRelay');
+      if(relay) relay.focus();
+    }
+  }
   const switchToManualBtn = document.querySelector('[data-action="switchtomanualadd"]');
+  wireAddWatchModeSwitch(switchToManualBtn, captureAddWatchFocusForSwitch);
   if(switchToManualBtn) switchToManualBtn.onclick = () => {
-    const hadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
-    const relay = document.getElementById('focusRelay');
-    if(hadFocus && relay) relay.focus();
+    const hadFocus = addWatchSwitchHadFocus;
     addWatchMode = 'manual';
     render();
     resetAddWatchScroll();
@@ -1447,10 +1467,9 @@ function attachCollectionHandlers(){
     }
   };
   const switchToSearchBtn = document.querySelector('[data-action="switchtocatalogsearch"]');
+  wireAddWatchModeSwitch(switchToSearchBtn, captureAddWatchFocusForSwitch);
   if(switchToSearchBtn) switchToSearchBtn.onclick = () => {
-    const hadFocus = typeof isKeyboardTextInput === 'function' && isKeyboardTextInput(document.activeElement);
-    const relay = document.getElementById('focusRelay');
-    if(hadFocus && relay) relay.focus();
+    const hadFocus = addWatchSwitchHadFocus;
     addWatchMode = 'search';
     render();
     resetAddWatchScroll();
