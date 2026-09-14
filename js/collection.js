@@ -1241,7 +1241,7 @@ function buildCollectionEditForm(w){
       </div>
       ${saveStatus === 'error' ? '<p class="hint" style="color:var(--bad);">Save failed — check your connection, or the database may be missing the collection columns (see the setup SQL).</p>' : ''}
       <button type="button" class="btn-primary" data-action="savecollection" data-id="${w.id}" style="width:100%;margin-top:6px;">${saveStatus==='saving' ? 'Saving…' : 'Save'}</button>
-      <button type="button" class="manual-link manual-link-inline" data-action="deletecollectionwatch" data-id="${w.id}" style="margin:14px auto 0;">Delete "${escapeHtml(w.name)}"</button>
+      <button type="button" class="manual-link manual-link-inline" data-action="deletecollectionwatch" data-id="${w.id}" style="margin:14px auto 0;"><span style="color:var(--bad);">Delete</span> "${escapeHtml(w.name)}"</button>
     </div>
   `;
 }
