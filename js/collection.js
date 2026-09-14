@@ -162,18 +162,21 @@ function buildCatalogFiltersHtml(){
 const CATALOG_RESULTS_LIMIT = 25;
 
 function buildCatalogResultsHtml(){
-  // Nothing shown until the user actually starts typing — with no query,
-  // "matches" would just be the entire catalog, which reads as a random
-  // dump rather than a search result. Checked before the loading/empty
-  // states below on purpose: with no query there's nothing to show either
-  // way once the catalog resolves, so showing "Loading catalog…" here
-  // would just pop in and then collapse back to nothing a moment later —
-  // the same empty-to-full-to-empty jump the filters row used to make.
-  if(!watchSearchQuery.trim()) return '';
+  // With nothing typed yet, there's nothing to show once loading finishes
+  // regardless of how the fetch turns out — showing "Loading catalog…"
+  // here would pop in and then collapse straight back to nothing the
+  // moment it resolves with an empty query, the same jump the filters row
+  // used to make. Query-typed loading still shows the hint below, since
+  // that one settles into real results or a message rather than nothing.
+  if(watchCatalogLoading && !watchSearchQuery.trim()) return '';
   if(watchCatalogLoading) return `<div class="watch-catalog-hint">Loading catalog…</div>`;
   if(!(watchCatalog || []).length){
     return `<div class="watch-catalog-hint">Catalog isn't available right now — add this watch manually instead.</div>`;
   }
+  // Nothing shown until the user actually starts typing — with no query,
+  // "matches" would just be the entire catalog, which reads as a random
+  // dump rather than a search result.
+  if(!watchSearchQuery.trim()) return '';
   const matches = filteredWatchCatalog();
   if(!matches.length){
     return `<div class="watch-catalog-hint">No matches — try a different search, or add it manually instead.</div>`;
