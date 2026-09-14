@@ -639,12 +639,21 @@ function render(){
       if(detailBody) detailBody.classList.add('collection-detail-enter');
     }
     collectionDetailJustOpened = false;
-    attachCollectionHandlers();
+    // Each wrapped on its own: a throw partway through attaching handlers
+    // (real account data hitting some edge case the simpler cases here
+    // don't) used to take every step after it down with it silently,
+    // syncCollectionCardHeights included — leaving cards at their natural,
+    // unstretched height with no visible sign anything had gone wrong
+    // beyond that. Logged rather than swallowed so a real bug is still
+    // visible in the console instead of just quietly not being applied.
+    try{ attachCollectionHandlers(); }catch(e){ console.error('attachCollectionHandlers failed:', e); }
     if(showWatchBar){
-      attachWatchStatsHandlers(viewedWatch);
-      wireChartAndHistoryScroll();
+      try{ attachWatchStatsHandlers(viewedWatch); }catch(e){ console.error('attachWatchStatsHandlers failed:', e); }
+      try{ wireChartAndHistoryScroll(); }catch(e){ console.error('wireChartAndHistoryScroll failed:', e); }
     }
-    if(typeof syncCollectionCardHeights === 'function') syncCollectionCardHeights();
+    if(typeof syncCollectionCardHeights === 'function'){
+      try{ syncCollectionCardHeights(); }catch(e){ console.error('syncCollectionCardHeights failed:', e); }
+    }
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
     return;
   }
