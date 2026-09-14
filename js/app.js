@@ -630,7 +630,18 @@ function sizeDataWatchScroll(){
   const dockHeight = dockVisible
     ? (dockHidden ? parseFloat(getComputedStyle(dock).paddingBottom) || 0 : dock.offsetHeight)
     : 0;
-  const height = Math.max(120, window.innerHeight - headerBottom - dockHeight);
+  // The layout viewport (window.innerHeight) never shrinks for an on-screen
+  // keyboard, but the visual one does — and on the real device this all got
+  // tuned against, fixed-position elements (the dock, the tab bar) end up
+  // pinned to the *visual* viewport's edges once the keyboard is up, not the
+  // full screen (see the visualViewport listener below). Sizing the list
+  // against window.innerHeight while the keyboard is open measured against
+  // the wrong bottom edge — short by the keyboard's own height — and that
+  // gap between the two is exactly what showed up as the open pop-up
+  // getting cut off with dead space left over beneath it.
+  const vv = window.visualViewport;
+  const viewportHeight = vv ? vv.height + vv.offsetTop : window.innerHeight;
+  const height = Math.max(120, viewportHeight - headerBottom - dockHeight);
   scrollEl.style.height = height + 'px';
 
   // A trailing spacer gives just enough extra scroll room to bring the
@@ -761,9 +772,10 @@ if(window.visualViewport){
     // long as the keyboard is actually up.
     const spacer = document.getElementById('dataWatchScrollSpacer');
     if(spacer) spacer.style.height = Math.max(parseFloat(spacer.style.height) || 0, keyboardHeight) + 'px';
-    // The dock is hidden above for as long as this branch runs, so the full
-    // visual viewport is genuinely free space now — nothing left to reserve
-    // room for.
+    // sizeDataWatchScroll above already leaves room for the tab bar still
+    // sitting at the bottom of this same visual viewport — this just makes
+    // sure the field actually being typed into ends up above it too, not
+    // merely inside the container's own (now correctly sized) bounds.
     const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
     const overflow = active.getBoundingClientRect().bottom - visibleBottom;
     if(overflow > 0) container.scrollTop += overflow + 12;
