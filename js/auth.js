@@ -57,6 +57,12 @@ async function handleSignedIn(user){
   activeTab = 'data'; // always start on Data after signing in — a session
   // that had ended on some other tab (Profile included) shouldn't reopen
   // there next time.
+  // The bottom bar lives outside #root (see syncBottomTabs in app.js), so
+  // just changing activeTab here doesn't move its highlight — without this,
+  // signing back in right after signing out from some other tab left the
+  // bar still lit up on that old tab while the content underneath had
+  // already switched to Data.
+  if(typeof syncBottomTabs === 'function') syncBottomTabs();
   // The account's own saved theme (see js/profile.js) wins over whatever
   // was showing pre-login — that matters specifically when signing in on
   // a browser/device that never had this account's choice saved locally

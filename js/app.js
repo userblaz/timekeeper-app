@@ -170,6 +170,38 @@ function closeSelectMenu(menu){
   }
 }
 
+// A multi-choice variant of buildSelect above — same custom-dropdown shell
+// (so it gets the same overflow-escaping, drop-up and outside-click-closes
+// behavior for free, see the delegated handlers below), but checkboxes
+// instead of one-tap-and-close buttons, and a short fixed label instead of
+// echoing back whatever's chosen — there's no length of value list that
+// reads well in the space a button like this has, so it just says how many
+// are checked instead (see the change handler below, which is what keeps
+// that count in sync without a full re-render).
+function buildMultiSelect(id, shortLabel, options, selectedValues){
+  const selected = new Set(selectedValues || []);
+  const optionsHtml = options.map(([value, label]) => `
+    <label class="multi-select-option">
+      <input type="checkbox" data-action="multiselecttoggle" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''} />
+      <span>${escapeHtml(label)}</span>
+    </label>
+  `).join('');
+  // data-for links this menu back to its wrap the same way buildSelect's
+  // does (see findSelectWrap/findMenuForWrap) — without it, a multi-select
+  // menu would be invisible to those lookups and the toggle handler above
+  // would crash trying to read .hidden off a null menu.
+  return `
+    <div class="select-wrap multi-select-wrap" data-short-label="${escapeHtml(shortLabel)}">
+      <input type="hidden" id="${id}" value="${escapeHtml(Array.from(selected).join(','))}" />
+      <button type="button" class="condition-select${selected.size ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+        <span class="select-value">${escapeHtml(shortLabel)}${selected.size ? ` (${selected.size})` : ''}</span>
+        <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      <div class="select-menu multi-select-menu" data-for="${id}" hidden>${optionsHtml}</div>
+    </div>
+  `;
+}
+
 function closeAllSelects(except){
   stopTrackingEscapedMenu();
   // Querying menus directly (rather than each wrap's own child) is what
@@ -269,16 +301,54 @@ document.addEventListener('click', (e) => {
     const wrap = option.closest('.select-wrap') || findSelectWrap(option.closest('.select-menu'));
     const button = wrap.querySelector('[data-action="toggleselect"]');
     const menu = option.closest('.select-menu');
-    wrap.querySelector('input[type="hidden"]').value = option.dataset.value;
+    const hidden = wrap.querySelector('input[type="hidden"]');
+    hidden.value = option.dataset.value;
     wrap.querySelector('.select-value').textContent = option.textContent;
     button.classList.toggle('placeholder', !option.dataset.value);
     menu.querySelectorAll('.select-option').forEach(o => o.classList.toggle('selected', o === option));
     stopTrackingEscapedMenu();
     closeSelectMenu(menu);
+    // A real <select> fires 'change' on its own when the value changes;
+    // this one has to do it itself, since setting .value on the hidden
+    // input programmatically doesn't. Nothing listened for it before the
+    // Collection tab's catalog search filters (collection.js) — purely
+    // additive, so every existing select keeps working exactly as before.
+    hidden.dispatchEvent(new Event('change', { bubbles: true }));
     return;
   }
 
+  // A checkbox toggle (see the 'change' handler below) fires a click too —
+  // without this, the fallthrough closeAllSelects() right below would shut
+  // the menu after every single checkbox tap, defeating the entire point
+  // of a multi-select.
+  if(e.target.closest('.multi-select-option')) return;
+
   closeAllSelects(null);
+});
+
+// Delegated the same way as the click handler above: survives every
+// re-render without rewiring, and stays a plain 'change' (not 'click') so
+// it fires once per actual state change rather than per pointer tap.
+// Deliberately doesn't close the menu or call closeAllSelects — that's the
+// one behavioral difference from a single-select's option buttons, and the
+// whole reason this needs its own handler instead of reusing that one.
+document.addEventListener('change', (e) => {
+  const checkbox = e.target.closest('[data-action="multiselecttoggle"]');
+  if(!checkbox) return;
+  const wrap = checkbox.closest('.multi-select-wrap');
+  if(!wrap) return;
+  const hidden = wrap.querySelector('input[type="hidden"]');
+  const checked = Array.from(wrap.querySelectorAll('[data-action="multiselecttoggle"]:checked')).map(el => el.value);
+  hidden.value = checked.join(',');
+  const shortLabel = wrap.dataset.shortLabel;
+  const valueEl = wrap.querySelector('.select-value');
+  if(valueEl) valueEl.textContent = shortLabel + (checked.length ? ` (${checked.length})` : '');
+  const button = wrap.querySelector('[data-action="toggleselect"]');
+  if(button) button.classList.toggle('placeholder', checked.length === 0);
+  // Same reasoning as the single-select's hidden-input dispatch above —
+  // callers (the Collection tab's catalog filters) listen for 'change' on
+  // this hidden input, not on the checkboxes themselves.
+  hidden.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
 document.addEventListener('keydown', (e) => {
@@ -691,6 +761,65 @@ if(window.visualViewport){
   });
 }
 
+// The bottom nav bar is fixed near the bottom of the layout viewport, but
+// once the on-screen keyboard opens, iOS Safari keeps fixed elements
+// pinned to the shrunken *visual* viewport instead — which is exactly what
+// makes it look like it "jumps up": it ends up floating partway up the
+// page, on top of whatever real content happens to sit there (the
+// Collection tab's catalog search results, most often), rather than at the
+// bottom where there'd be nothing left to cover. Simplest fix is to just
+// get it out of the way for as long as a text field actually has the
+// keyboard open. Guarded on the app screen actually being visible so this
+// never fights showApp/showAuthScreen's own use of the same element on the
+// sign-in screen.
+//
+// The reference clock at the top gets the same treatment, but only while
+// the Collection tab's add-watch search is open — it's the biggest single
+// thing eating into the room a phone's keyboard leaves for search results,
+// bigger than the bottom bar. Scoped to just that view (rather than
+// applied globally like the bottom bar above) so it can't interact with
+// whatever made the Snap tab's own force-collapse behavior get switched
+// off (see CLOCK_FORCE_COLLAPSE_ENABLED in clock.js) — this is a separate,
+// narrower mechanism, not a reuse of that one. Reappears the moment the
+// keyboard closes, whether that's from tapping outside the field or
+// switching away from search mode.
+//
+// This used to key off visualViewport resize (measuring how much the
+// visible area shrank), the same signal the Snap tab logic above uses —
+// but on at least one real iOS device it never fired reliably here, so the
+// bar and clock stayed put with the keyboard fully open. Focus/blur on the
+// field itself is a more direct signal for "is the keyboard actually up"
+// and doesn't depend on the viewport-resize event firing at all: it's
+// driven straight off document.activeElement changing, via the bubbling
+// focusin/focusout events.
+function isKeyboardTextInput(el){
+  if(!el) return false;
+  if(el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
+  // Checkboxes/radios (the multi-select filter options, the reset-point
+  // checkbox, etc.) are <input> elements too but never bring up a keyboard.
+  if(el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return false;
+  return true;
+}
+function updateKeyboardHideState(){
+  const bar = document.getElementById('bottomTabs');
+  const appShown = document.getElementById('app');
+  if(!bar || !appShown || appShown.style.display === 'none') return;
+  const keyboardOpen = isKeyboardTextInput(document.activeElement);
+  bar.style.display = keyboardOpen ? 'none' : '';
+
+  const clockBox = document.getElementById('masterClockBox');
+  if(clockBox){
+    const inAddWatchView = activeTab === 'collection' && addingCollectionWatch;
+    clockBox.style.display = (keyboardOpen && inAddWatchView) ? 'none' : '';
+  }
+}
+document.addEventListener('focusin', updateKeyboardHideState);
+// focusout fires just before activeElement actually clears (it briefly
+// becomes document.body), so check on the next tick once it's settled —
+// otherwise a tap from one field straight to another would flash the bar
+// back on in between.
+document.addEventListener('focusout', () => setTimeout(updateKeyboardHideState, 0));
+
 // Resets scroll to the very top over exactly `duration`ms — a fixed,
 // deterministic target rather than measuring a card's position and
 // animating to that, which was never quite right once the clock had partly
@@ -790,7 +919,7 @@ function buildWatchStatsBundle(watch){
   const stats = overallStats(watch);
   const dialHtml = stats ? `
     <div class="dial-figure" style="color:${stats.avgRate>=0?'var(--good)':'var(--bad)'}">${fmtRate(stats.avgRate)}<span class="dial-unit"> s/day</span></div>
-    <div class="dial-meta">average over ${stats.days} day${stats.days===1?'':'s'} · ${stats.count} readings${stats.sinceReset ? ' · since reset' : ''}</div>
+    <div class="dial-meta">average over ${stats.days} day${stats.days===1?'':'s'}<br>${stats.count} readings${stats.sinceReset ? ' · since reset' : ''}</div>
   ` : `<div class="empty-dial">Log two readings to see your watch's drift rate.</div>`;
 
   const historyHtml = rated.length === 0 ? '<p class="empty-note">No readings yet.</p>' :

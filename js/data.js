@@ -11,11 +11,53 @@ let state = { watches: [], activeId: null };
 let loaded = false;
 let saveStatus = '';
 
+// The shared reference catalog behind the Collection tab's "Add watch"
+// search (see collection.js) — read-only reference data, not personal
+// watches, so it's cached at module level here rather than living on
+// `state`. null means "not fetched yet", not "empty catalog".
+let watchCatalog = null;
+let watchCatalogLoading = false;
+
+async function ensureCatalogLoaded(){
+  if(watchCatalog || watchCatalogLoading) return watchCatalog;
+  watchCatalogLoading = true;
+  try{
+    const { data, error } = await sb.from('watch_catalog').select('*')
+      .order('brand', { ascending: true }).order('model', { ascending: true });
+    if(error) throw error;
+    watchCatalog = data || [];
+  }catch(e){
+    // Table not migrated yet on this install, or a network hiccup — same
+    // "don't take the rest of the app down with you" treatment as
+    // wear_days and sort_order above. The manual "add a watch" path never
+    // depended on this table, so it still works either way.
+    watchCatalog = [];
+  }
+  watchCatalogLoading = false;
+  return watchCatalog;
+}
+
 async function loadState(){
   try{
-    const { data: watchRows, error: wErr } = await sb
-      .from('watches').select('*').order('created_at', { ascending: true });
-    if(wErr) throw wErr;
+    // sort_order drives the Collection tab's drag-to-reorder; created_at is
+    // the tiebreaker for however many watches predate that column. Ordering
+    // by it can 404 on an install that hasn't run the README's migration
+    // yet — same situation as wear_days below, so it gets the same
+    // "fall back, don't take the whole app down" treatment rather than
+    // throwing straight into the outer catch and wiping every watch.
+    let watchRows;
+    {
+      const primary = await sb.from('watches').select('*')
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
+      if(primary.error){
+        const fallback = await sb.from('watches').select('*').order('created_at', { ascending: true });
+        if(fallback.error) throw fallback.error;
+        watchRows = fallback.data;
+      }else{
+        watchRows = primary.data;
+      }
+    }
     const { data: readingRows, error: rErr } = await sb
       .from('readings').select('*').order('date', { ascending: true });
     if(rErr) throw rErr;
@@ -37,6 +79,12 @@ async function loadState(){
       name: w.name,
       model: w.model || '',
       reference: w.reference || '',
+      sortOrder: w.sort_order === null || w.sort_order === undefined ? null : Number(w.sort_order),
+      // Which catalog entry this watch was created from, if any — null for
+      // a manually-added watch. Drives the Collection tab's edit form: the
+      // fields a catalog entry supplied stay locked, so they can't drift
+      // out of sync with the real spec (collection.js).
+      catalogId: w.catalog_id || null,
       shareStats: !!w.share_stats,
       purchasePrice: w.purchase_price === null || w.purchase_price === undefined ? null : Number(w.purchase_price),
       purchaseCurrency: w.purchase_currency || 'EUR',
@@ -176,12 +224,18 @@ function overallStats(watch){
 
 async function addWatch(name){
   saveStatus = 'saving'; render();
+  // Goes on the end of the Collection tab's order, same place a new watch
+  // has always landed (previously that fell out of created_at for free;
+  // sort_order needs it done explicitly).
+  const nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0) + 1;
   const { data, error } = await sb.from('watches')
-    .insert({ user_id: currentUser.id, name: name.trim() })
+    .insert({ user_id: currentUser.id, name: name.trim(), sort_order: nextOrder })
     .select().single();
   if(error){ saveStatus = 'error'; render(); return; }
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
+    sortOrder: data.sort_order === null || data.sort_order === undefined ? nextOrder : Number(data.sort_order),
+    catalogId: null,
     shareStats: !!data.share_stats,
     purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
     accuracySpec: '', powerReserveHours: null, lastWoundAt: null, certifications: [],
@@ -191,6 +245,78 @@ async function addWatch(name){
   state.watches.push(w);
   state.activeId = w.id;
   saveState();
+}
+
+// The Collection tab's "Add watch" search calls this instead of addWatch()
+// when the user picked a catalog result rather than typing a name from
+// scratch. Only the specs a catalog entry can actually know about get
+// filled in (accuracy spec, power reserve, certifications) — everything
+// personal (price, date, condition, photo) is left blank for the owner,
+// same as a manually-added watch, per the original design for this
+// feature (see the project handoff notes).
+async function addWatchFromCatalog(entry){
+  saveStatus = 'saving'; render();
+  const nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0) + 1;
+  const { data, error } = await sb.from('watches')
+    .insert({
+      user_id: currentUser.id,
+      name: entry.brand,
+      model: entry.model || '',
+      reference: entry.reference || '',
+      accuracy_spec: entry.accuracy_spec || '',
+      power_reserve_hours: entry.power_reserve_hours === null || entry.power_reserve_hours === undefined ? null : entry.power_reserve_hours,
+      certifications: entry.certifications || '',
+      sort_order: nextOrder,
+      catalog_id: entry.id
+    })
+    .select().single();
+  if(error){ saveStatus = 'error'; render(); return; }
+  const w = {
+    id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
+    sortOrder: data.sort_order === null || data.sort_order === undefined ? nextOrder : Number(data.sort_order),
+    catalogId: data.catalog_id || null,
+    shareStats: !!data.share_stats,
+    purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
+    accuracySpec: data.accuracy_spec || '',
+    powerReserveHours: data.power_reserve_hours === null || data.power_reserve_hours === undefined ? null : Number(data.power_reserve_hours),
+    lastWoundAt: null,
+    certifications: data.certifications ? data.certifications.split(',').filter(Boolean) : [],
+    wornDates: new Set(),
+    readings: []
+  };
+  state.watches.push(w);
+  state.activeId = w.id;
+  saveState();
+  return w;
+}
+
+// Called once a Collection tab drag settles on a new position. state.watches
+// is already in its new order by then (collection.js reorders it before
+// calling this) — this just renumbers everyone 1..n to match and writes only
+// the rows whose number actually changed, rather than the whole collection
+// every time.
+async function persistWatchOrder(){
+  const updates = [];
+  state.watches.forEach((w, i) => {
+    const order = i + 1;
+    if(w.sortOrder !== order){
+      w.sortOrder = order;
+      updates.push(
+        sb.from('watches').update({ sort_order: order }).eq('id', w.id)
+          .then(({ error }) => error)
+      );
+    }
+  });
+  if(!updates.length) return;
+  const errors = (await Promise.all(updates)).filter(Boolean);
+  if(errors.length){
+    // The drag already happened on screen and can't be undone from here —
+    // this only warns that the *stored* order didn't take, so it reverts
+    // next time these watches load (most likely cause: the README's
+    // sort_order migration hasn't been run yet, so this column write 404s
+    // the same way loadState's read of it already has its own fallback for).
+    showToast(errors[0].message || "Couldn't save the new order — it may not stick after you sign out.", 'error');
+  }
 }
 
 async function addReading(watchId, date, offset, note, conditions){
@@ -291,6 +417,181 @@ async function toggleWearDay(watchId, date){
 function isDayWorn(w, dateStr){
   if(w.wornDates.has(dateStr)) return true;
   return w.readings.some(r => r.date === dateStr && r.wearState === 'worn');
+}
+
+// Every day in the given month that counts as worn — same rule as
+// isDayWorn just above (an explicit calendar tap, or a reading logged
+// "Worn on wrist" that day) — walked one whole month at a time to build
+// the wear stats below.
+function wearDaysInMonth(w, year, m){
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  let count = 0;
+  for(let d = 1; d <= daysInMonth; d++){
+    const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if(isDayWorn(w, dateStr)) count++;
+  }
+  return count;
+}
+
+// The earliest date this watch has any wear activity on record — an
+// explicit calendar tap or a reading logged "Worn on wrist" — so the
+// average below only ever counts months the watch could actually have
+// been tracked in, not months before it was even added.
+function earliestWearActivityDate(w){
+  let earliest = null;
+  w.wornDates.forEach(d => { if(!earliest || d < earliest) earliest = d; });
+  w.readings.forEach(r => {
+    if(r.wearState === 'worn' && r.date && (!earliest || r.date < earliest)) earliest = r.date;
+  });
+  return earliest;
+}
+
+// How much a watch is actually being worn, month to month: the average
+// worn days per month across every completed month since its first
+// tracked wear day, the most recently completed month's own count, and
+// how that compares to the month before it. Only ever looks at fully
+// completed calendar months — the current, still-in-progress month would
+// always read as artificially low next to a whole month, so it's left out
+// of both the average and the "last month" figure entirely. Returns null
+// when there isn't even one completed month of history yet to report on.
+function computeWearStats(w){
+  const earliest = earliestWearActivityDate(w);
+  if(!earliest) return null;
+
+  const [ey, em] = earliest.split('-').map(Number);
+  const startKey = ey * 12 + (em - 1);
+
+  const today = new Date();
+  const curKey = today.getFullYear() * 12 + today.getMonth();
+  const lastKey = curKey - 1; // most recently completed month
+  if(startKey > lastKey) return null; // the watch's only activity is this month
+
+  const keyToYM = (key) => [Math.floor(key / 12), ((key % 12) + 12) % 12];
+
+  let total = 0, months = 0;
+  for(let k = startKey; k <= lastKey; k++){
+    const [y, m] = keyToYM(k);
+    total += wearDaysInMonth(w, y, m);
+    months++;
+  }
+  const avgPerMonth = total / months;
+
+  const [ly, lm] = keyToYM(lastKey);
+  const lastMonthDays = wearDaysInMonth(w, ly, lm);
+
+  let deltaPct = null;
+  const prevKey = lastKey - 1;
+  if(startKey <= prevKey){
+    const [py, pm] = keyToYM(prevKey);
+    const prevMonthDays = wearDaysInMonth(w, py, pm);
+    if(prevMonthDays > 0){
+      deltaPct = Math.round(((lastMonthDays - prevMonthDays) / prevMonthDays) * 100);
+    } else if(lastMonthDays === 0){
+      deltaPct = 0;
+    }
+    // prevMonthDays === 0 and lastMonthDays > 0 is left as null (no prior
+    // month to compare against) rather than a made-up "+100%".
+  }
+
+  return { avgPerMonth, lastMonthDays, deltaPct };
+}
+
+// How many days ago this watch was last worn — 0 for today, null if it has
+// no wear activity on record at all. Walks backward from today one day at
+// a time rather than scanning every reading/wornDate and sorting, since it
+// almost always stops within the first few days in practice; the walk is
+// bounded by the watch's own earliest tracked day, so it can never spin
+// past the point where isDayWorn would have nothing left to match anyway.
+function daysSinceLastWorn(w){
+  const earliest = earliestWearActivityDate(w);
+  if(!earliest) return null;
+  const today = new Date();
+  for(let i = 0; i <= 3650; i++){
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    if(isDayWorn(w, dateStr)) return i;
+    if(dateStr <= earliest) break;
+  }
+  return null;
+}
+
+// The last `n` completed calendar months' worn-day counts, oldest first —
+// a fixed-length window (unlike computeWearStats' average, which grows
+// with the watch's whole history) so a sparkline of it is always the same
+// width regardless of how long the watch has been tracked. Months before
+// the watch had any activity just come back as zero, same as any other
+// day wearDaysInMonth doesn't find a match for.
+function wearMonthlySeries(w, n){
+  const today = new Date();
+  const curKey = today.getFullYear() * 12 + today.getMonth();
+  const lastKey = curKey - 1;
+  const keyToYM = (key) => [Math.floor(key / 12), ((key % 12) + 12) % 12];
+  const series = [];
+  for(let k = lastKey - n + 1; k <= lastKey; k++){
+    const [y, m] = keyToYM(k);
+    series.push({ year: y, month: m, days: wearDaysInMonth(w, y, m) });
+  }
+  return series;
+}
+
+// This watch's cut of all the wear tracked across the whole collection last
+// month — e.g. one watch in five worn about equally would land near 20%.
+// Only means anything with more than one watch being tracked; with a
+// single watch it's always ~100%, which is true but not informative, so
+// that case is left to show as null and the caller can decide to hide it.
+function wearShareOfCollection(w){
+  const today = new Date();
+  const curKey = today.getFullYear() * 12 + today.getMonth();
+  const lastKey = curKey - 1;
+  const y = Math.floor(lastKey / 12), m = ((lastKey % 12) + 12) % 12;
+  const totalAll = (state.watches || []).reduce((sum, watch) => sum + wearDaysInMonth(watch, y, m), 0);
+  if(totalAll <= 0) return null;
+  const mine = wearDaysInMonth(w, y, m);
+  return Math.round((mine / totalAll) * 100);
+}
+
+// The single most statistically obvious day-of-week pattern in this
+// watch's wear history, in plain language — the classic "which bucket
+// shows up more than chance would predict" read, applied first to
+// individual weekdays (falls back to a plain weekday/weekend split if no
+// single day stands out enough on its own). Needs a modest sample before
+// it'll claim anything specific, and says so plainly rather than going
+// silent — an empty line where a pattern might have been reads as broken,
+// not as "nothing to report", so this always returns a string.
+function wearPatternInsight(w){
+  const dates = new Set(w.wornDates);
+  w.readings.forEach(r => { if(r.wearState === 'worn' && r.date) dates.add(r.date); });
+  const total = dates.size;
+  if(total < 8) return 'Not enough tracked wear days yet for a day-of-week pattern.';
+
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  dates.forEach(dateStr => {
+    counts[new Date(dateStr + 'T00:00:00').getDay()]++;
+  });
+
+  let topDay = 0;
+  for(let i = 1; i < 7; i++) if(counts[i] > counts[topDay]) topDay = i;
+  const topShare = counts[topDay] / total;
+  const evenShare = 1 / 7;
+
+  // A day has to clear "even chance" by a wide enough margin, with enough
+  // raw occurrences behind it, before it's worth calling out as a pattern
+  // rather than noise from a small sample.
+  if(topShare - evenShare >= 0.12 && counts[topDay] >= 3){
+    return `Most often worn on ${dayNames[topDay]}s — ${Math.round(topShare * 100)}% of its ${total} tracked wear day${total===1?'':'s'}.`;
+  }
+
+  const weekendShare = (counts[0] + counts[6]) / total;
+  const evenWeekendShare = 2 / 7;
+  if(Math.abs(weekendShare - evenWeekendShare) >= 0.1){
+    return weekendShare > evenWeekendShare
+      ? `Leans weekend — ${Math.round(weekendShare * 100)}% of tracked wear days fall on a Saturday or Sunday.`
+      : `Leans weekday — only ${Math.round(weekendShare * 100)}% of tracked wear days fall on a weekend.`;
+  }
+
+  return 'No clear day-of-week pattern yet — wear looks fairly even across the week.';
 }
 
 async function deleteWatch(watchId){

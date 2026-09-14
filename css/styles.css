@@ -203,6 +203,22 @@
        its box and crowd the rule above. This is that missing leading. */
     padding:10px 0 0;
   }
+  /* The Collection detail page's variant — the accuracy dial plus its two
+     wear-stat companions (see buildCollectionDetailHtml), side by side
+     instead of the single centered column above. */
+  .dial-wrap.dial-wrap-row{
+    flex-direction:row;
+    align-items:flex-start;
+    justify-content:center;
+    gap:18px;
+  }
+  .dial-quick-col{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    flex:1 1 0;
+    min-width:0;
+  }
   .dial-figure{
     font-family:'Inter',sans-serif;
     font-size:24px;
@@ -606,6 +622,59 @@
     font-size:11.5px;
     color:var(--grey);
   }
+  /* The catalog search field's back button, its label, and the "add
+     manually" link all share this one line instead of a separate Cancel
+     row below and the link getting its own row of its own — the button
+     stays a fixed circle, the label sits right after it, and the link is
+     pushed to the far right by its own auto margin rather than splitting
+     the leftover space into two even gaps (which is what justify-content:
+     space-between would do with three items here). */
+  .field-label-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .field-label-row .zoom-btn{flex-shrink:0;}
+  /* A small pill button rather than plain underlined link text — reads as
+     an equal third action alongside the back button and the label, not a
+     lesser thing tucked beside them. display:inline-flex (not the plain
+     inline .manual-link normally uses) is what lets .field-label-row's own
+     align-items:center actually center it against the other two instead of
+     sitting on the text baseline, which is what read as "lower" before. */
+  .manual-link.manual-link-inline{
+    display:inline-flex;
+    align-items:center;
+    margin:0 0 0 auto;
+    padding:6px 12px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--surface-2);
+    color:var(--ink);
+    text-decoration:none;
+    flex-shrink:0;
+  }
+  .manual-link.manual-link-inline:active{background:rgba(255,255,255,0.06);}
+  /* Sits right after a locked field's label — never its own line, so a
+     locked field reads as "the normal field, with a small note" rather
+     than a visually distinct thing to learn the meaning of. */
+  .field-locked-hint{
+    color:var(--grey-light);
+    font-style:italic;
+  }
+  /* A locked field's value: same box an input would draw (so nothing
+     visibly jumps when a card that's mid-fields switches between locked
+     and editable), just inert — surface-2 background and no border reads
+     as "this is a value", not "this is somewhere to type". */
+  .field-readonly{
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:11px 13px;
+    font-size:14px;
+    color:var(--ink);
+    box-sizing:border-box;
+  }
   .cert-checkbox-list{
     display:flex;
     flex-direction:column;
@@ -874,6 +943,20 @@
     font-weight:600;
   }
   .select-option:active{background:rgba(255,255,255,0.06);}
+  .multi-select-option{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:8px 6px;
+    font-size:13px;
+    color:var(--ink);
+  }
+  .multi-select-option input[type="checkbox"]{
+    width:16px;
+    height:16px;
+    accent-color:var(--accent);
+    flex-shrink:0;
+  }
   .condition-select:focus{
     outline:2px solid var(--accent);
     outline-offset:1px;
@@ -1521,6 +1604,84 @@
     cursor:pointer;
   }
 
+  /* The three at-a-glance wear numbers above the calendar (see
+     buildWearStatsHtml in collection.js) — tiles rather than spec-sheet
+     rows since these are meant to be read in one glance, not looked up. */
+  .wear-stats-tiles{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .wear-stat-tile{
+    flex:1 1 0;
+    min-width:0;
+    background:var(--surface-2);
+    border-radius:12px;
+    padding:10px 6px;
+    text-align:center;
+  }
+  .wear-stat-value{
+    font-family:'Inter',sans-serif;
+    font-size:18px;
+    font-weight:700;
+    color:var(--ink);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .wear-stat-label{
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    color:var(--grey);
+    margin-top:2px;
+  }
+  .wear-stat-delta{
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    font-weight:600;
+    margin-top:2px;
+  }
+  .wear-stat-delta.up{color:var(--good);}
+  .wear-stat-delta.down,
+  .wear-stat-delta.flat{color:var(--grey);}
+
+  /* Six-month trend behind the tiles above — same monthly worn-day counts
+     (see wearMonthlySeries in data.js), scaled against a 31-day month
+     rather than against each other, so a given month's bar always means
+     the same thing release to release instead of rescaling itself as the
+     window slides forward. */
+  .wear-sparkline{
+    display:flex;
+    align-items:flex-end;
+    gap:5px;
+    height:44px;
+    margin-bottom:14px;
+    padding:0 2px;
+  }
+  .wear-sparkline-col{
+    flex:1 1 0;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    height:100%;
+    gap:4px;
+  }
+  .wear-sparkline-bar{
+    width:100%;
+    max-width:18px;
+    border-radius:4px 4px 2px 2px;
+    background:var(--line);
+  }
+  .wear-sparkline-bar.has-wear{background:var(--accent);}
+  .wear-sparkline-label{
+    font-family:'Inter',sans-serif;
+    font-size:9.5px;
+    color:var(--grey);
+    white-space:nowrap;
+  }
+
   /* Year-at-a-glance wear tracker on the Collection detail page: one real,
      weekday-aligned month at a time, swiped or arrow-stepped between (see
      attachWearCalendarHandlers in collection.js). scroll-snap plus native
@@ -1753,6 +1914,42 @@
     -webkit-user-select:none;
     user-select:none;
   }
+  /* The reorder handle: its own element specifically so its pointerdown can
+     stopPropagation() before the card's tap-to-open or swipe-to-delete
+     listeners ever see it (wireCollectionReorder, collection.js) — CSS
+     alone can't make one gesture win over another, only JS ordering can.
+     touch-action:none hands the browser none of this element's touch
+     input, the same way pan-y hands the card all of its vertical input —
+     each element owns exactly the gesture meant for it. */
+  .collection-drag-handle{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    width:28px;
+    align-self:stretch;
+    margin:-12px 0;
+    color:var(--grey-light);
+    cursor:grab;
+    touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  /* Elevated out of the row's own overflow:hidden (needed so the lift
+     shadow below isn't clipped by the corner-rounding it's set up for) and
+     above every other row for the duration of the drag. */
+  .swipe-row.dragging{
+    overflow:visible;
+    z-index:50;
+  }
+  .swipe-row.dragging .collection-card{
+    box-shadow:0 16px 32px -10px var(--shadow-c);
+    transform:scale(1.02);
+  }
+  .swipe-row.dragging .collection-drag-handle{
+    cursor:grabbing;
+  }
+
   /* Bigger than the chart steppers it borrows its shape from — this one is a
      primary action on the card, not a nudge control tucked in a header. */
   .collection-wind-btn{
@@ -1895,6 +2092,62 @@
     align-items:stretch;
     gap:12px;
     cursor:default;
+  }
+  /* Filters sit closer to the search field than the result list below does
+     — they narrow the same query, so grouping them visually with the field
+     they modify (rather than evenly with everything else in the card)
+     reads as "search + its options" instead of three unrelated rows. */
+  .watch-catalog-filters{
+    gap:6px;
+    margin-top:-4px;
+  }
+  .watch-catalog-filters .select-wrap{flex:1 1 0;min-width:0;}
+  /* Same boxed, scrollable treatment as .cert-checkbox-list — a bordered
+     list living inside the card rather than the card's own edge, since
+     unlike everything else in this form it can run to more rows than fit. */
+  .watch-catalog-results{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    max-height:280px;
+    overflow-y:auto;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface-2);
+    padding:4px;
+  }
+  .watch-catalog-results:empty{display:none;}
+  .watch-catalog-result{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:1px;
+    width:100%;
+    background:none;
+    border:none;
+    border-radius:9px;
+    padding:9px 10px;
+    text-align:left;
+    font-family:'Inter',sans-serif;
+  }
+  .watch-catalog-result:active{background:rgba(255,255,255,0.06);}
+  .watch-catalog-result-name{
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .watch-catalog-result-meta{
+    font-size:11.5px;
+    color:var(--grey);
+  }
+  /* Loading / empty-catalog / no-matches states all read as one plain line
+     rather than a result row, so they're never mistaken for a tappable
+     result — no hover/active feedback, no name+meta split. */
+  .watch-catalog-hint{
+    font-size:12.5px;
+    color:var(--grey);
+    text-align:center;
+    padding:10px 6px;
   }
   .collection-photo{
     width:56px;
