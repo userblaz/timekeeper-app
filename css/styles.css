@@ -2017,6 +2017,13 @@
     width:16px;
     height:16px;
   }
+  /* Left at the plain .zoom-btn default (30px) otherwise — every other
+     action button on a Collection card (this one included, on the watch
+     bar atop the detail view) is 36px, .profile-back-btn among them. */
+  .collection-back-btn{
+    width:36px;
+    height:36px;
+  }
   .data-worn-btn{
     width:36px;
     height:36px;
