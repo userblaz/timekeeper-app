@@ -19,6 +19,12 @@ let quickAdjustSeconds = 0;
 // confirm popup's time readout (see buildSnapPopupHtml) switches this, and
 // only that field pulses.
 let quickSelectedField = 'minute';
+// The note currently being written for whichever snap pop-up is open — the
+// confirm form and the manual form are never both up at once (see
+// buildSnapPopupHtml), so one draft covers both. Held here rather than read
+// off the field at save time because the field it belongs to now lives in
+// an overlay that outlives any single render (see openNoteEditor).
+let noteDraft = '';
 let manualMode = false;
 let clockTimer = null;
 let lastExportAt = null;
@@ -352,7 +358,110 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape') closeAllSelects(null);
+  if(e.key === 'Escape'){
+    if(noteEditorFor){ closeNoteEditor(false); return; }
+    closeAllSelects(null);
+    return;
+  }
+  // Enter commits the note, the way it would submit a one-field form.
+  if(e.key === 'Enter' && noteEditorFor){
+    e.preventDefault();
+    closeNoteEditor(true);
+  }
+});
+
+// --- the note field -----------------------------------------------------
+// A note is written in its own overlay rather than in an inline field, and
+// that's a deliberate retreat from the inline one. This tab locks page
+// scrolling and puts its list in a fixed-height region sized in JS (see
+// sizeDataWatchScroll), which turns off the browser's own "scroll the
+// focused field into view" handling — so an inline field had to be kept
+// clear of the on-screen keyboard by hand, and that arithmetic has to be
+// right about where a keyboard, a tab bar and a trigger dock all ended up
+// on hardware it can't measure. Repeated attempts to get it right each
+// fixed one case and broke another. The overlay removes the question
+// instead of answering it: it's anchored to the *top* of the screen, and a
+// keyboard only ever rises from the bottom, so there is no clearance left
+// to compute. It lives in <body> too, so unlike the inline field a render()
+// mid-edit can't destroy what's being typed.
+let noteEditorFor = null;
+
+// The hidden input carries the caller's id, so everything already reading
+// `document.getElementById('qNote').value` keeps working untouched — the
+// same arrangement buildSelect uses to stand in for a native control.
+function buildNoteField(id){
+  return `
+    <input type="hidden" id="${id}" value="${escapeHtml(noteDraft)}" />
+    <button type="button" class="note-inline-btn${noteDraft ? '' : ' placeholder'}" data-action="editnote" data-for="${id}">${noteDraft ? escapeHtml(noteDraft) : '+ optional note'}</button>
+  `;
+}
+
+function openNoteEditor(id){
+  noteEditorFor = id;
+  let el = document.getElementById('noteEditor');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'noteEditor';
+    el.className = 'note-editor';
+    el.innerHTML = `
+      <div class="note-editor-panel">
+        <label class="note-editor-label" for="noteEditorInput">Note</label>
+        <input type="text" id="noteEditorInput" class="note-editor-input" placeholder="Anything worth remembering" autocomplete="off" />
+        <div class="row2">
+          <button type="button" class="btn-secondary" data-action="notecancel" style="flex:1">Cancel</button>
+          <button type="button" class="btn-primary" data-action="notesave" style="flex:1">Done</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(el);
+  }
+  const input = el.querySelector('#noteEditorInput');
+  input.value = noteDraft;
+  el.classList.add('open');
+  // Focused on the next frame rather than immediately: the keyboard should
+  // come up against the overlay already painted, not against the layout it
+  // replaced.
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeNoteEditor(save){
+  const el = document.getElementById('noteEditor');
+  if(!el) return;
+  const id = noteEditorFor;
+  const input = el.querySelector('#noteEditorInput');
+  if(save) noteDraft = input.value.trim();
+  // Blur first so the keyboard is already on its way down as the overlay
+  // goes, rather than being dismissed by the overlay vanishing under it.
+  input.blur();
+  el.classList.remove('open');
+  noteEditorFor = null;
+  if(!save || !id) return;
+  // Written straight through to the open pop-up instead of re-rendering it:
+  // a render() here would rebuild the whole group and replay its entrance
+  // animation for what is only a line of text changing.
+  const hidden = document.getElementById(id);
+  if(hidden) hidden.value = noteDraft;
+  const trigger = document.querySelector(`[data-action="editnote"][data-for="${id}"]`);
+  if(trigger){
+    trigger.textContent = noteDraft || '+ optional note';
+    trigger.classList.toggle('placeholder', !noteDraft);
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const trigger = e.target.closest('[data-action="editnote"]');
+  if(trigger){
+    e.preventDefault();
+    openNoteEditor(trigger.dataset.for);
+    return;
+  }
+  if(e.target.closest('[data-action="notesave"]')){ closeNoteEditor(true); return; }
+  if(e.target.closest('[data-action="notecancel"]')){ closeNoteEditor(false); return; }
+  // Tapping the dimmed area outside the panel keeps what's been typed
+  // rather than throwing it away — losing a note to a stray tap is a worse
+  // outcome than keeping one the user half-meant, and Cancel is right there
+  // for actually discarding it.
+  if(e.target.closest('#noteEditor') && !e.target.closest('.note-editor-panel')) closeNoteEditor(true);
 });
 
 // A transient message that floats above the bottom dock, over everything,
@@ -1354,7 +1463,7 @@ function buildSnapPopupHtml(){
         <div class="field">${buildSelect('qWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)], undefined, true)}</div>
         <div class="field">${buildSelect('qTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)], undefined, true)}</div>
       </div>
-      <input type="text" id="qNote" class="note-inline-input" placeholder="+ optional note" style="margin-top:12px;" />
+      <div style="margin-top:12px;">${buildNoteField('qNote')}</div>
       <div class="row2" style="margin-top:12px;">
         <button type="button" class="btn-secondary" data-action="quickcancel" style="flex:1">Cancel</button>
         <button type="button" class="btn-primary" data-action="quickconfirm" style="flex:1">Log</button>
@@ -1388,7 +1497,7 @@ function buildManualForm(){
           <div class="field">${buildSelect('rWear', [['', 'Wear'], ...WEAR_STATE_OPTIONS.slice(1)], undefined, true)}</div>
           <div class="field">${buildSelect('rTimeOfDay', [['', 'Time'], ...TIME_OF_DAY_OPTIONS.slice(1)], undefined, true)}</div>
         </div>
-        <input type="text" id="rNote" class="note-inline-input" placeholder="+ optional note" />
+        ${buildNoteField('rNote')}
         <div class="row2">
           <button type="button" class="btn-secondary" data-action="quickmode" style="flex:1">Cancel</button>
           <button type="submit" class="btn-primary" style="flex:1">Add reading</button>
@@ -1464,11 +1573,13 @@ function attachHandlers(watch){
     const seconds = document.getElementById('rOffsetSeconds').value;
     const note = document.getElementById('rNote').value;
     if(!date || seconds === '') return;
+    noteDraft = '';
     addReading(watch.id, date, Number(seconds), note, readConditionInputs('r'));
   };
+  // Only the offset field needs this now — the note fields it used to also
+  // cover are edited in their own overlay (see openNoteEditor), which has
+  // nothing to stay clear of.
   scrollFieldAboveKeyboard(document.getElementById('rOffsetSeconds'));
-  scrollFieldAboveKeyboard(document.getElementById('rNote'));
-  scrollFieldAboveKeyboard(document.getElementById('qNote'));
 
   // Same tap-to-step, hold-to-accelerate interaction as the quick-snap
   // popup's time stepper (see the "timestep" handler below) — one second per
@@ -1502,13 +1613,13 @@ function attachHandlers(watch){
 
   const toggleBtn = document.querySelector('[data-action="manualmode"]');
   if(toggleBtn) toggleBtn.onclick = () => {
-    manualMode = true; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute';
+    manualMode = true; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; noteDraft = '';
     render();
     if(watch) scrollWatchCardToTop(watch.id, 125);
   };
 
   const quickModeBtn = document.querySelector('[data-action="quickmode"]');
-  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; render(); };
+  if(quickModeBtn) quickModeBtn.onclick = () => { manualMode = false; quickCaptured = null; quickAdjustSeconds = 0; quickSelectedField = 'minute'; noteDraft = ''; render(); };
 
   if(watch) attachWatchStatsHandlers(watch);
 
@@ -1530,6 +1641,7 @@ function attachHandlers(watch){
       quickCaptured = { at: trueNow(), second: Number(el.dataset.sec) };
       quickAdjustSeconds = 0;
       quickSelectedField = 'minute';
+      noteDraft = '';
       playShutterSound();
       render();
       if(watch) scrollWatchCardToTop(watch.id, 125);
@@ -1541,6 +1653,7 @@ function attachHandlers(watch){
     quickCaptured = null;
     quickAdjustSeconds = 0;
     quickSelectedField = 'minute';
+    noteDraft = '';
     render();
   };
 
@@ -1628,6 +1741,7 @@ function attachHandlers(watch){
     quickCaptured = null;
     quickAdjustSeconds = 0;
     quickSelectedField = 'minute';
+    noteDraft = '';
     addReading(watch.id, date, diff, note, conditions);
   };
 }
