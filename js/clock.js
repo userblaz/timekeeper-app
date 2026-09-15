@@ -113,12 +113,35 @@ function buildAnalogClockFace(){
     `;
   }
 
+  // An inner 24-hour scale, shown only while GMT is on — a real GMT watch
+  // usually reads its hand off a rotating bezel, but this dial has no
+  // bezel to rotate, so this is a fixed ring inside the regular 1-12
+  // numerals instead: reading where the blue hand points against it gives
+  // the target zone's own hour directly, no bezel adjustment needed. Same
+  // 12 angular positions the 1-12 numerals already sit at (each 2-hour
+  // step here is exactly the same 30° as each 1-hour step there) — just
+  // one ring further in, labeled 0-22, and in the hand's own blue so the
+  // two read as a matched pair.
+  let gmtRing = '';
+  if(showClockGmt){
+    const ringR = 92;
+    let ringLabels = '';
+    for(let h = 0; h < 24; h += 2){
+      const angle = h / 24 * 360;
+      const rad = (angle - 90) * Math.PI / 180;
+      const x = cx + ringR*Math.cos(rad), y = cy + ringR*Math.sin(rad);
+      ringLabels += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="11" font-family="'Inter',sans-serif" font-weight="600" fill="#3B82F6">${h}</text>`;
+    }
+    gmtRing = `<g id="analogGmtRing">${ringLabels}</g>`;
+  }
+
   return `
     <svg viewBox="0 0 400 400" width="400" height="400" class="analog-clock">
       <circle cx="${cx}" cy="${cy}" r="${R}" fill="#FFFFFF" stroke="#E0E0DE" stroke-width="2" />
       ${ticks}
       ${numerals}
       ${dateWindow}
+      ${gmtRing}
       ${gmtHand}
       <line id="analogHourHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-90}" stroke="#18181B" stroke-width="8" stroke-linecap="round" />
       <line id="analogMinuteHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-130}" stroke="#18181B" stroke-width="5" stroke-linecap="round" />
@@ -205,6 +228,11 @@ async function runClockDateDemo(){
   const minuteEl = document.getElementById('analogMinuteHand');
   const dateTextEl = document.getElementById('analogDateText');
   if(!hourEl || !minuteEl || !dateTextEl) return;
+
+  // The button that starts this lives well below the dial (past both
+  // help blocks), so without this the whole demo would play out above
+  // the fold, unwatched — see scrollToPageTop, app.js.
+  if(typeof scrollToPageTop === 'function') scrollToPageTop(400);
 
   clockDateDemoRunning = true;
   const btn = document.getElementById('clockDateDemoBtn');
@@ -322,6 +350,10 @@ async function runClockGmtDemo(){
   if(clockGmtDemoRunning) return;
   const gmtEl = document.getElementById('analogGmtHand');
   if(!gmtEl) return;
+
+  // Same reasoning as runClockDateDemo's own scroll above — this button
+  // sits below both help blocks, well off-screen from the dial.
+  if(typeof scrollToPageTop === 'function') scrollToPageTop(400);
 
   clockGmtDemoRunning = true;
   const btn = document.getElementById('clockGmtDemoBtn');
