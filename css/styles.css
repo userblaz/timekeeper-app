@@ -580,6 +580,49 @@
     width:auto;
     flex-shrink:0;
   }
+  /* The safe date-setting technique, plus the button that demos it on the
+     dial itself (runClockDateDemo, clock.js) — only shown while the date
+     window is actually on, same card look the rest of the app uses for a
+     block of supporting text (.section, .collection-card-edit) rather than
+     a bare paragraph floating under the toggle. */
+  .clock-date-help{
+    margin-top:12px;
+    padding:14px 16px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:16px;
+  }
+  .clock-date-help p{
+    margin:0 0 10px;
+    font-size:12.5px;
+    line-height:1.5;
+    color:var(--grey);
+  }
+  .clock-date-help .btn-secondary{
+    width:100%;
+  }
+  /* A brief highlight on the date window itself when its number changes
+     mid-demo (pulseDateWindow, clock.js) — a quick scale-and-glow so each
+     step of the sequence (back to yesterday, forward to today) reads as a
+     deliberate change rather than the number just quietly being
+     different. */
+  .date-pulse{
+    animation:date-window-pulse 500ms ease;
+    /* Scales around the date window's own center, not the SVG's (0,0) —
+       fill-box makes transform-origin relative to this group's own
+       rendered bounding box, so it works wherever the window itself is
+       positioned rather than needing its coordinates hardcoded here. */
+    transform-box:fill-box;
+    transform-origin:center;
+  }
+  @keyframes date-window-pulse{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.18);}
+    100%{transform:scale(1);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .date-pulse{animation:none;}
+  }
   .chart-scroll{
     overflow-x:auto;
     overflow-y:hidden;

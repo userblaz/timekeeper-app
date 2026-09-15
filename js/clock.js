@@ -43,9 +43,15 @@ function buildAnalogClockFace(){
     const nr = R - 8 - 40;
     const x = cx + nr; // 3 o'clock: straight out along +x, no trig needed
     const day = trueNow().getDate();
+    // Stable ids so the "Show on clock" demo (runClockDateDemo below) can
+    // update the day and pulse the window directly, the same way it drives
+    // the hands by id — without going through a full rebuild that would
+    // also reset whatever mid-animation position the hands are in.
     dateWindow = `
-      <rect x="${(x-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
-      <text x="${x.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
+      <g id="analogDateWindow">
+        <rect x="${(x-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
+        <text id="analogDateText" x="${x.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
+      </g>
     `;
   }
   return `
@@ -67,7 +73,13 @@ function buildAnalogClockFace(){
 const CLOCK_TICK_BPH = 28000; // beats per hour the analog second hand steps at
 
 
+// Set for as long as runClockDateDemo (below) is driving the hands itself
+// — the 60ms tick interval would otherwise fight it, snapping the hands
+// back to the real time on every one of its own ticks mid-animation.
+let clockDateDemoRunning = false;
+
 function updateAnalogClock(){
+  if(clockDateDemoRunning) return;
   const hourEl = document.getElementById('analogHourHand');
   if(!hourEl) return;
   const minuteEl = document.getElementById('analogMinuteHand');
@@ -87,6 +99,141 @@ function updateAnalogClock(){
   if(secondEl) secondEl.setAttribute('transform', `rotate(${secAngle.toFixed(2)} 200 200)`);
 }
 
+function wait(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+function easeInOutCubic(t){ return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
+
+// A brief highlight on the date window — used both when it jumps back to
+// "yesterday" and when it rolls over to today again, so each change reads
+// as a deliberate step in the demo rather than the number just quietly
+// being different.
+function pulseDateWindow(){
+  const el = document.getElementById('analogDateWindow');
+  if(!el) return;
+  el.classList.remove('date-pulse');
+  // Forces a reflow so re-adding the class restarts the animation even if
+  // it's already mid-run from the previous pulse — without this, a second
+  // pulse within the first one's duration would be a no-op (the class
+  // never actually left, as far as the animation engine can tell).
+  void el.getBoundingClientRect();
+  el.classList.add('date-pulse');
+}
+
+// Animates the hands through the safe date-setting procedure described in
+// buildClockDateHelpHtml: to 6 o'clock, the date back one day, then
+// forward past midnight until both the date and the time are right again
+// — a demo of the technique, not a real change to anything. Driven by
+// hand angle directly (see clockDateDemoRunning above) rather than CSS
+// transitions, so the hour/minute relationship stays physically correct
+// throughout (the minute hand always exactly 12x the hour hand's own
+// angular speed) instead of two independently-eased transitions drifting
+// out of sync with each other.
+async function runClockDateDemo(){
+  if(clockDateDemoRunning) return;
+  const hourEl = document.getElementById('analogHourHand');
+  const minuteEl = document.getElementById('analogMinuteHand');
+  const dateTextEl = document.getElementById('analogDateText');
+  if(!hourEl || !minuteEl || !dateTextEl) return;
+
+  clockDateDemoRunning = true;
+  const btn = document.getElementById('clockDateDemoBtn');
+  const checkboxEl = document.getElementById('clockDateToggle');
+  if(btn){ btn.disabled = true; btn.textContent = 'Watching…'; }
+  if(checkboxEl) checkboxEl.disabled = true;
+
+  // Still in the document, in case the tab was switched away from (and
+  // its whole subtree replaced) partway through — nothing to animate into
+  // any more, and no point re-enabling controls that no longer exist.
+  const stillOnScreen = () => document.body.contains(hourEl);
+
+  const setHands = (hourAngle, minuteAngle) => {
+    hourEl.setAttribute('transform', `rotate(${hourAngle.toFixed(2)} 200 200)`);
+    minuteEl.setAttribute('transform', `rotate(${minuteAngle.toFixed(2)} 200 200)`);
+  };
+  const animateTo = (hourFrom, hourTo, minuteFrom, minuteTo, duration) => new Promise(resolve => {
+    const start = performance.now();
+    function tick(now){
+      if(!stillOnScreen()){ resolve(); return; }
+      const t = Math.min(1, (now - start) / duration);
+      const e = easeInOutCubic(t);
+      setHands(hourFrom + (hourTo - hourFrom) * e, minuteFrom + (minuteTo - minuteFrom) * e);
+      if(t < 1) requestAnimationFrame(tick); else resolve();
+    }
+    requestAnimationFrame(tick);
+  });
+
+  try{
+    const startNow = trueNow();
+    const startHour = (startNow.getHours() % 12) + startNow.getMinutes()/60;
+    const startMinute = startNow.getMinutes() + startNow.getSeconds()/60;
+    let curHourAngle = startHour / 12 * 360;
+    let curMinuteAngle = startMinute / 60 * 360;
+
+    // Step 1: hands to 6 o'clock — whichever way is shorter, since this
+    // step is just "get into position," not the fast-forward itself.
+    const sixHourAngle = 180, sixMinuteAngle = 0;
+    const hourDelta = ((sixHourAngle - curHourAngle + 540) % 360) - 180;
+    const minuteDelta = ((sixMinuteAngle - curMinuteAngle + 540) % 360) - 180;
+    await animateTo(curHourAngle, curHourAngle + hourDelta, curMinuteAngle, curMinuteAngle + minuteDelta, 900);
+    if(!stillOnScreen()) return;
+    curHourAngle = sixHourAngle; curMinuteAngle = sixMinuteAngle;
+    setHands(curHourAngle, curMinuteAngle);
+
+    // Step 2: date back to yesterday.
+    dateTextEl.textContent = String(startNow.getDate() - 1 < 1 ? new Date(startNow.getFullYear(), startNow.getMonth(), 0).getDate() : startNow.getDate() - 1);
+    pulseDateWindow();
+    await wait(900);
+    if(!stillOnScreen()) return;
+
+    // Step 3: advance forward — physically consistent the whole way (the
+    // minute hand is driven as a function of the same elapsed-hours value
+    // the hour hand is, never animated separately), past midnight (where
+    // the date rolls over) and on to the real current time. A couple of
+    // extra full laps are folded in purely so the "fast forward" actually
+    // reads as time passing rather than a small, easy-to-miss nudge.
+    const endNow0 = trueNow();
+    const endHourFraction = (endNow0.getHours() % 12) + endNow0.getMinutes()/60 + endNow0.getSeconds()/3600;
+    const hoursForward = ((endHourFraction - 6 + 12) % 12) + 24;
+    let dateFlipped = false;
+    await new Promise(resolve => {
+      const duration = 2600;
+      const start = performance.now();
+      function tick(now){
+        if(!stillOnScreen()){ resolve(); return; }
+        const t = Math.min(1, (now - start) / duration);
+        const e = easeInOutCubic(t);
+        const elapsed = hoursForward * e;
+        // The moment simulated time first crosses a 12-hour mark (6am or
+        // 6pm on a real clock) after leaving 6 o'clock is this dial's
+        // only stand-in for "passed midnight" — a 12-hour face can't tell
+        // AM from PM, so this is the closest it can point to.
+        if(!dateFlipped && elapsed >= 6){
+          dateFlipped = true;
+          const trueDay = trueNow().getDate();
+          dateTextEl.textContent = String(trueDay);
+          pulseDateWindow();
+        }
+        setHands((6 + elapsed) % 12 / 12 * 360, (elapsed * 60) % 60 / 60 * 360);
+        if(t < 1) requestAnimationFrame(tick); else resolve();
+      }
+      requestAnimationFrame(tick);
+    });
+    if(!stillOnScreen()) return;
+
+    // Hand back to the live tick loop with a value it agrees with —
+    // the animation's own final angle is only accurate to the moment
+    // Step 3 started, and real time has moved on by however long the
+    // whole sequence took to play.
+    dateTextEl.textContent = String(trueNow().getDate());
+  } finally {
+    clockDateDemoRunning = false;
+    if(stillOnScreen()){
+      updateAnalogClock();
+      if(btn){ btn.disabled = false; btn.textContent = 'Show on clock'; }
+      if(checkboxEl) checkboxEl.disabled = false;
+    }
+  }
+}
+
 
 function buildClockTabHtml(){
   return `
@@ -100,6 +247,19 @@ function buildClockTabHtml(){
         <input type="checkbox" id="clockDateToggle" ${showClockDate ? 'checked' : ''} />
         Show date
       </label>
+      ${showClockDate ? buildClockDateHelpHtml() : ''}
+    </div>
+  `;
+}
+
+// Only shown once the date window is actually on the dial — the technique
+// (and the demo of it) has nothing to say otherwise.
+function buildClockDateHelpHtml(){
+  return `
+    <div class="clock-date-help">
+      <p>To safely set the date on a mechanical watch, move the time hands to 6 o'clock first, then adjust the date to yesterday, and finally advance the time until the correct date and current time roll over.</p>
+      <p>Never set the date if the watch hands show between 9:00 PM and 3:00 AM, as internal calendar gears are engaged and forcing a change can break the movement.</p>
+      <button type="button" class="btn-secondary" id="clockDateDemoBtn">Show on clock</button>
     </div>
   `;
 }

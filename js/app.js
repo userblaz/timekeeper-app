@@ -1490,16 +1490,19 @@ function attachHandlers(watch){
   if(clockDateToggleEl){
     clockDateToggleEl.onchange = () => {
       setShowClockDate(clockDateToggleEl.checked);
-      // Rebuilds just the face in place rather than a full render() —
-      // the hands' current rotation lives on these same elements via
-      // transform (updateAnalogClock), and the 60ms tick interval
-      // (clock.js) re-applies it to whatever it finds by id on its very
-      // next tick regardless, so there's nothing to lose by swapping the
-      // markup out from under it.
-      const wrap = document.querySelector('.analog-clock-wrap');
-      if(wrap) wrap.innerHTML = buildAnalogClockFace();
-      updateAnalogClock();
+      // A full render(), not just rebuilding the face in place — the date
+      // instructions block (buildClockDateHelpHtml) also needs to
+      // appear/disappear with this, not just the dial itself. Safe to call
+      // from here: this only ever fires from a direct tap, never while
+      // runClockDateDemo has the hands mid-animation (its own button and
+      // this checkbox are both disabled for the duration of that).
+      render();
     };
+  }
+  // Only present once the date window is on (see buildClockDateHelpHtml).
+  const clockDateDemoBtnEl = document.getElementById('clockDateDemoBtn');
+  if(clockDateDemoBtnEl){
+    clockDateDemoBtnEl.onclick = () => runClockDateDemo();
   }
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => {
