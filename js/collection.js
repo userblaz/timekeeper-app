@@ -22,6 +22,10 @@ let watchSearchQuery = '';
 let watchSearchCaseMaterials = [];
 let watchSearchMovementTypes = [];
 let watchSearchDials = [];
+// The interval id from pollCatalogResultsHeight below, so a second focus
+// (or a quick blur/refocus) clears the previous run instead of stacking
+// two timers that both keep polling.
+let catalogResultsPollTimer = null;
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -1686,16 +1690,15 @@ function attachCollectionHandlers(){
       const first = filteredWatchCatalog()[0];
       if(first) selectCatalogWatch(first.id);
     });
-    // The keyboard's opening animation takes a beat before
-    // visualViewport.height reflects the shrunk value — an immediate
-    // measurement on focus can still read the pre-keyboard height. The
-    // follow-up catches that; every keystroke after this re-measures
-    // fresh regardless (see refreshCatalogResults), so a stale one-off
-    // guess here only matters for the instant between focus and typing.
-    catalogSearchInput.addEventListener('focus', () => {
-      syncCatalogResultsHeight();
-      setTimeout(syncCatalogResultsHeight, 350);
-    });
+    // The keyboard's opening animation, and the browser's own scroll to
+    // bring the focused field into view, both take a beat before
+    // visualViewport.height and the field's position settle — a single
+    // guessed delay here previously missed on at least one real device
+    // (that device's animation apparently ran long enough to still be
+    // moving at 350ms). Polling a few times over the next second, instead
+    // of one bet on a fixed delay, means it stops missing regardless of
+    // how long that animation actually takes on a given device.
+    catalogSearchInput.addEventListener('focus', () => pollCatalogResultsHeight());
   }
   wireCatalogFilterHandlers();
   wireCatalogResultButtons();
@@ -1774,6 +1777,28 @@ function syncCatalogResultsHeight(){
   const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
   const available = viewportHeight - results.getBoundingClientRect().top - 12;
   results.style.maxHeight = Math.max(160, Math.round(available)) + 'px';
+}
+
+// Re-measures every 120ms for a second after the field is focused, rather
+// than betting on one guessed delay — the keyboard's opening animation and
+// the browser's own scroll-into-view for the focused field both have to
+// finish before the field's position and visualViewport.height are done
+// moving, and neither is on a fixed schedule across devices. Every
+// keystroke after this still re-measures fresh on its own (see
+// refreshCatalogResults) — this only has to cover the window between focus
+// and the first character typed.
+function pollCatalogResultsHeight(){
+  if(catalogResultsPollTimer) clearInterval(catalogResultsPollTimer);
+  let ticks = 0;
+  syncCatalogResultsHeight();
+  catalogResultsPollTimer = setInterval(() => {
+    syncCatalogResultsHeight();
+    ticks++;
+    if(ticks >= 8){
+      clearInterval(catalogResultsPollTimer);
+      catalogResultsPollTimer = null;
+    }
+  }, 120);
 }
 
 function refreshCatalogFilters(){
