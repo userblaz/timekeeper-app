@@ -83,13 +83,16 @@ function buildMenuViewHtml(){
       <h2 class="section-title profile-centered-title">Profile</h2>
       <div class="profile-menu-list">
         <div class="profile-theme-row">
-          <span id="profileThemeLabel">${getSavedTheme() === 'light' ? 'Light mode' : 'Dark mode'}</span>
+          <!-- A fixed label, not one that swaps between "Light mode" and
+               "Dark mode" with the current theme — this is a "Dark mode"
+               toggle, so the label always names the one thing it's a
+               switch for, and only the switch itself (on = dark, off =
+               light) needs to move. A swapping label paired with a fixed-
+               meaning switch is what produced "Light mode" sitting next
+               to an off-looking switch while light mode was the active
+               theme — true, but reads as "light mode is off". -->
+          <span id="profileThemeLabel">Dark mode</span>
           <label class="profile-switch">
-            <!-- The switch reads as "dark mode is on", not "light mode is
-                 on" — checked (lit, slid over) means dark, unchecked
-                 (plain, resting) means light, so the switch's own on/off
-                 look matches which mode is actually active instead of
-                 showing "off" while dark mode is running. -->
             <input type="checkbox" id="profileThemeToggle" ${getSavedTheme() === 'light' ? '' : 'checked'} />
             <span class="profile-switch-track"><span class="profile-switch-thumb"></span></span>
           </label>
@@ -246,8 +249,6 @@ function attachProfileHandlers(){
     themeToggleEl.onchange = () => {
       const theme = themeToggleEl.checked ? 'dark' : 'light';
       saveThemePreference(theme);
-      const labelEl = document.getElementById('profileThemeLabel');
-      if(labelEl) labelEl.textContent = theme === 'light' ? 'Light mode' : 'Dark mode';
     };
   }
   document.querySelectorAll('[data-action="profilemenu"]').forEach(el => {
