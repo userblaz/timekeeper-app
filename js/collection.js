@@ -1152,13 +1152,17 @@ function buildCollectionWatchBarHtml(w){
         <div class="collection-card-body">
           <div class="collection-card-name">${escapeHtml(w.name)}</div>
           <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
+          ${buildPowerReserveHtml(w)}
         </div>
         <div class="collection-card-actions">
-          <button type="button" class="zoom-btn collection-back-btn" data-action="backtocollectionlist" aria-label="Back to collection">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          <button type="button" class="zoom-btn collection-wind-btn" data-action="markwound" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as fully wound" title="Fully wound now">
+            ${windIconSvg()}
           </button>
           <button type="button" class="zoom-btn collection-snap-btn" data-action="snapthiswatch" data-id="${w.id}" aria-label="Take a snap with ${escapeHtml(w.name)}" title="Take a snap">
             ${cameraIconSvg()}
+          </button>
+          <button type="button" class="zoom-btn collection-back-btn" data-action="backtocollectionlist" aria-label="Back to collection">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
         </div>
       </div>
@@ -1518,13 +1522,15 @@ function attachCollectionHandlers(){
   };
   const saveBtn = document.querySelector('[data-action="savecollection"]');
   if(saveBtn) saveBtn.onclick = () => saveCollectionEdit(saveBtn.dataset.id);
-  // No markwound wiring here — the Collection list's own card dropped that
-  // button (see buildCollectionCardHtml above) in favor of the same plain
-  // forward chevron the Data tab's card uses, since this card already
-  // opens the detail view on any tap and a separate wind action doesn't
-  // belong on this list. The Data tab's own wind button (app.js) is
-  // unrelated and still wired there — this only ever covered this tab's
-  // now-removed copy.
+  // The Collection list's own card dropped its wind button in favor of the
+  // same plain forward chevron the Data tab's card uses (see
+  // buildCollectionCard above) — this only ever needs to catch the one on
+  // the detail page's watch bar (buildCollectionWatchBarHtml). The Data
+  // tab's own copy is wired separately, in app.js's attachHandlers, since
+  // that view never runs this function.
+  document.querySelectorAll('[data-action="markwound"]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); markFullyWound(btn.dataset.id); };
+  });
   document.querySelectorAll('[data-action="togglewearday"]').forEach(btn => {
     if(btn.disabled) return;
     btn.onclick = (e) => {

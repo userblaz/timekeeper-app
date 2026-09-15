@@ -176,6 +176,7 @@
      aligned pair instead of a lopsided stack. */
   .collection-watch-bar .collection-card-actions{
     flex-direction:row;
+    gap:10px;
   }
   /* Plays once when a watch's detail page opens — a small rise-and-settle so
      the page reads as sliding into place rather than snapping in instantly.
