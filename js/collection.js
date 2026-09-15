@@ -379,6 +379,16 @@ function menuIconSvg(){
   </svg>`;
 }
 
+// The exact camera glyph the Snap tab itself uses in the bottom nav bar
+// (see index.html) — reused rather than redrawn, so a button that jumps to
+// Snap reads as "go to Snap" on sight.
+function cameraIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 8a2 2 0 0 1 2-2h1.2l0.9-1.4a1.6 1.6 0 0 1 1.35-0.6h5.1a1.6 1.6 0 0 1 1.35 0.6L16.8 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+    <circle cx="12" cy="13" r="3.6" />
+  </svg>`;
+}
+
 // --- swipe-to-delete ---------------------------------------------------
 // How far the card slides to reveal the delete panel, and how recently a
 // swipe has to have ended for the click it generates to be ignored.
@@ -1145,6 +1155,9 @@ function buildCollectionWatchBarHtml(w){
           <button type="button" class="zoom-btn collection-back-btn" data-action="backtocollectionlist" aria-label="Back to collection">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
+          <button type="button" class="zoom-btn collection-snap-btn" data-action="snapthiswatch" data-id="${w.id}" aria-label="Take a snap with ${escapeHtml(w.name)}" title="Take a snap">
+            ${cameraIconSvg()}
+          </button>
         </div>
       </div>
     </div>
@@ -1467,6 +1480,19 @@ function attachCollectionHandlers(){
       collectionDetailReturnTab = 'collection';
       syncBottomTabs();
     }
+    render();
+  };
+  const snapBtn = document.querySelector('[data-action="snapthiswatch"]');
+  if(snapBtn) snapBtn.onclick = () => {
+    // Same resets the Snap tab's own card-tap handler applies when the
+    // active watch changes (see the "select" handler, app.js) — otherwise
+    // a chart dot left selected on a *different* watch's detail page would
+    // still show selected the next time this one's is opened.
+    state.activeId = snapBtn.dataset.id;
+    selectedOffsetIdx = null; selectedDriftIdx = null; offsetScrollLeft = null; driftScrollLeft = null; editingReadingId = null;
+    viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null;
+    activeTab = 'data';
+    syncBottomTabs();
     render();
   };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');

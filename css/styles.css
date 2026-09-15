@@ -2076,6 +2076,13 @@
     width:36px;
     height:36px;
   }
+  /* Same fix as .collection-back-btn just above, same reason — sits right
+     beside it on the watch bar, so it needs to match its 36px, not the
+     plain .zoom-btn default. */
+  .collection-snap-btn{
+    width:36px;
+    height:36px;
+  }
   /* Same fix as .collection-back-btn above, same reason: left at the plain
      .zoom-btn default (30px) otherwise, while every other back/action
      button on a Collection card is 36px. */
