@@ -24,14 +24,24 @@ function availableChartWidth(){
   return 240;
 }
 
+// opts.compact renders the exact same plotted line — same point math, same
+// green/red dot-by-sign colouring, same dashed zero line — at collection-
+// card size instead of detail-page size: no axis, gridlines, date labels,
+// zoom/scroll, or accuracy band, since there's no room to read any of those
+// at this scale, and no `<div>` wrapper — just the bare `<svg>`, since it
+// sits directly inside the card rather than its own chart box.
 function buildLineChart(items, opts){
-  if(items.length === 0) return `<div class="empty-note">${opts.emptyMsg}</div>`;
+  const compact = !!opts.compact;
+  if(items.length === 0) return compact ? '' : `<div class="empty-note">${opts.emptyMsg}</div>`;
   const pxPerPoint = 46 * chartZoom;
-  const h = 160, padL = 34, padR = 16, padT = 10, padB = 18;
+  const h = compact ? (opts.compactHeight || 28) : 160;
+  const padL = compact ? 2 : 34, padR = compact ? 2 : 16, padT = compact ? 3 : 10, padB = compact ? 3 : 18;
   // Always fill the container, so a chart with one or two readings still
   // spans the full width instead of stopping short of the zoom buttons.
-  const minPlotW = Math.max(240, availableChartWidth() - padL - padR);
-  const plotW = Math.max(minPlotW, (items.length - 1) * pxPerPoint);
+  // Compact skips that entirely — it's drawn at one fixed small width, never
+  // scrolled or zoomed.
+  const minPlotW = compact ? (opts.compactWidth || 56) : Math.max(240, availableChartWidth() - padL - padR);
+  const plotW = compact ? minPlotW : Math.max(minPlotW, (items.length - 1) * pxPerPoint);
   const w = padL + padR + plotW;
   const values = items.map(it => it.value);
   // What was actually recorded, reported in the summary line.
@@ -55,12 +65,12 @@ function buildLineChart(items, opts){
   const path = pts.map((p,i)=> (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
 
   const ticks = [max, min + range*0.75, (max+min)/2, min + range*0.25, min];
-  const gridlines = ticks.map(t => {
+  const gridlines = compact ? '' : ticks.map(t => {
     const y = yAt(t);
     return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
   }).join('');
 
-  const xLabelsSvg = items.map((it,i) => {
+  const xLabelsSvg = compact ? '' : items.map((it,i) => {
     // the first and last labels sit on the plot edges, so centring them would
     // push half the text outside the chart
     const anchor = i === 0 ? 'start' : (i === items.length-1 ? 'end' : 'middle');
@@ -73,19 +83,20 @@ function buildLineChart(items, opts){
     const color = positive ? 'var(--good)' : 'var(--bad)';
     const isSel = selIdx === i;
     const isReset = !!items[i].isReset;
-    const ring = isSel ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="7" fill="none" stroke="${color}" stroke-width="1.5" />` : '';
-    const resetMarker = isReset ? `<line x1="${p[0].toFixed(1)}" y1="${padT}" x2="${p[0].toFixed(1)}" y2="${h-padB}" stroke="var(--grey)" stroke-width="1" stroke-dasharray="2,2" /><text x="${p[0].toFixed(1)}" y="${padT-4}" text-anchor="middle" font-size="8" font-family="'Inter',sans-serif" fill="var(--grey)">svc</text>` : '';
+    const ring = (!compact && isSel) ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="7" fill="none" stroke="${color}" stroke-width="1.5" />` : '';
+    const resetMarker = (!compact && isReset) ? `<line x1="${p[0].toFixed(1)}" y1="${padT}" x2="${p[0].toFixed(1)}" y2="${h-padB}" stroke="var(--grey)" stroke-width="1" stroke-dasharray="2,2" /><text x="${p[0].toFixed(1)}" y="${padT-4}" text-anchor="middle" font-size="8" font-family="'Inter',sans-serif" fill="var(--grey)">svc</text>` : '';
     const dotColor = isReset ? 'var(--grey)' : color;
+    const hitCircle = compact ? '' : `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="11" fill="transparent" />`;
     return `<g class="chart-dot" data-chart="${opts.chartKey}" data-idx="${i}">
       ${resetMarker}
-      <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="11" fill="transparent" />
+      ${hitCircle}
       ${ring}
-      <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${isSel?4.5:3.5}" fill="${dotColor}" />
+      <circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${compact ? 2 : (isSel?4.5:3.5)}" fill="${dotColor}" />
     </g>`;
   }).join('');
 
   let accuracyBandSvg = '';
-  if(accuracyRange){
+  if(accuracyRange && !compact){
     const yTop = yAt(accuracyRange.max);
     const yBottom = yAt(accuracyRange.min);
     accuracyBandSvg = `
@@ -96,7 +107,7 @@ function buildLineChart(items, opts){
     `;
   }
 
-  const svg = `<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  const svg = `<svg class="chart${compact ? ' chart-compact' : ''}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
     ${gridlines}
     ${accuracyBandSvg}
     <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${w-padR}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="3,3" />
@@ -104,6 +115,8 @@ function buildLineChart(items, opts){
     ${dotsSvg}
     ${xLabelsSvg}
   </svg>`;
+
+  if(compact) return svg;
 
   // Gain a decimal place when the range is too narrow to distinguish the
   // gridlines otherwise — five labels all reading "0" or "-1" is useless.
@@ -148,7 +161,10 @@ function buildLineChart(items, opts){
   return containerHtml + bottomRowHtml;
 }
 
-function buildOffsetChart(sortedReadings, selectedIndex){
+// compactOpts, when passed, is forwarded straight into buildLineChart's own
+// opts (see its `compact` handling above) — the collection card's use of
+// this function, not a difference in how the chart itself is built.
+function buildOffsetChart(sortedReadings, selectedIndex, compactOpts){
   const items = sortedReadings.map(r => ({date: r.date, value: r.offset, isReset: !!r.isReset}));
   return buildLineChart(items, {
     chartKey: 'offset',
@@ -156,14 +172,15 @@ function buildOffsetChart(sortedReadings, selectedIndex){
     selectedIndex,
     emptyMsg: 'Log a reading to see it plotted here.',
     unit: 's',
-    decimals: 0
+    decimals: 0,
+    ...compactOpts
   });
 }
 
 // avgRate is the watch's overall drift across the period, so the summary
 // matches the figure on the dial rather than re-deriving a slightly
-// different one from the plotted intervals.
-function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate){
+// different one from the plotted intervals. compactOpts: see buildOffsetChart.
+function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate, compactOpts){
   const items = ratedReadings.map(r => ({date: r.date, value: r.rate === null ? 0 : r.rate, isReset: !!r.isReset}));
   return buildLineChart(items, {
     chartKey: 'drift',
@@ -173,38 +190,22 @@ function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate){
     unit: ' s/day',
     decimals: 1,
     accuracyRange: parseAccuracySpec(accuracySpec),
-    summary: (avgRate === null || avgRate === undefined) ? null : avgRate
+    summary: (avgRate === null || avgRate === undefined) ? null : avgRate,
+    ...compactOpts
   });
 }
 
-// A tiny two-line preview of the same two histories the detail page charts
-// out in full — offset and drift — for the collection list card, where
-// there's only room for a glance, not an axis. Each line is scaled to its
-// own min/max independently (the two aren't on the same axis even in the
-// full-size charts), so this is shape-only: how it's trending, not by how
-// much. Nothing is drawn until there are at least two readings — a single
-// point has no trend to show, and would just be a dot sitting off-center.
-function buildMiniSparkline(w){
+// The collection list card's preview: the same two charts the detail page
+// shows in full (buildOffsetChart above buildChart), stacked the same way,
+// just at compact size — not a separate simplified chart style. Nothing is
+// drawn until there are at least two readings — a single point has no trend
+// to show, and would just be a dot sitting off-center.
+function buildCardCharts(w){
   if(!w.readings || w.readings.length < 2) return '';
   const rated = computeReadingRates(w);
-  const width = 60, height = 34, pad = 3;
-  const stepX = (width - pad * 2) / (rated.length - 1);
-  const linePath = (vals, color) => {
-    let min = Math.min(...vals), max = Math.max(...vals);
-    if(min === max){ min -= 1; max += 1; }
-    const pts = vals.map((v,i) => [
-      pad + i * stepX,
-      pad + (1 - (v - min) / (max - min)) * (height - pad * 2)
-    ]);
-    const d = pts.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-    const last = pts[pts.length - 1];
-    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-      <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2" fill="${color}" />`;
-  };
-  const offsetVals = rated.map(r => r.offset);
-  const driftVals = rated.map(r => r.rate === null ? 0 : r.rate);
-  return `<svg class="card-spark" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-    ${linePath(offsetVals, 'var(--bad)')}
-    ${linePath(driftVals, 'var(--accent)')}
-  </svg>`;
+  const compactOpts = {compact: true, compactWidth: 56, compactHeight: 26};
+  return `<div class="mini-chart-stack">
+    ${buildOffsetChart(rated, null, compactOpts)}
+    ${buildChart(rated, null, w.accuracySpec, null, compactOpts)}
+  </div>`;
 }

@@ -1849,15 +1849,21 @@
     gap:6px;
   }
 
-  /* The offset/drift preview from buildMiniSparkline (charts.js) — sized to
-     sit between the name/stats block and the chevron without crowding
-     either, on a card that also has to work at phone width. */
+  /* The offset/drift preview from buildCardCharts (charts.js) — the same two
+     charts the detail page shows in full, stacked the same way, just at
+     compact size. Sized to sit between the name/stats block and the chevron
+     without crowding either, on a card that also has to work at phone width. */
   .collection-card-spark{
     flex-shrink:0;
     display:flex;
     align-items:center;
   }
-  .card-spark{
+  .mini-chart-stack{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+  .chart-compact{
     display:block;
   }
 
