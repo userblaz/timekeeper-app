@@ -12,6 +12,45 @@ function setShowClockDate(v){
   try{ localStorage.setItem('timekeeper-clock-date', v ? '1' : '0'); }catch(e){}
 }
 
+// Same treatment, for the second-timezone GMT window. The offset is
+// minutes from UTC (so half-hour zones — UTC+5:30, say — are exact), not
+// hours, and defaults to 0 (UTC itself) the first time this is ever
+// turned on.
+let showClockGmt = (() => {
+  try{ return localStorage.getItem('timekeeper-clock-gmt') === '1'; }catch(e){ return false; }
+})();
+function setShowClockGmt(v){
+  showClockGmt = v;
+  try{ localStorage.setItem('timekeeper-clock-gmt', v ? '1' : '0'); }catch(e){}
+}
+let clockGmtOffsetMinutes = (() => {
+  try{
+    const saved = localStorage.getItem('timekeeper-clock-gmt-offset');
+    return saved === null ? 0 : parseInt(saved, 10) || 0;
+  }catch(e){ return 0; }
+})();
+function setClockGmtOffsetMinutes(v){
+  clockGmtOffsetMinutes = v;
+  try{ localStorage.setItem('timekeeper-clock-gmt-offset', String(v)); }catch(e){}
+}
+// UTC offsets a real GMT/world-timer bezel would actually be marked
+// with — every whole hour from -12 to +14, plus the handful of real
+// half-hour zones worth listing (the odder 45-minute ones — Nepal,
+// Chatham Islands, and so on — are left out as too obscure to be worth
+// the clutter here).
+const GMT_OFFSET_OPTIONS = [
+  -720,-660,-600,-570,-540,-480,-420,-360,-300,-270,-240,-210,-180,-120,-60,
+  0,
+  60,120,180,210,240,270,300,330,360,390,420,480,540,570,600,630,660,720,840
+];
+function formatGmtOffset(minutes){
+  const sign = minutes >= 0 ? '+' : '−';
+  const abs = Math.abs(minutes);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `UTC${sign}${h}${m ? ':' + String(m).padStart(2,'0') : ':00'}`;
+}
+
 function buildAnalogClockFace(){
   const cx = 200, cy = 200, R = 180;
   let ticks = '';
@@ -25,41 +64,69 @@ function buildAnalogClockFace(){
     const x2 = cx + inner*Math.cos(rad), y2 = cy + inner*Math.sin(rad);
     ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#18181B" stroke-width="${isHour?3:1}" stroke-opacity="${isHour?1:0.35}" />`;
   }
-  // The date window, when on, takes the 3 o'clock numeral's own spot —
-  // the way a real watch's date complication usually displaces the 3
-  // rather than crowding in beside it — so the loop below just skips
-  // drawing that one numeral rather than the window needing to dodge it.
+  // Both windows, when on, take the 3 o'clock numeral's own spot — the
+  // way a real watch's date complication usually displaces the 3 rather
+  // than crowding in beside it — so the loop below just skips drawing
+  // that one numeral rather than either window needing to dodge it.
+  const anyComplication = showClockDate || showClockGmt;
   let numerals = '';
   for(let n=1;n<=12;n++){
-    if(showClockDate && n === 3) continue;
+    if(anyComplication && n === 3) continue;
     const angle = n * 30;
     const rad = (angle - 90) * Math.PI / 180;
     const nr = R - 8 - 40;
     const x = cx + nr*Math.cos(rad), y = cy + nr*Math.sin(rad);
     numerals += `<text x="${x.toFixed(1)}" y="${(y+7).toFixed(1)}" text-anchor="middle" font-size="22" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${n}</text>`;
   }
+
+  const bothOn = showClockDate && showClockGmt;
+  const complicationX = cx + (R - 8 - 40); // 3 o'clock: straight out along +x, no trig needed
+
   let dateWindow = '';
   if(showClockDate){
-    const nr = R - 8 - 40;
-    const x = cx + nr; // 3 o'clock: straight out along +x, no trig needed
+    // Always centered on the dial's own vertical middle — GMT is the one
+    // that moves down to make room when both are on, not this.
     const day = trueNow().getDate();
-    // Stable ids so the "Show on clock" demo (runClockDateDemo below) can
+    // Stable ids so the date-setting demo (runClockDateDemo below) can
     // update the day and pulse the window directly, the same way it drives
     // the hands by id — without going through a full rebuild that would
     // also reset whatever mid-animation position the hands are in.
     dateWindow = `
       <g id="analogDateWindow">
-        <rect x="${(x-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
-        <text id="analogDateText" x="${x.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
+        <rect x="${(complicationX-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
+        <text id="analogDateText" x="${complicationX.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
       </g>
     `;
   }
+
+  let gmtWindow = '';
+  if(showClockGmt){
+    // Stacked directly under the date window when both are on; otherwise
+    // takes the date window's own centered spot.
+    const boxCy = bothOn ? cy + 36 : cy;
+    const nowMs = trueNow().getTime(); // UTC epoch ms — timezone-agnostic
+    const zoneDate = new Date(nowMs + clockGmtOffsetMinutes * 60000);
+    // Read back with the UTC getters, not the local ones — the offset was
+    // already folded into zoneDate's own timestamp above, so this reads
+    // the target zone's wall-clock time without the device's own
+    // timezone getting involved a second time.
+    const hh = String(zoneDate.getUTCHours()).padStart(2, '0');
+    const mm = String(zoneDate.getUTCMinutes()).padStart(2, '0');
+    gmtWindow = `
+      <g id="analogGmtWindow">
+        <rect x="${(complicationX-26).toFixed(1)}" y="${(boxCy-13).toFixed(1)}" width="52" height="26" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
+        <text id="analogGmtText" x="${complicationX.toFixed(1)}" y="${(boxCy+5).toFixed(1)}" text-anchor="middle" font-size="13" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${hh}:${mm}</text>
+      </g>
+    `;
+  }
+
   return `
     <svg viewBox="0 0 400 400" width="400" height="400" class="analog-clock">
       <circle cx="${cx}" cy="${cy}" r="${R}" fill="#FFFFFF" stroke="#E0E0DE" stroke-width="2" />
       ${ticks}
       ${numerals}
       ${dateWindow}
+      ${gmtWindow}
       <line id="analogHourHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-90}" stroke="#18181B" stroke-width="8" stroke-linecap="round" />
       <line id="analogMinuteHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-130}" stroke="#18181B" stroke-width="5" stroke-linecap="round" />
       <line id="analogSecondHand" x1="${cx}" y1="${cy+20}" x2="${cx}" y2="${cy-150}" stroke="#B4432F" stroke-width="2" stroke-linecap="round" />
@@ -228,7 +295,7 @@ async function runClockDateDemo(){
     clockDateDemoRunning = false;
     if(stillOnScreen()){
       updateAnalogClock();
-      if(btn){ btn.disabled = false; btn.textContent = 'Show on clock'; }
+      if(btn){ btn.disabled = false; btn.textContent = 'Show set date on clock'; }
       if(checkboxEl) checkboxEl.disabled = false;
     }
   }
@@ -245,11 +312,34 @@ function buildClockTabHtml(){
       <div class="analog-clock-wrap">
         ${buildAnalogClockFace()}
       </div>
-      <label class="clock-date-toggle" for="clockDateToggle">
-        <input type="checkbox" id="clockDateToggle" ${showClockDate ? 'checked' : ''} />
-        Show date
-      </label>
+      <div class="clock-toggles-row">
+        <label class="clock-date-toggle" for="clockDateToggle">
+          <input type="checkbox" id="clockDateToggle" ${showClockDate ? 'checked' : ''} />
+          Show date
+        </label>
+        <label class="clock-date-toggle" for="clockGmtToggle">
+          <input type="checkbox" id="clockGmtToggle" ${showClockGmt ? 'checked' : ''} />
+          Show GMT
+        </label>
+      </div>
+      ${showClockGmt ? buildClockGmtOffsetHtml() : ''}
       ${showClockDate ? buildClockDateHelpHtml() : ''}
+    </div>
+  `;
+}
+
+// The second-timezone picker for the GMT window — its own row, separate
+// from the (still pending) GMT help block below, since it needs to be
+// usable the moment the checkbox is on regardless of whether that block
+// has anything in it yet.
+function buildClockGmtOffsetHtml(){
+  const optionsHtml = GMT_OFFSET_OPTIONS.map(m =>
+    `<option value="${m}" ${m === clockGmtOffsetMinutes ? 'selected' : ''}>${formatGmtOffset(m)}</option>`
+  ).join('');
+  return `
+    <div class="clock-gmt-offset-row">
+      <label for="clockGmtOffset">Second time zone</label>
+      <select id="clockGmtOffset">${optionsHtml}</select>
     </div>
   `;
 }
@@ -259,9 +349,9 @@ function buildClockTabHtml(){
 function buildClockDateHelpHtml(){
   return `
     <div class="clock-date-help">
-      <p>To safely set the date on a mechanical watch, move the time hands to 6 o'clock first, then adjust the date to yesterday, and finally advance the time until the correct date and current time roll over.</p>
-      <p>Never set the date if the watch hands show between 9:00 PM and 3:00 AM, as internal calendar gears are engaged and forcing a change can break the movement.</p>
-      <button type="button" class="btn-secondary" id="clockDateDemoBtn">Show on clock</button>
+      <p>To safely set the date on a mechanical watch, <b>move the time hands to 6 o'clock first</b>, then adjust the date to yesterday, and finally advance the time until the correct date and current time roll over.</p>
+      <p><b>Never</b> set the date if the watch hands show <b>between 9:00 PM and 3:00 AM</b>, as internal calendar gears are engaged and forcing a change can break the movement.</p>
+      <button type="button" class="btn-secondary" id="clockDateDemoBtn">Show set date on clock</button>
     </div>
   `;
 }

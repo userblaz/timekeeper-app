@@ -1504,6 +1504,26 @@ function attachHandlers(watch){
   if(clockDateDemoBtnEl){
     clockDateDemoBtnEl.onclick = () => runClockDateDemo();
   }
+  const clockGmtToggleEl = document.getElementById('clockGmtToggle');
+  if(clockGmtToggleEl){
+    clockGmtToggleEl.onchange = () => {
+      setShowClockGmt(clockGmtToggleEl.checked);
+      render();
+    };
+  }
+  // Only present while the GMT window is on (see buildClockGmtOffsetHtml).
+  const clockGmtOffsetEl = document.getElementById('clockGmtOffset');
+  if(clockGmtOffsetEl){
+    clockGmtOffsetEl.onchange = () => {
+      setClockGmtOffsetMinutes(parseInt(clockGmtOffsetEl.value, 10) || 0);
+      // Just the face, not a full render() — nothing else on the page
+      // depends on which zone is picked, so there's no need to rebuild
+      // the toggles/help blocks around it too.
+      const wrap = document.querySelector('.analog-clock-wrap');
+      if(wrap) wrap.innerHTML = buildAnalogClockFace();
+      updateAnalogClock();
+    };
+  }
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => {
       // A snap in progress is scoped to one watch — switching away mid-snap

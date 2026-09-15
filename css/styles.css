@@ -565,12 +565,19 @@
     height:auto;
     display:block;
   }
+  /* Show date and Show GMT side by side — the row carries the top margin
+     that used to live on .clock-date-toggle itself, since that's now one
+     of two flex children here instead of the only thing on its own line. */
+  .clock-toggles-row{
+    display:flex;
+    justify-content:center;
+    gap:24px;
+    margin-top:14px;
+  }
   .clock-date-toggle{
     display:flex;
     align-items:center;
-    justify-content:center;
     gap:8px;
-    margin-top:14px;
     font-family:'Inter',sans-serif;
     font-size:13px;
     color:var(--grey);
@@ -579,6 +586,31 @@
   .clock-date-toggle input{
     width:auto;
     flex-shrink:0;
+  }
+  /* The second-timezone picker for the GMT window (buildClockGmtOffsetHtml,
+     clock.js) — a plain native <select> rather than this app's own custom
+     dropdown (.condition-select and friends), since this is a single,
+     short, standard list with no multi-select or search need the custom
+     one earns its keep for elsewhere. */
+  .clock-gmt-offset-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    margin-top:10px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--grey);
+  }
+  .clock-gmt-offset-row select{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink);
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:5px 8px;
   }
   /* The safe date-setting technique, plus the button that demos it on the
      dial itself (runClockDateDemo, clock.js) — only shown while the date
