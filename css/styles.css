@@ -1437,7 +1437,12 @@
   .quick-btn{
     background:var(--surface-2);
     border:1px solid var(--line);
-    color:var(--accent);
+    /* var(--ink), not var(--accent) — this only ever needs to contrast
+       against its own background (surface-2, right above), which is
+       already theme-variable, so tracking ink (white on dark, black on
+       light) keeps it readable in both without needing a separate
+       override for either. */
+    color:var(--ink);
     border-radius:16px;
     padding:12px 0;
     font-family:'Inter',sans-serif;
