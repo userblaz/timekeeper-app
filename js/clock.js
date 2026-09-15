@@ -238,8 +238,10 @@ async function runClockDateDemo(){
 function buildClockTabHtml(){
   return `
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
-      <h2 class="section-title">Set your watch</h2>
-      <p class="hint" style="text-align:center;margin-bottom:10px;">Match your watch's hands to this dial — synced to true time.</p>
+      <div class="section-title-row">
+        <h2 class="section-title">Set your watch</h2>
+        <span class="hint">Match hands to this dial</span>
+      </div>
       <div class="analog-clock-wrap">
         ${buildAnalogClockFace()}
       </div>
