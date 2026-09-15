@@ -64,14 +64,15 @@ function buildAnalogClockFace(){
     const x2 = cx + inner*Math.cos(rad), y2 = cy + inner*Math.sin(rad);
     ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#18181B" stroke-width="${isHour?3:1}" stroke-opacity="${isHour?1:0.35}" />`;
   }
-  // Both windows, when on, take the 3 o'clock numeral's own spot — the
-  // way a real watch's date complication usually displaces the 3 rather
-  // than crowding in beside it — so the loop below just skips drawing
-  // that one numeral rather than either window needing to dodge it.
-  const anyComplication = showClockDate || showClockGmt;
+  // The date window, when on, takes the 3 o'clock numeral's own spot —
+  // the way a real watch's date complication usually displaces the 3
+  // rather than crowding in beside it — so the loop below just skips
+  // drawing that one numeral rather than the window needing to dodge it.
+  // GMT no longer competes for this spot now that it's a hand, not a
+  // second window.
   let numerals = '';
   for(let n=1;n<=12;n++){
-    if(anyComplication && n === 3) continue;
+    if(showClockDate && n === 3) continue;
     const angle = n * 30;
     const rad = (angle - 90) * Math.PI / 180;
     const nr = R - 8 - 40;
@@ -79,13 +80,9 @@ function buildAnalogClockFace(){
     numerals += `<text x="${x.toFixed(1)}" y="${(y+7).toFixed(1)}" text-anchor="middle" font-size="22" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${n}</text>`;
   }
 
-  const bothOn = showClockDate && showClockGmt;
-  const complicationX = cx + (R - 8 - 40); // 3 o'clock: straight out along +x, no trig needed
-
   let dateWindow = '';
   if(showClockDate){
-    // Always centered on the dial's own vertical middle — GMT is the one
-    // that moves down to make room when both are on, not this.
+    const x = cx + (R - 8 - 40); // 3 o'clock: straight out along +x, no trig needed
     const day = trueNow().getDate();
     // Stable ids so the date-setting demo (runClockDateDemo below) can
     // update the day and pulse the window directly, the same way it drives
@@ -93,29 +90,25 @@ function buildAnalogClockFace(){
     // also reset whatever mid-animation position the hands are in.
     dateWindow = `
       <g id="analogDateWindow">
-        <rect x="${(complicationX-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
-        <text id="analogDateText" x="${complicationX.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
+        <rect x="${(x-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
+        <text id="analogDateText" x="${x.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
       </g>
     `;
   }
 
-  let gmtWindow = '';
+  // A fourth hand, not a window: real GMT complications point a hand at a
+  // 24-hour track rather than showing digits, so this does the same — one
+  // full turn per 24 hours (half the plain hour hand's own speed), in blue
+  // to read as a distinct complication from the black time-of-day hands
+  // at a glance. Shorter than the minute hand and longer than the hour
+  // hand, with a small arrowhead, the common real-watch shape for telling
+  // it apart from both even before its color registers.
+  let gmtHand = '';
   if(showClockGmt){
-    // Stacked directly under the date window when both are on; otherwise
-    // takes the date window's own centered spot.
-    const boxCy = bothOn ? cy + 36 : cy;
-    const nowMs = trueNow().getTime(); // UTC epoch ms — timezone-agnostic
-    const zoneDate = new Date(nowMs + clockGmtOffsetMinutes * 60000);
-    // Read back with the UTC getters, not the local ones — the offset was
-    // already folded into zoneDate's own timestamp above, so this reads
-    // the target zone's wall-clock time without the device's own
-    // timezone getting involved a second time.
-    const hh = String(zoneDate.getUTCHours()).padStart(2, '0');
-    const mm = String(zoneDate.getUTCMinutes()).padStart(2, '0');
-    gmtWindow = `
-      <g id="analogGmtWindow">
-        <rect x="${(complicationX-26).toFixed(1)}" y="${(boxCy-13).toFixed(1)}" width="52" height="26" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
-        <text id="analogGmtText" x="${complicationX.toFixed(1)}" y="${(boxCy+5).toFixed(1)}" text-anchor="middle" font-size="13" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${hh}:${mm}</text>
+    gmtHand = `
+      <g id="analogGmtHand">
+        <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-112}" stroke="#3B82F6" stroke-width="3" stroke-linecap="round" />
+        <polygon points="${cx-6},${cy-100} ${cx+6},${cy-100} ${cx},${cy-118}" fill="#3B82F6" />
       </g>
     `;
   }
@@ -126,7 +119,7 @@ function buildAnalogClockFace(){
       ${ticks}
       ${numerals}
       ${dateWindow}
-      ${gmtWindow}
+      ${gmtHand}
       <line id="analogHourHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-90}" stroke="#18181B" stroke-width="8" stroke-linecap="round" />
       <line id="analogMinuteHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-130}" stroke="#18181B" stroke-width="5" stroke-linecap="round" />
       <line id="analogSecondHand" x1="${cx}" y1="${cy+20}" x2="${cx}" y2="${cy-150}" stroke="#B4432F" stroke-width="2" stroke-linecap="round" />
@@ -146,7 +139,7 @@ const CLOCK_TICK_BPH = 28000; // beats per hour the analog second hand steps at
 let clockDateDemoRunning = false;
 
 function updateAnalogClock(){
-  if(clockDateDemoRunning) return;
+  if(clockDateDemoRunning || clockGmtDemoRunning) return;
   const hourEl = document.getElementById('analogHourHand');
   if(!hourEl) return;
   const minuteEl = document.getElementById('analogMinuteHand');
@@ -164,6 +157,17 @@ function updateAnalogClock(){
   hourEl.setAttribute('transform', `rotate(${hourAngle.toFixed(2)} 200 200)`);
   if(minuteEl) minuteEl.setAttribute('transform', `rotate(${minAngle.toFixed(2)} 200 200)`);
   if(secondEl) secondEl.setAttribute('transform', `rotate(${secAngle.toFixed(2)} 200 200)`);
+
+  // One turn per 24 hours — half the plain hour hand's own speed — using
+  // the same UTC-epoch-plus-offset approach as the old GMT window did, so
+  // the target zone's wall-clock hour comes out right regardless of the
+  // device's own timezone.
+  const gmtEl = document.getElementById('analogGmtHand');
+  if(gmtEl){
+    const zoneDate = new Date(now.getTime() + clockGmtOffsetMinutes * 60000);
+    const gmtHours24 = zoneDate.getUTCHours() + zoneDate.getUTCMinutes()/60 + zoneDate.getUTCSeconds()/3600;
+    gmtEl.setAttribute('transform', `rotate(${(gmtHours24/24*360).toFixed(2)} 200 200)`);
+  }
 }
 
 function wait(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -302,20 +306,22 @@ async function runClockDateDemo(){
   }
 }
 
+// Set for as long as runClockGmtDemo (below) is driving the GMT hand
+// itself — same reasoning as clockDateDemoRunning above, and checked
+// alongside it in updateAnalogClock so the live tick can't fight either
+// demo.
 let clockGmtDemoRunning = false;
 
-// A brief look at the GMT window "being set" — cycling through a couple
-// of nearby offsets before landing back on the one actually chosen, the
-// feel of turning a GMT bezel past a few zones on the way to the target
-// one. This window is text, not a rotating hand (see the comment on
-// buildClockGmtOffsetHtml — the two real mechanical GMT designs jump a
-// hand independently, which isn't what's built here), so there's no hand
-// to animate the way runClockDateDemo moves the hour/minute hands — the
-// window's own value changing is the whole of what's demonstrable.
+// The GMT hand swept through a couple of nearby zones before settling on
+// the one actually chosen — the feel of turning a GMT bezel past a few
+// stops on the way to the target, same eased-rotation approach as
+// runClockDateDemo's own hand movement (animateTo below is that
+// function's animateTo, generalized to take an id instead of assuming
+// which hand).
 async function runClockGmtDemo(){
   if(clockGmtDemoRunning) return;
-  const gmtTextEl = document.getElementById('analogGmtText');
-  if(!gmtTextEl) return;
+  const gmtEl = document.getElementById('analogGmtHand');
+  if(!gmtEl) return;
 
   clockGmtDemoRunning = true;
   const btn = document.getElementById('clockGmtDemoBtn');
@@ -325,32 +331,52 @@ async function runClockGmtDemo(){
   if(checkboxEl) checkboxEl.disabled = true;
   if(selectEl) selectEl.disabled = true;
 
-  const stillOnScreen = () => document.body.contains(gmtTextEl);
-  const showOffset = (mins) => {
-    const nowMs = trueNow().getTime();
-    const zoneDate = new Date(nowMs + mins * 60000);
-    gmtTextEl.textContent = String(zoneDate.getUTCHours()).padStart(2,'0') + ':' + String(zoneDate.getUTCMinutes()).padStart(2,'0');
-    pulseWindow('analogGmtWindow');
+  const stillOnScreen = () => document.body.contains(gmtEl);
+  const angleForOffset = (mins) => {
+    const zoneDate = new Date(trueNow().getTime() + mins * 60000);
+    const hours24 = zoneDate.getUTCHours() + zoneDate.getUTCMinutes()/60 + zoneDate.getUTCSeconds()/3600;
+    return hours24 / 24 * 360;
   };
+  const animateHandTo = (el, fromAngle, toAngle, duration) => new Promise(resolve => {
+    const start = performance.now();
+    function tick(now){
+      if(!stillOnScreen()){ resolve(); return; }
+      const t = Math.min(1, (now - start) / duration);
+      const angle = fromAngle + (toAngle - fromAngle) * easeInOutCubic(t);
+      el.setAttribute('transform', `rotate(${angle.toFixed(2)} 200 200)`);
+      if(t < 1) requestAnimationFrame(tick); else resolve();
+    }
+    requestAnimationFrame(tick);
+  });
 
   try{
-    const actual = clockGmtOffsetMinutes;
+    let curAngle = angleForOffset(clockGmtOffsetMinutes);
+    gmtEl.setAttribute('transform', `rotate(${curAngle.toFixed(2)} 200 200)`);
     // Two nearby stops on the way there, clamped to the same range the
     // picker itself offers, so the "browsing past a few zones" feel never
-    // shows a value the dropdown wouldn't.
-    const preview1 = Math.max(-720, Math.min(840, actual - 180));
-    const preview2 = Math.max(-720, Math.min(840, actual + 120));
-    showOffset(preview1);
-    await wait(550);
-    if(!stillOnScreen()) return;
-    showOffset(preview2);
-    await wait(550);
-    if(!stillOnScreen()) return;
-    showOffset(actual);
-    await wait(200);
+    // implies a target the dropdown wouldn't actually let you pick.
+    const stops = [
+      Math.max(-720, Math.min(840, clockGmtOffsetMinutes - 180)),
+      Math.max(-720, Math.min(840, clockGmtOffsetMinutes + 120)),
+      clockGmtOffsetMinutes
+    ];
+    for(const offset of stops){
+      // Shortest path each leg — this is meant to read as "dialing in a
+      // couple of nearby zones," not a fast-forward through the whole
+      //24-hour scale the way the date demo's sweep deliberately is.
+      const targetAngle = angleForOffset(offset);
+      const delta = ((targetAngle - curAngle + 540) % 360) - 180;
+      await animateHandTo(gmtEl, curAngle, curAngle + delta, 700);
+      if(!stillOnScreen()) return;
+      curAngle = (curAngle + delta + 360) % 360;
+    }
   } finally {
     clockGmtDemoRunning = false;
     if(stillOnScreen()){
+      // Resyncs to the exact live angle — the animation's own last frame
+      // is only accurate to the moment its final leg started, and real
+      // time has moved on by however long the whole sequence took.
+      updateAnalogClock();
       if(btn){ btn.disabled = false; btn.textContent = 'Show set GMT on clock'; }
       if(checkboxEl) checkboxEl.disabled = false;
       if(selectEl) selectEl.disabled = false;
@@ -386,7 +412,7 @@ function buildClockTabHtml(){
   `;
 }
 
-// The second-timezone picker for the GMT window — its own row, separate
+// The second-timezone picker for the GMT hand — its own row, separate
 // from the GMT help block below, since it needs to be usable the moment
 // the checkbox is on regardless of that block.
 function buildClockGmtOffsetHtml(){

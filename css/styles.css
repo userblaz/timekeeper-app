@@ -587,7 +587,7 @@
     width:auto;
     flex-shrink:0;
   }
-  /* The second-timezone picker for the GMT window (buildClockGmtOffsetHtml,
+  /* The second-timezone picker for the GMT hand (buildClockGmtOffsetHtml,
      clock.js) — a plain native <select> rather than this app's own custom
      dropdown (.condition-select and friends), since this is a single,
      short, standard list with no multi-select or search need the custom
