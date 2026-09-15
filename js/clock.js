@@ -501,14 +501,24 @@ function buildClockDateHelpHtml(){
 function buildClockGmtHelpHtml(){
   return `
     <div class="clock-date-help">
-      <ol class="clock-help-list">
-        <li>Wind the watch if it has stopped. Give it about 20–30 gentle turns of the crown.</li>
-        <li>Pull the crown to the time-setting position.</li>
-        <li>Set the regular hour and minute hands to the correct local time.</li>
-        <li>Set the GMT hand to your desired second time zone, usually using the independently adjustable GMT position if your watch has one.</li>
-        <li><b>Check AM/PM.</b> On a 12-hour local-time display, make sure the date changes at midnight rather than noon.</li>
-        <li>Push the crown fully back in and screw it down if your watch has a screw-down crown.</li>
-      </ol>
+      <ul class="clock-help-list">
+        <li><b>Set the GMT hand first.</b>
+          <ul class="clock-help-sublist">
+            <li>Pull the crown to the position that moves the 24-hour/GMT hand.</li>
+            <li>Set it to your reference time (usually UTC/GMT or your home time).</li>
+            <li>Use the 24-hour bezel if the watch has one to read a second time zone.</li>
+          </ul>
+        </li>
+        <li><b>Set the local hour hand.</b>
+          <ul class="clock-help-sublist">
+            <li>Pull the crown to the position that independently moves the normal 12-hour hour hand.</li>
+            <li>Move it forward/backward to your current local hour.</li>
+            <li><b>The minutes and GMT hand should remain where you set them.</b></li>
+          </ul>
+        </li>
+        <li>Set the minutes if necessary using the final crown position.</li>
+        <li>Push the crown back in and screw it down if applicable.</li>
+      </ul>
       <p class="clock-help-subhead">Important GMT detail</p>
       <p>There are two common mechanical GMT designs:</p>
       <ul class="clock-help-list">

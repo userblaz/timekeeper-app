@@ -633,10 +633,10 @@
   .clock-date-help .btn-secondary{
     width:100%;
   }
-  /* The GMT block's numbered steps and its two-design bullet list
+  /* The GMT block's step list and its two-design bullet list
      (buildClockGmtHelpHtml) — same size/color/line-height as this card's
      own <p> text, just with the list's own marker and indent instead of
-     reimplementing numbering by hand in the string. */
+     reimplementing it by hand in the string. */
   .clock-help-list{
     margin:0 0 10px;
     padding-left:20px;
@@ -646,6 +646,17 @@
   }
   .clock-help-list li{
     margin-bottom:4px;
+  }
+  /* The sub-steps under "Set the GMT hand first" / "Set the local hour
+     hand" — tucked in under their own bold parent line rather than
+     reading as equal-weight with the four top-level steps. */
+  .clock-help-sublist{
+    margin:4px 0 0;
+    padding-left:18px;
+    list-style:disc;
+  }
+  .clock-help-sublist li{
+    margin-bottom:3px;
   }
   .clock-help-subhead{
     margin:14px 0 4px;
