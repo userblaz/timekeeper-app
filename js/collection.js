@@ -676,6 +676,7 @@ function buildCollectionCard(w){
   // completed month of wear activity to average.
   const wearStats = computeWearStats(w);
   const sparkHtml = buildCardCharts(w);
+  const statsHtml = buildCollectionCardStats(w);
 
   // The card rides on top of a delete panel that's revealed by swiping it
   // left, the way a mail list works — so the destructive action isn't sitting
@@ -692,7 +693,8 @@ function buildCollectionCard(w){
     <div class="collection-card" data-action="viewcollection" data-id="${w.id}">
       ${photoHtml}
       <div class="collection-card-body">
-        <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${buildCollectionCardStats(w)}</div>
+        <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span></div>
+        ${statsHtml ? `<div class="collection-card-stats">${statsHtml}</div>` : ''}
         <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
         ${wearStats ? `<div class="collection-card-wear">${Math.round(wearStats.avgPerMonth)} days/mo worn</div>` : ''}
       </div>

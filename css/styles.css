@@ -170,6 +170,13 @@
   .collection-watch-bar .collection-card{
     width:100%;
   }
+  /* Back and Snap sit side by side here rather than stacked — the base
+     column direction (.collection-card-actions) is for the Data tab's
+     3-button column; this bar only ever has two, and row reads as one
+     aligned pair instead of a lopsided stack. */
+  .collection-watch-bar .collection-card-actions{
+    flex-direction:row;
+  }
   /* Plays once when a watch's detail page opens — a small rise-and-settle so
      the page reads as sliding into place rather than snapping in instantly.
      Same start and end state as with no animation at all, just motion
@@ -2356,6 +2363,22 @@
   .card-spec{
     font-weight:500;
     color:var(--accent);
+  }
+  /* Its own line under the name instead — sharing a row with the name (the
+     previous layout) left the name almost no room once both a rate and a
+     spec badge were present, on top of the space the mini charts and
+     chevron already claim on this card. Same reset as the Snap tab's own
+     card (.data-watch-card-body .card-rate) — margin-left:7px only made
+     sense back when this sat inline right after the name. */
+  .collection-card-stats{
+    display:flex;
+    align-items:baseline;
+    gap:7px;
+    margin-top:2px;
+  }
+  .collection-card-stats .card-rate,
+  .collection-card-stats .card-spec{
+    margin-left:0;
   }
 
   /* Snap tab's watch card: name, drift and the reserve bar (or its hint,
