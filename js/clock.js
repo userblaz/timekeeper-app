@@ -1,6 +1,17 @@
 // Clock tab: analog/digital reference clock, tick sound, time-server sync,
 // and the scroll-collapse header animation.
 
+// A display preference, not account data — same treatment as the
+// dark/light theme toggle (profile.js): read once from localStorage at
+// load, persisted locally on every change.
+let showClockDate = (() => {
+  try{ return localStorage.getItem('timekeeper-clock-date') === '1'; }catch(e){ return false; }
+})();
+function setShowClockDate(v){
+  showClockDate = v;
+  try{ localStorage.setItem('timekeeper-clock-date', v ? '1' : '0'); }catch(e){}
+}
+
 function buildAnalogClockFace(){
   const cx = 200, cy = 200, R = 180;
   let ticks = '';
@@ -14,19 +25,35 @@ function buildAnalogClockFace(){
     const x2 = cx + inner*Math.cos(rad), y2 = cy + inner*Math.sin(rad);
     ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#18181B" stroke-width="${isHour?3:1}" stroke-opacity="${isHour?1:0.35}" />`;
   }
+  // The date window, when on, takes the 3 o'clock numeral's own spot —
+  // the way a real watch's date complication usually displaces the 3
+  // rather than crowding in beside it — so the loop below just skips
+  // drawing that one numeral rather than the window needing to dodge it.
   let numerals = '';
   for(let n=1;n<=12;n++){
+    if(showClockDate && n === 3) continue;
     const angle = n * 30;
     const rad = (angle - 90) * Math.PI / 180;
     const nr = R - 8 - 40;
     const x = cx + nr*Math.cos(rad), y = cy + nr*Math.sin(rad);
     numerals += `<text x="${x.toFixed(1)}" y="${(y+7).toFixed(1)}" text-anchor="middle" font-size="22" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${n}</text>`;
   }
+  let dateWindow = '';
+  if(showClockDate){
+    const nr = R - 8 - 40;
+    const x = cx + nr; // 3 o'clock: straight out along +x, no trig needed
+    const day = trueNow().getDate();
+    dateWindow = `
+      <rect x="${(x-17).toFixed(1)}" y="${(cy-14).toFixed(1)}" width="34" height="28" rx="3" fill="#FFFFFF" stroke="#18181B" stroke-width="1.5" />
+      <text x="${x.toFixed(1)}" y="${(cy+7).toFixed(1)}" text-anchor="middle" font-size="17" font-family="'Inter',sans-serif" font-weight="600" fill="#18181B">${day}</text>
+    `;
+  }
   return `
     <svg viewBox="0 0 400 400" width="400" height="400" class="analog-clock">
       <circle cx="${cx}" cy="${cy}" r="${R}" fill="#FFFFFF" stroke="#E0E0DE" stroke-width="2" />
       ${ticks}
       ${numerals}
+      ${dateWindow}
       <line id="analogHourHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-90}" stroke="#18181B" stroke-width="8" stroke-linecap="round" />
       <line id="analogMinuteHand" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy-130}" stroke="#18181B" stroke-width="5" stroke-linecap="round" />
       <line id="analogSecondHand" x1="${cx}" y1="${cy+20}" x2="${cx}" y2="${cy-150}" stroke="#B4432F" stroke-width="2" stroke-linecap="round" />
@@ -69,6 +96,10 @@ function buildClockTabHtml(){
       <div class="analog-clock-wrap">
         ${buildAnalogClockFace()}
       </div>
+      <label class="clock-date-toggle" for="clockDateToggle">
+        <input type="checkbox" id="clockDateToggle" ${showClockDate ? 'checked' : ''} />
+        Show date
+      </label>
     </div>
   `;
 }

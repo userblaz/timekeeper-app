@@ -1483,6 +1483,24 @@ function buildManualForm(){
 
 
 function attachHandlers(watch){
+  // Only present on the Clock tab (see buildClockTabHtml, clock.js) — this
+  // fires for every other tab's render too since they all funnel through
+  // this one shared function, so it's a no-op there.
+  const clockDateToggleEl = document.getElementById('clockDateToggle');
+  if(clockDateToggleEl){
+    clockDateToggleEl.onchange = () => {
+      setShowClockDate(clockDateToggleEl.checked);
+      // Rebuilds just the face in place rather than a full render() —
+      // the hands' current rotation lives on these same elements via
+      // transform (updateAnalogClock), and the 60ms tick interval
+      // (clock.js) re-applies it to whatever it finds by id on its very
+      // next tick regardless, so there's nothing to lose by swapping the
+      // markup out from under it.
+      const wrap = document.querySelector('.analog-clock-wrap');
+      if(wrap) wrap.innerHTML = buildAnalogClockFace();
+      updateAnalogClock();
+    };
+  }
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => {
       // A snap in progress is scoped to one watch — switching away mid-snap

@@ -565,6 +565,21 @@
     height:auto;
     display:block;
   }
+  .clock-date-toggle{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    margin-top:14px;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    color:var(--grey);
+    cursor:pointer;
+  }
+  .clock-date-toggle input{
+    width:auto;
+    flex-shrink:0;
+  }
   .chart-scroll{
     overflow-x:auto;
     overflow-y:hidden;
