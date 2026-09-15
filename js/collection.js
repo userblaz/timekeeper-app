@@ -1098,31 +1098,11 @@ function buildCollectionDetailHtml(w){
     </div>
   `;
 
-  const detailRows = [
-    ['Brand & model', w.model || null],
-    ['Reference number', w.reference || null],
-    ['Purchase price', w.purchasePrice ? fmtMoney(w.purchasePrice, w.purchaseCurrency) : null],
-    ['Purchase date', w.purchaseDate ? formatShortDate(w.purchaseDate) : null],
-    ['Factory accuracy spec', w.accuracySpec || null],
-    ['Power reserve', w.powerReserveHours ? w.powerReserveHours + ' hours' : null],
-    ['Certificates', (w.certifications && w.certifications.length) ? w.certifications.join(', ') : null],
-    ['Notes / condition', w.conditionNotes || null]
-  ].filter(([, value]) => value);
-  const detailsListHtml = detailRows.length === 0 ? '' : `
-    <div class="section" style="margin-top:20px;padding-top:16px;">
-      ${detailRows.map(([label, value]) => `
-        <div class="tg-stat-row"><span>${label}</span><b>${escapeHtml(String(value))}</b></div>
-      `).join('')}
-    </div>
-  `;
-
   return `
     <div class="collection-detail-body">
       ${hasStats ? dialSectionHtml : ''}
 
-      ${detailsListHtml}
-
-      <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit details</button>
+      <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit watch details</button>
 
       ${buildConditionInsightsHtml(w)}
 
