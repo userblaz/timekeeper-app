@@ -51,6 +51,40 @@ function formatGmtOffset(minutes){
   return `UTC${sign}${h}${m ? ':' + String(m).padStart(2,'0') : ':00'}`;
 }
 
+// How far the bezel needs to turn so the chosen zone's hour lines up under
+// the GMT hand's own current position. The hand always points to raw UTC
+// (utcHours24/24*360, unrotated ring) — turning the ring by this many
+// degrees moves the label that used to be at the hand's position over to
+// wherever "the hand's UTC hour, plus this offset" actually sits, which
+// is exactly the target zone's own hour. Negative because moving the
+// ring's hour-N label to a *later* clock position (further clockwise)
+// needs the ring to turn the opposite way, the same way turning a real
+// bezel counter-clockwise brings a later hour under a fixed pointer.
+function gmtBezelRotationDeg(offsetMinutes){
+  return -(offsetMinutes / 60) * 15; // 360°/24h = 15° per hour
+}
+
+// The ring's 12 hour labels (every 2 hours — same angular spacing as the
+// 1-12 numerals) at a given bezel rotation. Rebuilt wholesale rather than
+// left as a static shape with a group transform: an SVG group transform
+// would rotate the text glyphs themselves right along with their
+// positions, leaving them tilted (upside down at a 12-hour offset) —
+// baking the rotation into each label's own (x,y) instead keeps every
+// number upright regardless of how far the bezel has turned. Used both
+// for the dial's own static render and by runClockGmtDemo, which redraws
+// this every animation frame as the bezel sweeps.
+function buildGmtRingLabelsHtml(cx, cy, rotationDeg){
+  const ringR = 92;
+  let labels = '';
+  for(let h = 0; h < 24; h += 2){
+    const angle = (h / 24 * 360) + rotationDeg;
+    const rad = (angle - 90) * Math.PI / 180;
+    const x = cx + ringR * Math.cos(rad), y = cy + ringR * Math.sin(rad);
+    labels += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="11" font-family="'Inter',sans-serif" font-weight="600" fill="#3B82F6">${h}</text>`;
+  }
+  return labels;
+}
+
 function buildAnalogClockFace(){
   const cx = 200, cy = 200, R = 180;
   let ticks = '';
@@ -102,7 +136,10 @@ function buildAnalogClockFace(){
   // to read as a distinct complication from the black time-of-day hands
   // at a glance. Shorter than the minute hand and longer than the hour
   // hand, with a small arrowhead, the common real-watch shape for telling
-  // it apart from both even before its color registers.
+  // it apart from both even before its color registers. Always tracks raw
+  // UTC, continuously — a true-GMT hand is never itself adjusted for the
+  // second zone; see updateAnalogClock, where its angle is set alongside
+  // the other three hands.
   let gmtHand = '';
   if(showClockGmt){
     gmtHand = `
@@ -113,26 +150,17 @@ function buildAnalogClockFace(){
     `;
   }
 
-  // An inner 24-hour scale, shown only while GMT is on — a real GMT watch
-  // usually reads its hand off a rotating bezel, but this dial has no
-  // bezel to rotate, so this is a fixed ring inside the regular 1-12
-  // numerals instead: reading where the blue hand points against it gives
-  // the target zone's own hour directly, no bezel adjustment needed. Same
-  // 12 angular positions the 1-12 numerals already sit at (each 2-hour
-  // step here is exactly the same 30° as each 1-hour step there) — just
-  // one ring further in, labeled 0-22, and in the hand's own blue so the
-  // two read as a matched pair.
+  // The rotating bezel this dial doesn't have room for on the outside —
+  // an inner 24-hour ring instead, which is what actually encodes the
+  // chosen second zone: turning it (buildGmtRingLabelsHtml) lines its
+  // hour numbers up against the GMT hand above, which itself never
+  // changes for the zone picked — only the ring does. Same 12 angular
+  // positions the 1-12 numerals already sit at before any rotation (each
+  // 2-hour step here is the same 30° as each 1-hour step there), in the
+  // hand's own blue so the two read as a matched pair.
   let gmtRing = '';
   if(showClockGmt){
-    const ringR = 92;
-    let ringLabels = '';
-    for(let h = 0; h < 24; h += 2){
-      const angle = h / 24 * 360;
-      const rad = (angle - 90) * Math.PI / 180;
-      const x = cx + ringR*Math.cos(rad), y = cy + ringR*Math.sin(rad);
-      ringLabels += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="11" font-family="'Inter',sans-serif" font-weight="600" fill="#3B82F6">${h}</text>`;
-    }
-    gmtRing = `<g id="analogGmtRing">${ringLabels}</g>`;
+    gmtRing = `<g id="analogGmtRing">${buildGmtRingLabelsHtml(cx, cy, gmtBezelRotationDeg(clockGmtOffsetMinutes))}</g>`;
   }
 
   return `
@@ -162,7 +190,7 @@ const CLOCK_TICK_BPH = 28000; // beats per hour the analog second hand steps at
 let clockDateDemoRunning = false;
 
 function updateAnalogClock(){
-  if(clockDateDemoRunning || clockGmtDemoRunning) return;
+  if(clockDateDemoRunning) return;
   const hourEl = document.getElementById('analogHourHand');
   if(!hourEl) return;
   const minuteEl = document.getElementById('analogMinuteHand');
@@ -181,15 +209,16 @@ function updateAnalogClock(){
   if(minuteEl) minuteEl.setAttribute('transform', `rotate(${minAngle.toFixed(2)} 200 200)`);
   if(secondEl) secondEl.setAttribute('transform', `rotate(${secAngle.toFixed(2)} 200 200)`);
 
-  // One turn per 24 hours — half the plain hour hand's own speed — using
-  // the same UTC-epoch-plus-offset approach as the old GMT window did, so
-  // the target zone's wall-clock hour comes out right regardless of the
-  // device's own timezone.
+  // One turn per 24 real hours, always raw UTC — a true-GMT hand is never
+  // itself adjusted for the second zone (see the comment on gmtHand,
+  // buildAnalogClockFace); it's the bezel ring that encodes the chosen
+  // offset, not this. So this never needs to pause for runClockGmtDemo
+  // the way the local hands above pause for runClockDateDemo — that demo
+  // only ever touches the ring now, never this hand.
   const gmtEl = document.getElementById('analogGmtHand');
   if(gmtEl){
-    const zoneDate = new Date(now.getTime() + clockGmtOffsetMinutes * 60000);
-    const gmtHours24 = zoneDate.getUTCHours() + zoneDate.getUTCMinutes()/60 + zoneDate.getUTCSeconds()/3600;
-    gmtEl.setAttribute('transform', `rotate(${(gmtHours24/24*360).toFixed(2)} 200 200)`);
+    const utcHours24 = now.getUTCHours() + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600;
+    gmtEl.setAttribute('transform', `rotate(${(utcHours24/24*360).toFixed(2)} 200 200)`);
   }
 }
 
@@ -334,22 +363,22 @@ async function runClockDateDemo(){
   }
 }
 
-// Set for as long as runClockGmtDemo (below) is driving the GMT hand
-// itself — same reasoning as clockDateDemoRunning above, and checked
-// alongside it in updateAnalogClock so the live tick can't fight either
-// demo.
+// Set for as long as runClockGmtDemo (below) is turning the bezel ring
+// itself — same reasoning as clockDateDemoRunning above, but this one
+// doesn't need checking in updateAnalogClock: the GMT hand it drives
+// never depends on the chosen offset (see that function's own comment),
+// so there's nothing there for this demo to fight.
 let clockGmtDemoRunning = false;
 
-// The GMT hand swept through a couple of nearby zones before settling on
-// the one actually chosen — the feel of turning a GMT bezel past a few
-// stops on the way to the target, same eased-rotation approach as
-// runClockDateDemo's own hand movement (animateTo below is that
-// function's animateTo, generalized to take an id instead of assuming
-// which hand).
+// The bezel ring turned through a couple of nearby zones before settling
+// on the one actually chosen — the feel of turning a real GMT bezel past
+// a few stops on the way to the target. Same eased-rotation approach as
+// runClockDateDemo's own hand movement, just applied to the ring's
+// rotation instead of a hand's.
 async function runClockGmtDemo(){
   if(clockGmtDemoRunning) return;
-  const gmtEl = document.getElementById('analogGmtHand');
-  if(!gmtEl) return;
+  const ringEl = document.getElementById('analogGmtRing');
+  if(!ringEl) return;
 
   // Same reasoning as runClockDateDemo's own scroll above — this button
   // sits below both help blocks, well off-screen from the dial.
@@ -363,27 +392,22 @@ async function runClockGmtDemo(){
   if(checkboxEl) checkboxEl.disabled = true;
   if(selectEl) selectEl.disabled = true;
 
-  const stillOnScreen = () => document.body.contains(gmtEl);
-  const angleForOffset = (mins) => {
-    const zoneDate = new Date(trueNow().getTime() + mins * 60000);
-    const hours24 = zoneDate.getUTCHours() + zoneDate.getUTCMinutes()/60 + zoneDate.getUTCSeconds()/3600;
-    return hours24 / 24 * 360;
-  };
-  const animateHandTo = (el, fromAngle, toAngle, duration) => new Promise(resolve => {
+  const stillOnScreen = () => document.body.contains(ringEl);
+  const setRingRotation = (deg) => { ringEl.innerHTML = buildGmtRingLabelsHtml(200, 200, deg); };
+  const animateRingTo = (fromDeg, toDeg, duration) => new Promise(resolve => {
     const start = performance.now();
     function tick(now){
       if(!stillOnScreen()){ resolve(); return; }
       const t = Math.min(1, (now - start) / duration);
-      const angle = fromAngle + (toAngle - fromAngle) * easeInOutCubic(t);
-      el.setAttribute('transform', `rotate(${angle.toFixed(2)} 200 200)`);
+      setRingRotation(fromDeg + (toDeg - fromDeg) * easeInOutCubic(t));
       if(t < 1) requestAnimationFrame(tick); else resolve();
     }
     requestAnimationFrame(tick);
   });
 
   try{
-    let curAngle = angleForOffset(clockGmtOffsetMinutes);
-    gmtEl.setAttribute('transform', `rotate(${curAngle.toFixed(2)} 200 200)`);
+    let curDeg = gmtBezelRotationDeg(clockGmtOffsetMinutes);
+    setRingRotation(curDeg);
     // Two nearby stops on the way there, clamped to the same range the
     // picker itself offers, so the "browsing past a few zones" feel never
     // implies a target the dropdown wouldn't actually let you pick.
@@ -395,20 +419,21 @@ async function runClockGmtDemo(){
     for(const offset of stops){
       // Shortest path each leg — this is meant to read as "dialing in a
       // couple of nearby zones," not a fast-forward through the whole
-      //24-hour scale the way the date demo's sweep deliberately is.
-      const targetAngle = angleForOffset(offset);
-      const delta = ((targetAngle - curAngle + 540) % 360) - 180;
-      await animateHandTo(gmtEl, curAngle, curAngle + delta, 700);
+      // 24-hour scale the way the date demo's sweep deliberately is.
+      const targetDeg = gmtBezelRotationDeg(offset);
+      const delta = ((targetDeg - curDeg + 540) % 360) - 180;
+      await animateRingTo(curDeg, curDeg + delta, 700);
       if(!stillOnScreen()) return;
-      curAngle = (curAngle + delta + 360) % 360;
+      curDeg = (curDeg + delta + 360) % 360;
     }
   } finally {
     clockGmtDemoRunning = false;
     if(stillOnScreen()){
-      // Resyncs to the exact live angle — the animation's own last frame
-      // is only accurate to the moment its final leg started, and real
-      // time has moved on by however long the whole sequence took.
-      updateAnalogClock();
+      // Resyncs to the exact rotation for the chosen offset — the
+      // animation's own last frame is only accurate to the moment its
+      // final leg started, and this normalizes curDeg's own wrapped
+      // value back to gmtBezelRotationDeg's plain output regardless.
+      setRingRotation(gmtBezelRotationDeg(clockGmtOffsetMinutes));
       if(btn){ btn.disabled = false; btn.textContent = 'Show set GMT on clock'; }
       if(checkboxEl) checkboxEl.disabled = false;
       if(selectEl) selectEl.disabled = false;
