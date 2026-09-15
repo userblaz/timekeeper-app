@@ -85,7 +85,12 @@ function buildMenuViewHtml(){
         <div class="profile-theme-row">
           <span id="profileThemeLabel">${getSavedTheme() === 'light' ? 'Light mode' : 'Dark mode'}</span>
           <label class="profile-switch">
-            <input type="checkbox" id="profileThemeToggle" ${getSavedTheme() === 'light' ? 'checked' : ''} />
+            <!-- The switch reads as "dark mode is on", not "light mode is
+                 on" — checked (lit, slid over) means dark, unchecked
+                 (plain, resting) means light, so the switch's own on/off
+                 look matches which mode is actually active instead of
+                 showing "off" while dark mode is running. -->
+            <input type="checkbox" id="profileThemeToggle" ${getSavedTheme() === 'light' ? '' : 'checked'} />
             <span class="profile-switch-track"><span class="profile-switch-thumb"></span></span>
           </label>
         </div>
@@ -239,7 +244,7 @@ function attachProfileHandlers(){
   const themeToggleEl = document.getElementById('profileThemeToggle');
   if(themeToggleEl){
     themeToggleEl.onchange = () => {
-      const theme = themeToggleEl.checked ? 'light' : 'dark';
+      const theme = themeToggleEl.checked ? 'dark' : 'light';
       saveThemePreference(theme);
       const labelEl = document.getElementById('profileThemeLabel');
       if(labelEl) labelEl.textContent = theme === 'light' ? 'Light mode' : 'Dark mode';
