@@ -1975,27 +1975,6 @@
     -webkit-user-select:none;
     user-select:none;
   }
-  /* The reorder handle: its own element specifically so its pointerdown can
-     stopPropagation() before the card's tap-to-open or swipe-to-delete
-     listeners ever see it (wireCollectionReorder, collection.js) — CSS
-     alone can't make one gesture win over another, only JS ordering can.
-     touch-action:none hands the browser none of this element's touch
-     input, the same way pan-y hands the card all of its vertical input —
-     each element owns exactly the gesture meant for it. */
-  .collection-drag-handle{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    flex-shrink:0;
-    width:28px;
-    align-self:stretch;
-    margin:-12px 0;
-    color:var(--grey-light);
-    cursor:grab;
-    touch-action:none;
-    -webkit-user-select:none;
-    user-select:none;
-  }
   /* Elevated out of the row's own overflow:hidden (needed so the lift
      shadow below isn't clipped by the corner-rounding it's set up for) and
      above every other row for the duration of the drag. */
@@ -2006,9 +1985,15 @@
   .swipe-row.dragging .collection-card{
     box-shadow:0 16px 32px -10px var(--shadow-c);
     transform:scale(1.02);
-  }
-  .swipe-row.dragging .collection-drag-handle{
     cursor:grabbing;
+    /* Only switched from the card's normal pan-y (styles.css, above) once a
+       long-press actually wins (wireCollectionReorder, collection.js) —
+       pan-y hands vertical movement straight to the browser as a page
+       scroll, which is exactly what an ordinary scroll starting on this
+       card needs right up until that happens. none from the first touch
+       instead would mean reimplementing scroll-passthrough by hand for
+       every tap and swipe that was never a reorder to begin with. */
+    touch-action:none;
   }
 
   /* Bigger than the chart steppers it borrows its shape from — this one is a

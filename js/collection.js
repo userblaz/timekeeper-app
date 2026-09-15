@@ -74,7 +74,12 @@ function buildCollectionTabHtml(){
   // the top rather than buried under a full list of owned watches.
   const watchesHtml = addingCollectionWatch ? '' : state.watches.map(w => buildCollectionCard(w)).join('');
   const addHtml = buildAddWatchHtml();
-  const headingHtml = addingCollectionWatch ? '' : `<h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>`;
+  // The hint only earns its place once there's an actual order to change —
+  // a single watch has nowhere to drag to.
+  const headingHtml = addingCollectionWatch ? '' : `
+    <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
+    ${state.watches.length > 1 ? `<p class="hint" style="margin:-6px 0 12px;">Drag cards to reorder</p>` : ''}
+  `;
 
   return `
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
@@ -311,19 +316,6 @@ function buildPowerReserveHtml(w){
   `;
 }
 
-// A mainspring: the thing the button actually refers to. Deliberately not a
-// circular arrow, which every app on the phone already uses for "refresh".
-// Six filled dots, not a stroked icon like the others on this card — a grab
-// handle reads better solid, and it never needs to match an active/inactive
-// state the way the wind icon does.
-function dragHandleIconSvg(){
-  return `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none">
-    <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
-    <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
-    <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
-  </svg>`;
-}
-
 // Stands in for a watch's own photo wherever one hasn't been set yet — on
 // a card in a list, never a spot that's itself clickable to add one (that's
 // a proper "Add photo" button, in the edit form only — see
@@ -438,6 +430,11 @@ function wireCollectionSwipe(cardSelector = '.collection-card', revealPx = SWIPE
 
     card.addEventListener('pointermove', (e) => {
       if(e.buttons === 0 && e.pointerType === 'mouse') return;
+      // A long-press on this same card has claimed the gesture as a reorder
+      // drag instead (wireCollectionReorder, below) — once that's happened,
+      // this listener has to back off entirely rather than also interpret
+      // the same movement as a swipe.
+      if(row.dataset.reordering === '1') return;
       const mx = e.clientX - startX, my = e.clientY - startY;
       if(!decided){
         // Wait for enough movement to tell a swipe from a scroll or a tap,
@@ -475,13 +472,16 @@ function wireCollectionSwipe(cardSelector = '.collection-card', revealPx = SWIPE
   });
 }
 
-// Collection tab's drag-to-reorder. Deliberately its own handle rather than
-// making the whole card draggable: the card already owns two gestures (tap
-// to open, horizontal drag to reveal delete — wireCollectionSwipe above),
-// and vertical movement on the card is left to the browser for ordinary
-// page scrolling (touch-action:pan-y, see styles.css). Putting reordering on
-// a dedicated element means none of that has to be told apart from a
-// reorder drag — grabbing the handle is the only way in.
+// Collection tab's drag-to-reorder. The whole card is the drag target now,
+// rather than a dedicated handle — a long press (REORDER_LONG_PRESS_MS)
+// held still is what tells a reorder apart from the card's other two
+// gestures (tap to open, horizontal drag to reveal delete —
+// wireCollectionSwipe above) and from the browser's own vertical page
+// scroll, the same way picking something up on a phone home screen works.
+// Real movement before the hold completes cancels it outright and leaves
+// the gesture to whichever of those it actually was — wireCollectionSwipe
+// gets first refusal on it via its own, independent pointerdown/pointermove
+// pair on the same card; this only ever steps in once the hold wins.
 //
 // Manual pointer tracking rather than the HTML5 drag-and-drop API, same
 // reasoning as wireCollectionSwipe: this is a phone PWA, and native DnD's
@@ -490,15 +490,22 @@ function wireCollectionSwipe(cardSelector = '.collection-card', revealPx = SWIPE
 // same principle as the swipe gesture and the Add Watch search box's own
 // lesson about not rebuilding the DOM out from under an in-progress
 // gesture.
+const REORDER_LONG_PRESS_MS = 400;
+// Set the moment a long-press wins, checked by the viewcollection click
+// handler the same way swipeEndedAt already is — releasing a drag (or even
+// just a long-press that never moved anywhere) still ends in a pointerup,
+// which would otherwise also open the watch that was just held down on.
+let reorderEndedAt = 0;
 function wireCollectionReorder(){
   const list = document.querySelector('.collection-list');
   if(!list) return;
 
-  document.querySelectorAll('.collection-drag-handle').forEach(handle => {
-    const row = handle.closest('.swipe-row');
-    if(!row) return;
+  document.querySelectorAll('.collection-list > .swipe-row').forEach(row => {
+    const card = row.querySelector('.collection-card');
+    if(!card) return;
 
-    let dragging = false, startY = 0, startIndex = 0, targetIndex = 0;
+    let longPressTimer = null;
+    let dragging = false, startX = 0, startY = 0, startIndex = 0, targetIndex = 0;
     let rows = [], tops = [], heights = [];
 
     const shiftFor = (i) => {
@@ -512,59 +519,91 @@ function wireCollectionReorder(){
       return '';
     };
 
-    handle.addEventListener('pointerdown', (e) => {
-      // The card underneath owns tap-to-open and swipe-to-delete — this must
-      // never reach either of those listeners.
-      e.stopPropagation();
-      if(e.pointerType === 'mouse' && e.button !== 0) return;
+    const cancelLongPress = () => {
+      if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
+    };
+
+    const beginDrag = (pointerId) => {
       rows = Array.from(list.querySelectorAll(':scope > .swipe-row'));
       startIndex = rows.indexOf(row);
       if(startIndex === -1 || rows.length < 2) return;
       closeSwipeRows(null);
       dragging = true;
-      startY = e.clientY;
       targetIndex = startIndex;
       tops = rows.map(r => r.offsetTop);
       heights = rows.map(r => r.offsetHeight);
+      // The class does two jobs: the lift/scale feedback that confirms the
+      // hold actually won (see styles.css), and — same rule — switches this
+      // card's touch-action to none. pan-y (its normal value) hands vertical
+      // movement straight to the browser as a page scroll; changing that
+      // only once a drag really starts, rather than from the first touch,
+      // is what lets an ordinary scroll that happens to begin on this card
+      // keep working right up until a long-press actually wins.
       row.classList.add('dragging');
+      // Marks this row as claimed for wireCollectionSwipe's own listener on
+      // the same card — see the check at the top of its pointermove.
+      row.dataset.reordering = '1';
       row.style.transition = 'none';
-      handle.setPointerCapture(e.pointerId);
+      try{ card.setPointerCapture(pointerId); }catch(e){}
+    };
+
+    card.addEventListener('pointerdown', (e) => {
+      if(e.pointerType === 'mouse' && e.button !== 0) return;
+      startX = e.clientX; startY = e.clientY;
+      dragging = false;
+      cancelLongPress();
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        beginDrag(e.pointerId);
+      }, REORDER_LONG_PRESS_MS);
     });
 
-    handle.addEventListener('pointermove', (e) => {
-      if(!dragging) return;
-      const dy = e.clientY - startY;
-      row.style.transform = `translateY(${dy}px)`;
+    card.addEventListener('pointermove', (e) => {
+      if(dragging){
+        const dy = e.clientY - startY;
+        row.style.transform = `translateY(${dy}px)`;
 
-      // Every top/height here is from the pre-drag layout, since nothing
-      // else actually moves in the DOM until drop — only the dragged row's
-      // own translateY changes live, so its neighbors' positions stay a
-      // stable yardstick for "has it been dragged past this one yet".
-      const draggedCenter = tops[startIndex] + heights[startIndex] / 2 + dy;
-      let newIndex = startIndex;
-      rows.forEach((r, i) => {
-        if(i === startIndex) return;
-        const center = tops[i] + heights[i] / 2;
-        if(i < startIndex && draggedCenter < center) newIndex = Math.min(newIndex, i);
-        if(i > startIndex && draggedCenter > center) newIndex = Math.max(newIndex, i);
-      });
-      targetIndex = newIndex;
+        // Every top/height here is from the pre-drag layout, since nothing
+        // else actually moves in the DOM until drop — only the dragged
+        // row's own translateY changes live, so its neighbors' positions
+        // stay a stable yardstick for "has it been dragged past this one
+        // yet".
+        const draggedCenter = tops[startIndex] + heights[startIndex] / 2 + dy;
+        let newIndex = startIndex;
+        rows.forEach((r, i) => {
+          if(i === startIndex) return;
+          const center = tops[i] + heights[i] / 2;
+          if(i < startIndex && draggedCenter < center) newIndex = Math.min(newIndex, i);
+          if(i > startIndex && draggedCenter > center) newIndex = Math.max(newIndex, i);
+        });
+        targetIndex = newIndex;
 
-      rows.forEach((r, i) => {
-        if(i === startIndex) return;
-        r.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
-        r.style.transform = shiftFor(i);
-      });
+        rows.forEach((r, i) => {
+          if(i === startIndex) return;
+          r.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
+          r.style.transform = shiftFor(i);
+        });
+        return;
+      }
+      // Still waiting out the hold — real movement this early means it's a
+      // tap, a scroll or a swipe instead, so the long-press never fires.
+      if(longPressTimer){
+        const mx = e.clientX - startX, my = e.clientY - startY;
+        if(Math.abs(mx) > 8 || Math.abs(my) > 8) cancelLongPress();
+      }
     });
 
     const finish = () => {
+      cancelLongPress();
       if(!dragging) return;
       dragging = false;
+      delete row.dataset.reordering;
       rows.forEach(r => {
         r.style.transition = '';
         r.style.transform = '';
         r.classList.remove('dragging');
       });
+      reorderEndedAt = Date.now();
       if(targetIndex !== startIndex){
         const [moved] = state.watches.splice(startIndex, 1);
         state.watches.splice(targetIndex, 0, moved);
@@ -572,8 +611,8 @@ function wireCollectionReorder(){
         render();
       }
     };
-    handle.addEventListener('pointerup', finish);
-    handle.addEventListener('pointercancel', finish);
+    card.addEventListener('pointerup', finish);
+    card.addEventListener('pointercancel', finish);
   });
 }
 
@@ -636,10 +675,6 @@ function buildCollectionCard(w){
       </button>
     </div>
     <div class="collection-card" data-action="viewcollection" data-id="${w.id}">
-      ${state.watches.length > 1 ? `
-      <span class="collection-drag-handle" aria-label="Reorder ${escapeHtml(w.name)}">
-        ${dragHandleIconSvg()}
-      </span>` : ''}
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span>${buildCollectionCardStats(w)}</div>
@@ -1396,9 +1431,11 @@ async function addCollectionWatch(name){
 function attachCollectionHandlers(){
   document.querySelectorAll('[data-action="viewcollection"]').forEach(el => {
     el.onclick = () => {
-      // A swipe ends in a click. Ignore that one, and treat a tap on an
-      // already-open card as "put it back" rather than "open me".
-      if(Date.now() - swipeEndedAt < 300) return;
+      // A swipe, or a reorder long-press (even one that never actually
+      // moved anywhere), both end in a click same as an ordinary tap does
+      // — ignore that one. Treat a tap on an already-open card as "put it
+      // back" rather than "open me".
+      if(Date.now() - swipeEndedAt < 300 || Date.now() - reorderEndedAt < 300) return;
       const row = el.closest('.swipe-row');
       if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
       viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null;
