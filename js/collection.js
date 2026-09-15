@@ -1686,9 +1686,20 @@ function attachCollectionHandlers(){
       const first = filteredWatchCatalog()[0];
       if(first) selectCatalogWatch(first.id);
     });
+    // The keyboard's opening animation takes a beat before
+    // visualViewport.height reflects the shrunk value — an immediate
+    // measurement on focus can still read the pre-keyboard height. The
+    // follow-up catches that; every keystroke after this re-measures
+    // fresh regardless (see refreshCatalogResults), so a stale one-off
+    // guess here only matters for the instant between focus and typing.
+    catalogSearchInput.addEventListener('focus', () => {
+      syncCatalogResultsHeight();
+      setTimeout(syncCatalogResultsHeight, 350);
+    });
   }
   wireCatalogFilterHandlers();
   wireCatalogResultButtons();
+  syncCatalogResultsHeight();
 }
 
 // Only fires because app.js's multi-select/select-option handlers dispatch
@@ -1741,6 +1752,28 @@ function refreshCatalogResults(){
   if(!results) return;
   results.innerHTML = buildCatalogResultsHtml();
   wireCatalogResultButtons();
+  syncCatalogResultsHeight();
+}
+
+// Caps the results list against the keyboard instead of the fixed 280px
+// the CSS used to hard-code — that cut the list off well short of the
+// keyboard on a tall phone, leaving a dead gap of plain background below
+// it. Measured fresh on demand rather than kept in sync with a live
+// resize listener: visualViewport's own resize event doesn't fire
+// reliably for the keyboard on iOS (see updateKeyboardHideState's own
+// comment, app.js, which hit the exact same issue for a different
+// feature). Every call site here — focusing the field, typing a
+// character, changing a filter — already happens with the keyboard
+// actually open, so a fresh read of visualViewport.height at each of
+// those moments is correct without needing a live listener at all. With
+// no keyboard open (desktop, or no visualViewport support), this just
+// falls back to the bottom of the window — "go till the end" either way.
+function syncCatalogResultsHeight(){
+  const results = document.getElementById('watchCatalogResults');
+  if(!results) return;
+  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const available = viewportHeight - results.getBoundingClientRect().top - 12;
+  results.style.maxHeight = Math.max(160, Math.round(available)) + 'px';
 }
 
 function refreshCatalogFilters(){

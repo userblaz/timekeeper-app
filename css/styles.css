@@ -2254,7 +2254,13 @@
   }
   /* Same boxed, scrollable treatment as .cert-checkbox-list — a bordered
      list living inside the card rather than the card's own edge, since
-     unlike everything else in this form it can run to more rows than fit. */
+     unlike everything else in this form it can run to more rows than fit.
+     max-height is a fallback only — syncCatalogResultsHeight (collection.js)
+     overrides it inline with the space actually available down to the
+     keyboard (or the bottom of the window, with none open) the moment the
+     field is focused or the results change, which is every case that
+     matters in practice; this just covers the instant before that first
+     runs. */
   .watch-catalog-results{
     display:flex;
     flex-direction:column;
