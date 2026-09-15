@@ -11,6 +11,9 @@
     --good:#22C55E;
     --bad:#F87171;
     --chart-line:#6B6B8C;
+    --chart-grid:rgba(255,255,255,0.08);
+    --chart-zero:rgba(255,255,255,0.18);
+    --warn:#FBBF24;
     --shadow-a:rgba(0,0,0,0.4);
     --shadow-b:rgba(0,0,0,0.5);
     --shadow-c:rgba(0,0,0,0.6);
@@ -41,6 +44,20 @@
     --good:#16A34A;
     --bad:#DC2626;
     --chart-line:#52526B;
+    /* Gridlines and the zero-reference line were a fixed translucent white
+       — nearly invisible against this theme's white chart background,
+       since white-on-white at low opacity is close to nothing at all. The
+       page's own ink color at the same low opacities keeps them just as
+       subtle here as the white versions are against the dark background,
+       same idea as the shadows just below. */
+    --chart-grid:rgba(20,20,28,0.08);
+    --chart-zero:rgba(20,20,28,0.18);
+    /* The dark theme's bright amber, used as text (the "low reserve"
+       label), reads poorly on this theme's near-white background —
+       amber-on-white is low-contrast regardless of how bright the amber
+       is. A darker, more saturated amber keeps the same "this needs
+       attention" color identity while staying legible on a light page. */
+    --warn:#B45309;
     /* Shadows tuned for dark backgrounds read as harsh, floating black
        smudges on a white page — much lighter and less opaque here, using
        the page's own ink color rather than pure black so they blend
@@ -576,7 +593,7 @@
     text-align:right;
     font-family:'Inter',sans-serif;
     font-size:9px;
-    color:#A1A1AA;
+    color:var(--grey);
     transform:translateY(-50%);
   }
   svg.chart{
@@ -1318,9 +1335,6 @@
     font-weight:600;
   }
   .quick-btn:active{background:var(--accent);color:#fff;border-color:var(--accent);}
-  /* On the blue snap-menu background, the buttons' own accent-blue numbers
-     would barely show — white keeps them readable against it. */
-  #snapDock .quick-btn{color:#fff;}
   .manual-link{
     background:none;
     border:none;
@@ -2223,7 +2237,7 @@
     font-variant-numeric:tabular-nums;
   }
   .reserve-hint{color:var(--grey-light);}
-  .reserve-label.low{color:#FBBF24;}
+  .reserve-label.low{color:var(--warn);}
   .reserve-label.empty{color:var(--bad);}
   .collection-card-edit{
     flex-direction:column;

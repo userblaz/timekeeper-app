@@ -71,7 +71,7 @@ function buildLineChart(items, opts){
   const ticks = [max, min + range*0.75, (max+min)/2, min + range*0.25, min];
   const gridlines = compact ? '' : ticks.map(t => {
     const y = yAt(t);
-    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="var(--chart-grid)" stroke-width="1" />`;
   }).join('');
 
   const xLabelsSvg = compact ? '' : items.map((it,i) => {
@@ -114,7 +114,7 @@ function buildLineChart(items, opts){
   const svg = `<svg class="chart${compact ? ' chart-compact' : ''}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
     ${gridlines}
     ${accuracyBandSvg}
-    <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${w-padR}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="3,3" />
+    <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${w-padR}" y2="${zeroY.toFixed(1)}" stroke="var(--chart-zero)" stroke-width="1" stroke-dasharray="3,3" />
     <path d="${path}" fill="none" stroke="${opts.lineColor}" stroke-width="2" />
     ${dotsSvg}
     ${xLabelsSvg}
