@@ -1788,6 +1788,17 @@ function pollCatalogResultsMinHeight(){
   if(catalogResultsPollTimer) clearInterval(catalogResultsPollTimer);
   let ticks = 0;
   syncCatalogResultsMinHeight();
+  // Rewriting a tall element's min-height while the page is mid-scroll is
+  // a known trigger for Safari leaving unpainted blank bands behind —
+  // scrolling to browse results right after tapping in is the exact case
+  // that hits this, since it lands inside this same one-second polling
+  // window. Bailing out on the first scroll means the poll only ever
+  // mutates layout while the page is actually still, never while a
+  // gesture is moving it.
+  const stopOnScroll = () => {
+    if(catalogResultsPollTimer){ clearInterval(catalogResultsPollTimer); catalogResultsPollTimer = null; }
+  };
+  window.addEventListener('scroll', stopOnScroll, { once: true, passive: true });
   catalogResultsPollTimer = setInterval(() => {
     syncCatalogResultsMinHeight();
     ticks++;
