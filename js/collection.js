@@ -1753,6 +1753,22 @@ function refreshCatalogFilters(){
 function wireCatalogResultButtons(){
   document.querySelectorAll('[data-action="selectcatalogwatch"]').forEach(btn => {
     btn.onclick = () => selectCatalogWatch(btn.dataset.id);
+    // Stops this button from taking focus on click — without this, focus
+    // moving off the search input onto this (non-text) button fires
+    // 'focusin', which updateKeyboardHideState (app.js) reads as "the
+    // keyboard just closed" and reacts to by un-hiding the bottom tab
+    // bar, growing the page and shifting this whole results list out
+    // from under the cursor between mousedown and mouseup. A desktop
+    // mouse requires both to land on the same element for click to fire
+    // at all, so on a mouse that shift silently killed the very click
+    // that was supposed to select this result — the first tap looked
+    // like it did nothing, and only a second one (now that the layout
+    // had already settled) actually landed on anything. Touch's own
+    // click synthesis is forgiving of exactly this, which is why it
+    // never showed up on mobile. Same fix already used for the
+    // manual/catalog switch buttons (wireAddWatchModeSwitch) for the
+    // identical reason.
+    btn.onmousedown = (e) => e.preventDefault();
   });
 }
 
