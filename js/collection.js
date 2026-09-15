@@ -22,10 +22,6 @@ let watchSearchQuery = '';
 let watchSearchCaseMaterials = [];
 let watchSearchMovementTypes = [];
 let watchSearchDials = [];
-// The interval id from pollCatalogResultsHeight below, so a second focus
-// (or a quick blur/refocus) clears the previous run instead of stacking
-// two timers that both keep polling.
-let catalogResultsPollTimer = null;
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -1690,19 +1686,9 @@ function attachCollectionHandlers(){
       const first = filteredWatchCatalog()[0];
       if(first) selectCatalogWatch(first.id);
     });
-    // The keyboard's opening animation, and the browser's own scroll to
-    // bring the focused field into view, both take a beat before
-    // visualViewport.height and the field's position settle — a single
-    // guessed delay here previously missed on at least one real device
-    // (that device's animation apparently ran long enough to still be
-    // moving at 350ms). Polling a few times over the next second, instead
-    // of one bet on a fixed delay, means it stops missing regardless of
-    // how long that animation actually takes on a given device.
-    catalogSearchInput.addEventListener('focus', () => pollCatalogResultsHeight());
   }
   wireCatalogFilterHandlers();
   wireCatalogResultButtons();
-  syncCatalogResultsHeight();
 }
 
 // Only fires because app.js's multi-select/select-option handlers dispatch
@@ -1755,50 +1741,6 @@ function refreshCatalogResults(){
   if(!results) return;
   results.innerHTML = buildCatalogResultsHtml();
   wireCatalogResultButtons();
-  syncCatalogResultsHeight();
-}
-
-// Caps the results list against the keyboard instead of the fixed 280px
-// the CSS used to hard-code — that cut the list off well short of the
-// keyboard on a tall phone, leaving a dead gap of plain background below
-// it. Measured fresh on demand rather than kept in sync with a live
-// resize listener: visualViewport's own resize event doesn't fire
-// reliably for the keyboard on iOS (see updateKeyboardHideState's own
-// comment, app.js, which hit the exact same issue for a different
-// feature). Every call site here — focusing the field, typing a
-// character, changing a filter — already happens with the keyboard
-// actually open, so a fresh read of visualViewport.height at each of
-// those moments is correct without needing a live listener at all. With
-// no keyboard open (desktop, or no visualViewport support), this just
-// falls back to the bottom of the window — "go till the end" either way.
-function syncCatalogResultsHeight(){
-  const results = document.getElementById('watchCatalogResults');
-  if(!results) return;
-  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-  const available = viewportHeight - results.getBoundingClientRect().top - 12;
-  results.style.maxHeight = Math.max(160, Math.round(available)) + 'px';
-}
-
-// Re-measures every 120ms for a second after the field is focused, rather
-// than betting on one guessed delay — the keyboard's opening animation and
-// the browser's own scroll-into-view for the focused field both have to
-// finish before the field's position and visualViewport.height are done
-// moving, and neither is on a fixed schedule across devices. Every
-// keystroke after this still re-measures fresh on its own (see
-// refreshCatalogResults) — this only has to cover the window between focus
-// and the first character typed.
-function pollCatalogResultsHeight(){
-  if(catalogResultsPollTimer) clearInterval(catalogResultsPollTimer);
-  let ticks = 0;
-  syncCatalogResultsHeight();
-  catalogResultsPollTimer = setInterval(() => {
-    syncCatalogResultsHeight();
-    ticks++;
-    if(ticks >= 8){
-      clearInterval(catalogResultsPollTimer);
-      catalogResultsPollTimer = null;
-    }
-  }, 120);
 }
 
 function refreshCatalogFilters(){

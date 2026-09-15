@@ -2252,21 +2252,22 @@
   .watch-catalog-filters .select-wrap.select-open.drop-up .condition-select{
     border-radius:12px;
   }
-  /* Same boxed, scrollable treatment as .cert-checkbox-list — a bordered
-     list living inside the card rather than the card's own edge, since
-     unlike everything else in this form it can run to more rows than fit.
-     max-height is a fallback only — syncCatalogResultsHeight (collection.js)
-     overrides it inline with the space actually available down to the
-     keyboard (or the bottom of the window, with none open) the moment the
-     field is focused or the results change, which is every case that
-     matters in practice; this just covers the instant before that first
-     runs. */
+  /* Deliberately no max-height/internal scroll here any more — two rounds
+     of trying to cap this against the on-screen keyboard (measuring
+     visualViewport.height, then polling it) still cut the list off short
+     on a real device, because that measurement depends on exactly when
+     the keyboard's open animation and the browser's own scroll-into-view
+     for the field have actually finished, and neither is pinned down
+     enough to measure reliably. This card isn't a modal — the whole
+     Collection tab page scrolls normally — so the list just flows as
+     part of that instead: it grows to fit CATALOG_RESULTS_LIMIT rows
+     (collection.js) and the page scrolls to reach the rest, the same way
+     any other tall content on this page already works, with nothing to
+     get wrong. */
   .watch-catalog-results{
     display:flex;
     flex-direction:column;
     gap:2px;
-    max-height:280px;
-    overflow-y:auto;
     border:1px solid var(--line);
     border-radius:12px;
     background:var(--surface-2);
