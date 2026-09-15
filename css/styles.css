@@ -2252,18 +2252,18 @@
   .watch-catalog-filters .select-wrap.select-open.drop-up .condition-select{
     border-radius:12px;
   }
-  /* Deliberately no max-height/internal scroll here any more — two rounds
-     of trying to cap this against the on-screen keyboard (measuring
-     visualViewport.height, then polling it) still cut the list off short
-     on a real device, because that measurement depends on exactly when
-     the keyboard's open animation and the browser's own scroll-into-view
-     for the field have actually finished, and neither is pinned down
-     enough to measure reliably. This card isn't a modal — the whole
-     Collection tab page scrolls normally — so the list just flows as
-     part of that instead: it grows to fit CATALOG_RESULTS_LIMIT rows
+  /* Deliberately no max-height/internal scroll — this card isn't a modal,
+     the whole Collection tab page scrolls normally, so the list just
+     flows as part of that: it grows to fit CATALOG_RESULTS_LIMIT rows
      (collection.js) and the page scrolls to reach the rest, the same way
-     any other tall content on this page already works, with nothing to
-     get wrong. */
+     any other tall content here already works. min-height IS set, inline,
+     by syncCatalogResultsMinHeight (collection.js) — a floor, not a
+     ceiling, so a short result set still fills down toward the keyboard
+     instead of stopping short and leaving plain page background below it,
+     without ever risking hiding real results the way a mistimed ceiling
+     did (two earlier attempts at exactly that, both still cut real
+     results off short on a real device — see that function's own comment
+     for why a floor doesn't have the same failure mode). */
   .watch-catalog-results{
     display:flex;
     flex-direction:column;
