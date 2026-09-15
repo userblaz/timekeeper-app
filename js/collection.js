@@ -75,10 +75,14 @@ function buildCollectionTabHtml(){
   const watchesHtml = addingCollectionWatch ? '' : state.watches.map(w => buildCollectionCard(w)).join('');
   const addHtml = buildAddWatchHtml();
   // The hint only earns its place once there's an actual order to change —
-  // a single watch has nowhere to drag to.
+  // a single watch has nowhere to drag to. Same line as the count rather
+  // than its own row underneath: two short fragments of text, not two
+  // things worth a full line each.
   const headingHtml = addingCollectionWatch ? '' : `
-    <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
-    ${state.watches.length > 1 ? `<p class="hint" style="margin:-6px 0 12px;">Drag cards to reorder</p>` : ''}
+    <div class="section-title-row">
+      <h2 class="section-title">${state.watches.length} watch${state.watches.length===1?'':'es'} owned</h2>
+      ${state.watches.length > 1 ? `<span class="hint">Drag cards to reorder</span>` : ''}
+    </div>
   `;
 
   return `

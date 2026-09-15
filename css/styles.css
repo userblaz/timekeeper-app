@@ -593,6 +593,25 @@
     font-weight:600;
     margin:0 0 12px;
   }
+  /* Pairs the Collection list's watch count with its drag hint on one
+     line — a title used on its own (every other .section-title) keeps its
+     own bottom margin untouched; this only overrides it when there's a
+     second fragment of text sharing the row. */
+  .section-title-row{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:10px;
+    margin:0 0 12px;
+  }
+  .section-title-row .section-title{
+    margin:0;
+    white-space:nowrap;
+  }
+  .section-title-row .hint{
+    margin:0;
+    text-align:right;
+  }
 
   /* Form */
   form{
