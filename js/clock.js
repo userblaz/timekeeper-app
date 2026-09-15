@@ -195,7 +195,7 @@ async function runClockDateDemo(){
     const hoursForward = ((endHourFraction - 6 + 12) % 12) + 24;
     let dateFlipped = false;
     await new Promise(resolve => {
-      const duration = 2600;
+      const duration = 4200;
       const start = performance.now();
       function tick(now){
         if(!stillOnScreen()){ resolve(); return; }
