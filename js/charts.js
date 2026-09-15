@@ -207,7 +207,7 @@ function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate, compact
 function buildCardCharts(w){
   if(!w.readings || w.readings.length < 2) return '';
   const rated = computeReadingRates(w);
-  const compactOpts = {compact: true, compactWidth: 56, compactHeight: 26};
+  const compactOpts = {compact: true, compactWidth: 70, compactHeight: 26};
   return `<div class="mini-chart-stack">
     <div class="mini-chart-row">
       <span class="mini-chart-label">offset</span>
