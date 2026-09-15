@@ -2252,22 +2252,26 @@
   .watch-catalog-filters .select-wrap.select-open.drop-up .condition-select{
     border-radius:12px;
   }
-  /* Deliberately no max-height/internal scroll — this card isn't a modal,
-     the whole Collection tab page scrolls normally, so the list just
-     flows as part of that: it grows to fit CATALOG_RESULTS_LIMIT rows
-     (collection.js) and the page scrolls to reach the rest, the same way
-     any other tall content here already works. min-height IS set, inline,
-     by syncCatalogResultsMinHeight (collection.js) — a floor, not a
-     ceiling, so a short result set still fills down toward the keyboard
-     instead of stopping short and leaving plain page background below it,
-     without ever risking hiding real results the way a mistimed ceiling
-     did (two earlier attempts at exactly that, both still cut real
-     results off short on a real device — see that function's own comment
-     for why a floor doesn't have the same failure mode). */
+  /* No max-height/internal scroll — this card isn't a modal, the whole
+     Collection tab page scrolls normally, so the list just flows as part
+     of that: it grows to fit CATALOG_RESULTS_LIMIT rows (collection.js)
+     and the page scrolls to reach the rest.
+
+     min-height is a plain, static 50vh — not measured against
+     visualViewport.height and kept in sync from JS the way two earlier
+     attempts at this (a max-height version, then a min-height version)
+     both did. Both were JS mutating this element's height after paint,
+     on every focus/keystroke/scroll — and both caused real, different
+     rendering corruption on a real iOS device (missing/blank rows) that
+     never showed up in any simulated testing. A static value can't stop
+     exactly at the keyboard's edge the way a measured one theoretically
+     could, but it can't corrupt the render either, and it's the only one
+     of the three approaches that actually held up on a real phone. */
   .watch-catalog-results{
     display:flex;
     flex-direction:column;
     gap:2px;
+    min-height:50vh;
     border:1px solid var(--line);
     border-radius:12px;
     background:var(--surface-2);

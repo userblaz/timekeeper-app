@@ -22,10 +22,6 @@ let watchSearchQuery = '';
 let watchSearchCaseMaterials = [];
 let watchSearchMovementTypes = [];
 let watchSearchDials = [];
-// The interval id from pollCatalogResultsMinHeight below, so a second
-// focus (or a quick blur/refocus) clears the previous run instead of
-// stacking two timers that both keep polling.
-let catalogResultsPollTimer = null;
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -1690,17 +1686,9 @@ function attachCollectionHandlers(){
       const first = filteredWatchCatalog()[0];
       if(first) selectCatalogWatch(first.id);
     });
-    // Fills the box down toward the keyboard even when there are only a
-    // few matches, instead of it just shrink-wrapping to its rows and
-    // leaving plain page background below — see syncCatalogResultsMinHeight
-    // and the comment on .watch-catalog-results (styles.css) for why this
-    // is a min-height, not the max-height an earlier version of this fix
-    // tried and had to back out of.
-    catalogSearchInput.addEventListener('focus', () => pollCatalogResultsMinHeight());
   }
   wireCatalogFilterHandlers();
   wireCatalogResultButtons();
-  syncCatalogResultsMinHeight();
 }
 
 // Only fires because app.js's multi-select/select-option handlers dispatch
@@ -1753,60 +1741,6 @@ function refreshCatalogResults(){
   if(!results) return;
   results.innerHTML = buildCatalogResultsHtml();
   wireCatalogResultButtons();
-  syncCatalogResultsMinHeight();
-}
-
-// A floor under the results box, not a ceiling: a short list (or the
-// empty state, before anything's been typed) still fills down toward the
-// keyboard instead of shrink-wrapping to its own rows and leaving plain
-// page background below it. A *max*-height doing the equivalent job — two
-// separate attempts at one, actually — is what this replaces: both still
-// cut real results off short on a real device, because getting a ceiling
-// exactly right depends on knowing precisely when the keyboard's open
-// animation is done. A floor doesn't have that problem: reading
-// visualViewport.height a little early (before the keyboard's fully open)
-// just makes the box a bit taller than strictly necessary for a moment,
-// never shorter than its own content — nothing is ever hidden by this the
-// way it was by a too-small ceiling. Content past this floor still just
-// grows the box further and the page scrolls, same as always.
-function syncCatalogResultsMinHeight(){
-  const results = document.getElementById('watchCatalogResults');
-  if(!results) return;
-  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-  const available = viewportHeight - results.getBoundingClientRect().top - 12;
-  results.style.minHeight = Math.max(0, Math.round(available)) + 'px';
-}
-
-// Re-measures every 120ms for a second after the field is focused, same
-// reasoning as syncCatalogResultsMinHeight's own comment: the keyboard's
-// opening animation and the browser's scroll-into-view for the field
-// aren't on a fixed schedule, so one guessed delay isn't enough to catch
-// them settling. Every keystroke after this re-measures fresh on its own
-// (see refreshCatalogResults) — this only has to cover focus-to-first-
-// character.
-function pollCatalogResultsMinHeight(){
-  if(catalogResultsPollTimer) clearInterval(catalogResultsPollTimer);
-  let ticks = 0;
-  syncCatalogResultsMinHeight();
-  // Rewriting a tall element's min-height while the page is mid-scroll is
-  // a known trigger for Safari leaving unpainted blank bands behind —
-  // scrolling to browse results right after tapping in is the exact case
-  // that hits this, since it lands inside this same one-second polling
-  // window. Bailing out on the first scroll means the poll only ever
-  // mutates layout while the page is actually still, never while a
-  // gesture is moving it.
-  const stopOnScroll = () => {
-    if(catalogResultsPollTimer){ clearInterval(catalogResultsPollTimer); catalogResultsPollTimer = null; }
-  };
-  window.addEventListener('scroll', stopOnScroll, { once: true, passive: true });
-  catalogResultsPollTimer = setInterval(() => {
-    syncCatalogResultsMinHeight();
-    ticks++;
-    if(ticks >= 8){
-      clearInterval(catalogResultsPollTimer);
-      catalogResultsPollTimer = null;
-    }
-  }, 120);
 }
 
 function refreshCatalogFilters(){
