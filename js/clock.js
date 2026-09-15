@@ -173,8 +173,8 @@ function easeInOutCubic(t){ return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2
 // "yesterday" and when it rolls over to today again, so each change reads
 // as a deliberate step in the demo rather than the number just quietly
 // being different.
-function pulseDateWindow(){
-  const el = document.getElementById('analogDateWindow');
+function pulseWindow(elId){
+  const el = document.getElementById(elId);
   if(!el) return;
   el.classList.remove('date-pulse');
   // Forces a reflow so re-adding the class restarts the animation even if
@@ -184,6 +184,7 @@ function pulseDateWindow(){
   void el.getBoundingClientRect();
   el.classList.add('date-pulse');
 }
+function pulseDateWindow(){ pulseWindow('analogDateWindow'); }
 
 // Animates the hands through the safe date-setting procedure described in
 // buildClockDateHelpHtml: to 6 o'clock, the date back one day, then
@@ -301,6 +302,62 @@ async function runClockDateDemo(){
   }
 }
 
+let clockGmtDemoRunning = false;
+
+// A brief look at the GMT window "being set" — cycling through a couple
+// of nearby offsets before landing back on the one actually chosen, the
+// feel of turning a GMT bezel past a few zones on the way to the target
+// one. This window is text, not a rotating hand (see the comment on
+// buildClockGmtOffsetHtml — the two real mechanical GMT designs jump a
+// hand independently, which isn't what's built here), so there's no hand
+// to animate the way runClockDateDemo moves the hour/minute hands — the
+// window's own value changing is the whole of what's demonstrable.
+async function runClockGmtDemo(){
+  if(clockGmtDemoRunning) return;
+  const gmtTextEl = document.getElementById('analogGmtText');
+  if(!gmtTextEl) return;
+
+  clockGmtDemoRunning = true;
+  const btn = document.getElementById('clockGmtDemoBtn');
+  const checkboxEl = document.getElementById('clockGmtToggle');
+  const selectEl = document.getElementById('clockGmtOffset');
+  if(btn){ btn.disabled = true; btn.textContent = 'Watching…'; }
+  if(checkboxEl) checkboxEl.disabled = true;
+  if(selectEl) selectEl.disabled = true;
+
+  const stillOnScreen = () => document.body.contains(gmtTextEl);
+  const showOffset = (mins) => {
+    const nowMs = trueNow().getTime();
+    const zoneDate = new Date(nowMs + mins * 60000);
+    gmtTextEl.textContent = String(zoneDate.getUTCHours()).padStart(2,'0') + ':' + String(zoneDate.getUTCMinutes()).padStart(2,'0');
+    pulseWindow('analogGmtWindow');
+  };
+
+  try{
+    const actual = clockGmtOffsetMinutes;
+    // Two nearby stops on the way there, clamped to the same range the
+    // picker itself offers, so the "browsing past a few zones" feel never
+    // shows a value the dropdown wouldn't.
+    const preview1 = Math.max(-720, Math.min(840, actual - 180));
+    const preview2 = Math.max(-720, Math.min(840, actual + 120));
+    showOffset(preview1);
+    await wait(550);
+    if(!stillOnScreen()) return;
+    showOffset(preview2);
+    await wait(550);
+    if(!stillOnScreen()) return;
+    showOffset(actual);
+    await wait(200);
+  } finally {
+    clockGmtDemoRunning = false;
+    if(stillOnScreen()){
+      if(btn){ btn.disabled = false; btn.textContent = 'Show set GMT on clock'; }
+      if(checkboxEl) checkboxEl.disabled = false;
+      if(selectEl) selectEl.disabled = false;
+    }
+  }
+}
+
 
 function buildClockTabHtml(){
   return `
@@ -324,14 +381,14 @@ function buildClockTabHtml(){
       </div>
       ${showClockGmt ? buildClockGmtOffsetHtml() : ''}
       ${showClockDate ? buildClockDateHelpHtml() : ''}
+      ${showClockGmt ? buildClockGmtHelpHtml() : ''}
     </div>
   `;
 }
 
 // The second-timezone picker for the GMT window — its own row, separate
-// from the (still pending) GMT help block below, since it needs to be
-// usable the moment the checkbox is on regardless of whether that block
-// has anything in it yet.
+// from the GMT help block below, since it needs to be usable the moment
+// the checkbox is on regardless of that block.
 function buildClockGmtOffsetHtml(){
   const optionsHtml = GMT_OFFSET_OPTIONS.map(m =>
     `<option value="${m}" ${m === clockGmtOffsetMinutes ? 'selected' : ''}>${formatGmtOffset(m)}</option>`
@@ -352,6 +409,30 @@ function buildClockDateHelpHtml(){
       <p>To safely set the date on a mechanical watch, <b>move the time hands to 6 o'clock first</b>, then adjust the date to yesterday, and finally advance the time until the correct date and current time roll over.</p>
       <p><b>Never</b> set the date if the watch hands show <b>between 9:00 PM and 3:00 AM</b>, as internal calendar gears are engaged and forcing a change can break the movement.</p>
       <button type="button" class="btn-secondary" id="clockDateDemoBtn">Show set date on clock</button>
+    </div>
+  `;
+}
+
+// Only shown once the GMT window is actually on the dial, same reasoning
+// as buildClockDateHelpHtml above.
+function buildClockGmtHelpHtml(){
+  return `
+    <div class="clock-date-help">
+      <ol class="clock-help-list">
+        <li>Wind the watch if it has stopped. Give it about 20–30 gentle turns of the crown.</li>
+        <li>Pull the crown to the time-setting position.</li>
+        <li>Set the regular hour and minute hands to the correct local time.</li>
+        <li>Set the GMT hand to your desired second time zone, usually using the independently adjustable GMT position if your watch has one.</li>
+        <li><b>Check AM/PM.</b> On a 12-hour local-time display, make sure the date changes at midnight rather than noon.</li>
+        <li>Push the crown fully back in and screw it down if your watch has a screw-down crown.</li>
+      </ol>
+      <p class="clock-help-subhead">Important GMT detail</p>
+      <p>There are two common mechanical GMT designs:</p>
+      <ul class="clock-help-list">
+        <li><b>Caller/office GMT:</b> the GMT hand jumps independently while the normal hour hand stays put — convenient for changing the second time zone.</li>
+        <li><b>Traveler/flyer GMT:</b> the local hour hand jumps independently, ideal when traveling across time zones.</li>
+      </ul>
+      <button type="button" class="btn-secondary" id="clockGmtDemoBtn">Show set GMT on clock</button>
     </div>
   `;
 }

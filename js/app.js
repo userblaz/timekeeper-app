@@ -1524,6 +1524,11 @@ function attachHandlers(watch){
       updateAnalogClock();
     };
   }
+  // Only present once the GMT window is on (see buildClockGmtHelpHtml).
+  const clockGmtDemoBtnEl = document.getElementById('clockGmtDemoBtn');
+  if(clockGmtDemoBtnEl){
+    clockGmtDemoBtnEl.onclick = () => runClockGmtDemo();
+  }
   document.querySelectorAll('[data-action="select"]').forEach(el=>{
     el.onclick = () => {
       // A snap in progress is scoped to one watch — switching away mid-snap

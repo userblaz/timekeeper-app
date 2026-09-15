@@ -633,6 +633,26 @@
   .clock-date-help .btn-secondary{
     width:100%;
   }
+  /* The GMT block's numbered steps and its two-design bullet list
+     (buildClockGmtHelpHtml) — same size/color/line-height as this card's
+     own <p> text, just with the list's own marker and indent instead of
+     reimplementing numbering by hand in the string. */
+  .clock-help-list{
+    margin:0 0 10px;
+    padding-left:20px;
+    font-size:12.5px;
+    line-height:1.5;
+    color:var(--grey);
+  }
+  .clock-help-list li{
+    margin-bottom:4px;
+  }
+  .clock-help-subhead{
+    margin:14px 0 4px;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink);
+  }
   /* A brief highlight on the date window itself when its number changes
      mid-demo (pulseDateWindow, clock.js) — a quick scale-and-glow so each
      step of the sequence (back to yesterday, forward to today) reads as a
