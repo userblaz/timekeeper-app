@@ -1861,7 +1861,7 @@
   .mini-chart-stack{
     display:flex;
     flex-direction:column;
-    gap:5px;
+    gap:10px;
   }
   .mini-chart-row{
     display:flex;

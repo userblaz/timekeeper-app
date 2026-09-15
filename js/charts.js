@@ -35,7 +35,7 @@ function buildLineChart(items, opts){
   if(items.length === 0) return compact ? '' : `<div class="empty-note">${opts.emptyMsg}</div>`;
   const pxPerPoint = 46 * chartZoom;
   const h = compact ? (opts.compactHeight || 28) : 160;
-  const padL = compact ? 2 : 34, padR = compact ? 2 : 16, padT = compact ? 3 : 10, padB = compact ? 3 : 18;
+  const padL = compact ? 2 : 34, padR = compact ? 2 : 16, padT = compact ? 1 : 10, padB = compact ? 1 : 18;
   // Always fill the container, so a chart with one or two readings still
   // spans the full width instead of stopping short of the zoom buttons.
   // Compact skips that entirely — it's drawn at one fixed small width, never
@@ -49,11 +49,15 @@ function buildLineChart(items, opts){
   const dataMax = Math.max(...values);
   // What the y-axis has to span: the readings, zero, and the factory spec
   // band when there is one — so the band stays on screen. This is wider than
-  // the data, which is why the two are tracked separately.
+  // the data, which is why the two are tracked separately. Compact skips
+  // both the forced zero baseline and the factory-spec band — neither is
+  // drawn at that size, and forcing them into the scale anyway just left
+  // dead space above/below the actual line whenever the data didn't
+  // naturally reach that far.
   const accuracyRange = opts.accuracyRange || null;
-  const scaleValues = accuracyRange ? values.concat([accuracyRange.min, accuracyRange.max]) : values;
-  let min = Math.min(...scaleValues, 0);
-  let max = Math.max(...scaleValues, 0);
+  const scaleValues = (accuracyRange && !compact) ? values.concat([accuracyRange.min, accuracyRange.max]) : values;
+  let min = compact ? Math.min(...scaleValues) : Math.min(...scaleValues, 0);
+  let max = compact ? Math.max(...scaleValues) : Math.max(...scaleValues, 0);
   if(min === max){ min -= 1; max += 1; }
   const range = max - min;
   const plotH = h - padT - padB;
