@@ -205,7 +205,13 @@ function buildCardCharts(w){
   const rated = computeReadingRates(w);
   const compactOpts = {compact: true, compactWidth: 56, compactHeight: 26};
   return `<div class="mini-chart-stack">
-    ${buildOffsetChart(rated, null, compactOpts)}
-    ${buildChart(rated, null, w.accuracySpec, null, compactOpts)}
+    <div class="mini-chart-row">
+      <span class="mini-chart-label">offset</span>
+      ${buildOffsetChart(rated, null, compactOpts)}
+    </div>
+    <div class="mini-chart-row">
+      <span class="mini-chart-label">drift</span>
+      ${buildChart(rated, null, w.accuracySpec, null, compactOpts)}
+    </div>
   </div>`;
 }

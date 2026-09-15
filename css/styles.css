@@ -1861,7 +1861,21 @@
   .mini-chart-stack{
     display:flex;
     flex-direction:column;
-    gap:3px;
+    gap:5px;
+  }
+  .mini-chart-row{
+    display:flex;
+    flex-direction:column;
+    gap:1px;
+  }
+  .mini-chart-label{
+    font-family:'Inter',sans-serif;
+    font-size:8px;
+    font-weight:600;
+    letter-spacing:0.3px;
+    text-transform:uppercase;
+    color:var(--grey);
+    line-height:1;
   }
   .chart-compact{
     display:block;
