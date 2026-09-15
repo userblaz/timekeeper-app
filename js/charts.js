@@ -176,3 +176,35 @@ function buildChart(ratedReadings, selectedIndex, accuracySpec, avgRate){
     summary: (avgRate === null || avgRate === undefined) ? null : avgRate
   });
 }
+
+// A tiny two-line preview of the same two histories the detail page charts
+// out in full — offset and drift — for the collection list card, where
+// there's only room for a glance, not an axis. Each line is scaled to its
+// own min/max independently (the two aren't on the same axis even in the
+// full-size charts), so this is shape-only: how it's trending, not by how
+// much. Nothing is drawn until there are at least two readings — a single
+// point has no trend to show, and would just be a dot sitting off-center.
+function buildMiniSparkline(w){
+  if(!w.readings || w.readings.length < 2) return '';
+  const rated = computeReadingRates(w);
+  const width = 60, height = 34, pad = 3;
+  const stepX = (width - pad * 2) / (rated.length - 1);
+  const linePath = (vals, color) => {
+    let min = Math.min(...vals), max = Math.max(...vals);
+    if(min === max){ min -= 1; max += 1; }
+    const pts = vals.map((v,i) => [
+      pad + i * stepX,
+      pad + (1 - (v - min) / (max - min)) * (height - pad * 2)
+    ]);
+    const d = pts.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const last = pts[pts.length - 1];
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2" fill="${color}" />`;
+  };
+  const offsetVals = rated.map(r => r.offset);
+  const driftVals = rated.map(r => r.rate === null ? 0 : r.rate);
+  return `<svg class="card-spark" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+    ${linePath(offsetVals, 'var(--bad)')}
+    ${linePath(driftVals, 'var(--accent)')}
+  </svg>`;
+}

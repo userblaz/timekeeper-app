@@ -1849,6 +1849,18 @@
     gap:6px;
   }
 
+  /* The offset/drift preview from buildMiniSparkline (charts.js) — sized to
+     sit between the name/stats block and the chevron without crowding
+     either, on a card that also has to work at phone width. */
+  .collection-card-spark{
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+  }
+  .card-spark{
+    display:block;
+  }
+
   /* Confirms a wind: a band of green travelling across the card, left to
      right, under a green rim that lights and fades. No white flash here —
      that one belongs to the capture snapshot, and this is a different act.
