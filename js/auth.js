@@ -133,6 +133,15 @@ function handleSignedOut(){
   state.watches = [];
   state.activeId = null;
   loaded = false;
+  // Reset here too, not just on the next sign-in (handleSignedIn's own
+  // isFreshSignIn check, above) — signing out from Profile and straight
+  // back in could still land back on Profile, since Supabase doesn't
+  // always fire a distinct SIGNED_IN event for that same-tab round trip
+  // the way expectFreshSignIn expects. Resetting the moment you sign out
+  // means the next sign-in lands on Data regardless of whether it's
+  // recognized as "fresh" or just restores what's already saved here.
+  activeTab = 'data';
+  try{ localStorage.setItem('timekeeper-active-tab', 'data'); }catch(e){}
   showAuthScreen();
 }
 
