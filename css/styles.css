@@ -2457,6 +2457,11 @@
     object-fit:cover;
     flex-shrink:0;
     background:var(--surface-2);
+    /* Backstop for the draggable="false" on the <img> itself (collection.js)
+       — belt-and-braces against Chrome/Safari's native image drag hijacking
+       the swipe/reorder pointer gestures. */
+    -webkit-user-drag:none;
+    user-drag:none;
   }
   .collection-photo-empty{
     display:flex;

@@ -664,8 +664,17 @@ function updatePowerReserveBars(){
 setInterval(updatePowerReserveBars, 30000);
 
 function buildCollectionCard(w){
+  // draggable="false" — without it, Chrome and Safari treat this <img> as a
+  // native HTML5 drag source. Pressing down on the photo and moving even a
+  // couple pixels fires the browser's own dragstart, which immediately
+  // cancels the pointer sequence (pointercancel) our own long-press reorder
+  // (wireCollectionReorder, below) depends on — confirmed by logging the
+  // event order: pointerdown, pointermove, dragstart, pointercancel, all
+  // within a few ms, well before the 400ms long-press ever gets a chance to
+  // fire. Brave (and touch browsers generally) don't hijack the gesture this
+  // way, which is why the bug only showed up in Chrome/Safari on desktop.
   const photoHtml = w.photoUrl
-    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
+    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" draggable="false" />`
     : `<div class="collection-photo collection-photo-empty">${watchPlaceholderIconSvg()}</div>`;
   const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
   // Condition notes were free text the owner typed once, on a card meant
@@ -1122,7 +1131,7 @@ function buildCollectionDetailHtml(w){
 // rest of the detail page scrolls up underneath it.
 function buildCollectionWatchBarHtml(w){
   const photoHtml = w.photoUrl
-    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
+    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" draggable="false" />`
     : `<div class="collection-photo collection-photo-empty">${watchPlaceholderIconSvg()}</div>`;
   const subtitle = [w.model, w.reference].filter(Boolean).join(' · ');
   return `
