@@ -1377,6 +1377,22 @@ async function saveCollectionEdit(watchId){
   const currencyEl = document.getElementById('colCurrency_'+watchId);
   const dateEl = document.getElementById('colDate_'+watchId);
   const notesEl = document.getElementById('colNotes_'+watchId);
+  // Every one of these has to be looked up before the render() below —
+  // once that rebuilds the form from `w` (still holding its old values at
+  // this point), it replaces these exact input elements with fresh ones
+  // that have reverted back to those old values, and whatever the user had
+  // actually typed into them is gone. name/model/reference/reserve/
+  // accuracy/certifications used to be looked up further down, after that
+  // render() — which is exactly why they never saved: this function was
+  // reading its own just-reset form back, not what was on screen a moment
+  // earlier.
+  const nameEl = locked ? null : document.getElementById('colName_'+watchId);
+  const modelEl = locked ? null : document.getElementById('colModel_'+watchId);
+  const referenceEl = locked ? null : document.getElementById('colReference_'+watchId);
+  const reserveEl = locked ? null : document.getElementById('colReserve_'+watchId);
+  const accuracySlowEl = locked ? null : document.getElementById('colAccuracySlow_'+watchId);
+  const accuracyFastEl = locked ? null : document.getElementById('colAccuracyFast_'+watchId);
+  const certifications = locked ? [] : Array.from(document.querySelectorAll('.colCert_'+watchId+':checked')).map(el => el.value);
 
   saveStatus = 'saving'; render();
 
@@ -1399,15 +1415,6 @@ async function saveCollectionEdit(watchId){
   };
 
   if(!locked){
-    const nameEl = document.getElementById('colName_'+watchId);
-    const modelEl = document.getElementById('colModel_'+watchId);
-    const referenceEl = document.getElementById('colReference_'+watchId);
-    const reserveEl = document.getElementById('colReserve_'+watchId);
-    const accuracySlowEl = document.getElementById('colAccuracySlow_'+watchId);
-    const accuracyFastEl = document.getElementById('colAccuracyFast_'+watchId);
-    const certEls = document.querySelectorAll('.colCert_'+watchId+':checked');
-    const certifications = Array.from(certEls).map(el => el.value);
-
     const slowVal = accuracySlowEl.value === '' ? null : Number(accuracySlowEl.value);
     const fastVal = accuracyFastEl.value === '' ? null : Number(accuracyFastEl.value);
     const accuracySpec = (slowVal !== null || fastVal !== null)
