@@ -90,6 +90,26 @@ async function handleSignedIn(user){
     try{ localStorage.setItem('timekeeper-theme', accountTheme); }catch(e){}
     applyTheme(accountTheme);
   }
+  // Same idea for the Clock tab's Show date/Show GMT toggles and the GMT
+  // offset (clock.js) — written to the account by syncClockPrefToAccount
+  // whenever one of those changes, read back here the same way theme is
+  // above. Checked for undefined rather than truthiness: an account that
+  // has explicitly turned a toggle off still needs that false applied, not
+  // skipped as if nothing were saved — undefined is the only real "nothing
+  // saved yet for this account" case.
+  const meta = user.user_metadata || {};
+  if(meta.clock_show_date !== undefined){
+    showClockDate = !!meta.clock_show_date;
+    try{ localStorage.setItem('timekeeper-clock-date', showClockDate ? '1' : '0'); }catch(e){}
+  }
+  if(meta.clock_show_gmt !== undefined){
+    showClockGmt = !!meta.clock_show_gmt;
+    try{ localStorage.setItem('timekeeper-clock-gmt', showClockGmt ? '1' : '0'); }catch(e){}
+  }
+  if(meta.clock_gmt_offset_minutes !== undefined){
+    clockGmtOffsetMinutes = Number(meta.clock_gmt_offset_minutes) || 0;
+    try{ localStorage.setItem('timekeeper-clock-gmt-offset', String(clockGmtOffsetMinutes)); }catch(e){}
+  }
   showApp();
   await loadState();
   syncTrueTime();

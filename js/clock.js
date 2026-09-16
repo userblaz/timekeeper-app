@@ -1,15 +1,19 @@
 // Clock tab: analog/digital reference clock, tick sound, time-server sync,
 // and the scroll-collapse header animation.
 
-// A display preference, not account data — same treatment as the
-// dark/light theme toggle (profile.js): read once from localStorage at
-// load, persisted locally on every change.
+// A display preference, same treatment as the dark/light theme toggle
+// (profile.js): read once from localStorage at load (so it's available
+// before any account data is), persisted locally on every change, and — on
+// top of what the theme toggle does — also synced to the account itself
+// (syncClockPrefToAccount, below) so signing in elsewhere, or signing back
+// in after clearing local storage, comes back exactly as it was left.
 let showClockDate = (() => {
   try{ return localStorage.getItem('timekeeper-clock-date') === '1'; }catch(e){ return false; }
 })();
 function setShowClockDate(v){
   showClockDate = v;
   try{ localStorage.setItem('timekeeper-clock-date', v ? '1' : '0'); }catch(e){}
+  syncClockPrefToAccount({ clock_show_date: v });
 }
 
 // Same treatment, for the second-timezone GMT window. The offset is
@@ -22,6 +26,7 @@ let showClockGmt = (() => {
 function setShowClockGmt(v){
   showClockGmt = v;
   try{ localStorage.setItem('timekeeper-clock-gmt', v ? '1' : '0'); }catch(e){}
+  syncClockPrefToAccount({ clock_show_gmt: v });
 }
 let clockGmtOffsetMinutes = (() => {
   try{
@@ -32,6 +37,22 @@ let clockGmtOffsetMinutes = (() => {
 function setClockGmtOffsetMinutes(v){
   clockGmtOffsetMinutes = v;
   try{ localStorage.setItem('timekeeper-clock-gmt-offset', String(v)); }catch(e){}
+  syncClockPrefToAccount({ clock_gmt_offset_minutes: v });
+}
+
+// Merges one or more of these three prefs into the account's own
+// user_metadata — the same field saveThemePreference (profile.js) writes
+// theme into, just with keys of its own. Fire-and-forget like that one:
+// the local values (already set by the caller above) are what the rest of
+// the app reads immediately, this just keeps the account copy in step for
+// next time. No-ops before sign-in, when there's no account to sync to yet
+// (currentUser is declared in auth.js, which loads after this file, but
+// isn't read until a user actually flips one of these — well after
+// everything has loaded).
+function syncClockPrefToAccount(patch){
+  if(typeof currentUser === 'undefined' || !currentUser) return;
+  sb.auth.updateUser({ data: { ...(currentUser.user_metadata || {}), ...patch } })
+    .then(({ data, error }) => { if(!error && data && data.user) currentUser = data.user; });
 }
 // UTC offsets a real GMT/world-timer bezel would actually be marked
 // with — every whole hour from -12 to +14, plus the handful of real
