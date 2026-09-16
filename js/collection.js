@@ -1455,6 +1455,17 @@ async function saveCollectionEdit(watchId){
   editingCollectionId = null;
   collectionPhotoFile = null;
   saveState();
+  // The edit form can be scrolled well down by the time Save is tapped
+  // (certificates and notes sit near its bottom) — saveState()'s render()
+  // above swaps back to the plain detail view in place, at that same
+  // scroll offset, landing it partway down a page that now starts with the
+  // watch bar and dial again instead. startcollectionedit and
+  // cancelcollection (attachCollectionHandlers, below) already scroll back
+  // to the top the same way on their own way into/out of this form — Save
+  // was the one way out of it that didn't. Only added here, not to
+  // anything shared, so it can't touch the mini-chart-preview's own
+  // scroll-to-the-charts behavior (viewcollectionchart, same file).
+  scrollToPageTop(300);
 }
 
 // Records "I have just fully wound this" — the only input the reserve bar
