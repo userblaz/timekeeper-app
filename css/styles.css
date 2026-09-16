@@ -2173,6 +2173,14 @@
        text, painting a blue selection band across it mid-gesture. */
     -webkit-user-select:none;
     user-select:none;
+    /* Without this, holding the card long enough to win the reorder's own
+       long press (wireCollectionReorder, collection.js) also wins iOS
+       Safari's native long-press callout (Save Photo / Copy / Share on the
+       photo, "Open" style options elsewhere on the card) at almost the same
+       moment — the OS takes the touch over for its own menu right as our
+       drag would otherwise begin, which reads as the card twitching and
+       then just refusing to lift. */
+    -webkit-touch-callout:none;
   }
   /* Elevated out of the row's own overflow:hidden (needed so the lift
      shadow below isn't clipped by the corner-rounding it's set up for) and

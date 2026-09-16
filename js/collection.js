@@ -518,6 +518,14 @@ function wireCollectionReorder(){
     const card = row.querySelector('.collection-card');
     if(!card) return;
 
+    // -webkit-touch-callout:none (styles.css) stops iOS Safari's own
+    // long-press callout (Save Photo, Copy, etc.) from racing our long
+    // press, but that property is WebKit-only — Android Chrome's native
+    // long-press menu doesn't respect it. contextmenu is what every mobile
+    // browser actually fires to open that menu, so preventing it directly
+    // is the one thing that reliably heads it off everywhere.
+    card.addEventListener('contextmenu', (e) => e.preventDefault());
+
     let longPressTimer = null;
     let dragging = false, startX = 0, startY = 0, startIndex = 0, targetIndex = 0;
     let rows = [], tops = [], heights = [];
