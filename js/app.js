@@ -32,13 +32,14 @@ let chartZoom = 1;
 let offsetScrollLeft = null;
 let driftScrollLeft = null;
 let editingReadingId = null;
-// This saved value no longer really drives anything: handleSignedIn
-// (auth.js) now always resets activeTab to 'data' on every page load that
-// finds a session, whether that's a real sign-in or a browser simply
-// reopening one that already existed — the two are indistinguishable by
-// the time this code runs, so there's no way to keep one behavior without
-// the other. What's read here only matters for the brief moment before
-// that reset happens.
+// Restored across a plain page refresh so reloading mid-task (e.g. on the
+// Collection tab) doesn't dump you back on Snap — but NOT across an actual
+// sign-out/sign-in, which still always lands on Data on purpose (see
+// handleSignedIn, auth.js). A refresh and a fresh sign-in both run through
+// the exact same startup code, so telling them apart has to happen there,
+// not here — this just supplies whatever the last real tab switch (see
+// switchToTab below) left behind, or 'data' the very first time there's
+// nothing saved yet.
 const VALID_TABS = ['data', 'timegrapher', 'clock', 'collection', 'profile'];
 let activeTab = (() => {
   try{
