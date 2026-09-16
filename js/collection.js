@@ -777,7 +777,7 @@ function buildCollectionCard(w){
         <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
         ${wearStats ? `<div class="collection-card-wear">${Math.round(wearStats.avgPerMonth)} days/mo worn</div>` : ''}
       </div>
-      ${sparkHtml ? `<div class="collection-card-spark">${sparkHtml}</div>` : ''}
+      ${sparkHtml ? `<div class="collection-card-spark" data-action="viewcollectionchart" data-id="${w.id}" role="button" aria-label="View ${escapeHtml(w.name)}'s charts">${sparkHtml}</div>` : ''}
       <div class="collection-card-actions">
         <span class="zoom-btn collection-card-chevron" aria-hidden="true">${menuIconSvg()}</span>
       </div>
@@ -1540,6 +1540,34 @@ function attachCollectionHandlers(){
       // to, rather than at its own top — scrollToPageTop (app.js) is the
       // same eased scroll-to-top already written for exactly this.
       scrollToPageTop(300);
+    };
+  });
+  // The mini chart preview (buildCardCharts, charts.js) sits inside the
+  // same card as the handler just above, which would otherwise still catch
+  // this click once it bubbles and send it down the plain "open the watch,
+  // scroll to top" path instead — stopPropagation keeps this its own
+  // gesture. Opens the same detail view, but lands scrolled to the full
+  // charts there rather than at the top of the page, since that chart is
+  // presumably what was actually tapped for.
+  document.querySelectorAll('[data-action="viewcollectionchart"]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if(Date.now() - swipeEndedAt < 300 || Date.now() - reorderEndedAt < 300) return;
+      const row = el.closest('.swipe-row');
+      if(row && row.classList.contains('open')){ closeSwipeRows(null); return; }
+      viewingCollectionId = el.dataset.id; editingCollectionId = null; collectionPhotoFile = null;
+      collectionDetailJustOpened = true;
+      collectionDetailReturnTab = 'collection';
+      wearCalendarYear = new Date().getFullYear();
+      wearCalendarMonth = new Date().getMonth();
+      render();
+      // scrollPanelIntoView (app.js) is the same "land this exactly where
+      // it reads best against the sticky header/dock" scroll the Snap tab's
+      // own snap-to-card behavior uses — not pinned flush to the top the
+      // way scrollToPageTop's plain open does, since the goal here is
+      // "bring the chart into view", not "go to the top of the page".
+      const chartEl = document.querySelector('.collection-detail-body .chart-box');
+      if(chartEl && typeof scrollPanelIntoView === 'function') scrollPanelIntoView(chartEl, false);
     };
   });
   wireCollectionSwipe();
