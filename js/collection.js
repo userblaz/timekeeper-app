@@ -676,6 +676,27 @@ function wireCollectionReorder(){
     };
     card.addEventListener('pointerup', finish);
     card.addEventListener('pointercancel', finish);
+
+    // touch-action:none only takes effect once the 'dragging' class lands
+    // (styles.css) — after the long press has already won — but at least
+    // WebKit doesn't reliably re-evaluate touch-action for a touch sequence
+    // that's already under way: it can stay committed to pan-y (the value
+    // in effect back at the original touchstart) and hand the very next
+    // real vertical move to the page as a native scroll instead of to this
+    // gesture, cancelling the pointer out from under it. That reads as
+    // exactly what it looks like on screen — the card lifts (dragging's
+    // CSS fires fine, no JS needed for that part), then the instant a
+    // finger actually moves it snaps back to place, because finish() below
+    // just cleaned up after a pointercancel it never expected. touch-action
+    // can't be fought with more CSS; the one thing that reliably stops a
+    // scroll already in flight is preventDefault() on the raw touchmove
+    // event itself, which pointermove (an abstraction on top of touch
+    // events) can't do — so this listens for that directly, registered
+    // non-passive up front (passivity can't be changed after the fact) and
+    // only actually acts once a drag is underway.
+    card.addEventListener('touchmove', (e) => {
+      if(dragging) e.preventDefault();
+    }, { passive: false });
   });
 }
 
