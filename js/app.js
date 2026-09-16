@@ -914,6 +914,21 @@ function updateKeyboardHideState(){
   const inSnapList = dataWatchScroll && active && dataWatchScroll.contains(active);
   bar.style.display = (keyboardOpen && !inSnapList) ? 'none' : '';
 
+  // #bottomBarCurtain (index.html) is the solid strip painted behind the
+  // bar so scrolling content never peeks through its translucency — same
+  // position:fixed/bottom:0 setup as the bar itself, and never previously
+  // touched here. Left alone, it stays pinned to the bottom of whatever the
+  // browser now considers the viewport once the keyboard opens: on some
+  // engines that's the shrunken layout viewport, so it silently eats into
+  // the room search results have to scroll in (looks like the list is cut
+  // off short); on others fixed elements stay pinned to the pre-keyboard
+  // layout while the page scrolls the focused field into view, so the
+  // curtain rides along and lands mid-page as a solid block over whatever's
+  // now scrolled underneath it. Hiding it in lockstep with the bar (which
+  // it exists only to back) fixes both.
+  const curtain = document.getElementById('bottomBarCurtain');
+  if(curtain) curtain.style.display = (keyboardOpen && !inSnapList) ? 'none' : '';
+
   // The trigger dock does have to go, though, and it's decided here rather
   // than anywhere else on purpose: it and the bottom bar are the two fixed
   // things that can cover a field being typed into, and they got out of sync
