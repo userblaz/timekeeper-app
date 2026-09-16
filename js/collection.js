@@ -1594,6 +1594,14 @@ function attachCollectionHandlers(){
       syncBottomTabs();
     }
     render();
+    // The detail page can be scrolled well down — most obviously after
+    // following the mini-chart preview straight to its charts
+    // (viewcollectionchart) — and render() swaps back to the list in
+    // place, at that same offset. Same fix as every other exit from the
+    // detail page (startcollectionedit, cancelcollection, saveCollectionEdit
+    // all already do this on their own way in/out); this was the one that
+    // didn't.
+    scrollToPageTop(300);
   };
   const snapBtn = document.querySelector('[data-action="snapthiswatch"]');
   if(snapBtn) snapBtn.onclick = () => {
