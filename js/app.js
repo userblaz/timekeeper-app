@@ -381,10 +381,24 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const checkbox = e.target.closest('[data-action="multiselecttoggle"]');
   if(!checkbox) return;
-  const wrap = checkbox.closest('.multi-select-wrap');
+  // The Add Watch catalog filters (Case/Movement/Dial) escape their menu to
+  // <body> the moment it opens (see the toggleselect handler above) — at
+  // that point the checkbox's own ancestor chain no longer includes its
+  // wrap at all, so checkbox.closest('.multi-select-wrap') came back null
+  // and this whole handler quietly bailed on every filter tap: the box
+  // still looked checked, but nothing ever recomputed. findSelectWrap
+  // (used the same way by the single-select .select-option handler above)
+  // finds it by the hidden input's id instead, which is unaffected by the
+  // menu having moved.
+  const menu = checkbox.closest('.select-menu');
+  if(!menu) return;
+  const wrap = checkbox.closest('.multi-select-wrap') || findSelectWrap(menu);
   if(!wrap) return;
   const hidden = wrap.querySelector('input[type="hidden"]');
-  const checked = Array.from(wrap.querySelectorAll('[data-action="multiselecttoggle"]:checked')).map(el => el.value);
+  // Read off menu, not wrap — once escaped, the checkboxes live in the
+  // detached menu, not inside wrap, so a wrap-relative query would find
+  // none of them even after the wrap itself is found correctly above.
+  const checked = Array.from(menu.querySelectorAll('[data-action="multiselecttoggle"]:checked')).map(el => el.value);
   hidden.value = checked.join(',');
   const shortLabel = wrap.dataset.shortLabel;
   const valueEl = wrap.querySelector('.select-value');
