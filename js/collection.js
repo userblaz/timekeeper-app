@@ -521,6 +521,10 @@ function wireCollectionReorder(){
     let longPressTimer = null;
     let dragging = false, startX = 0, startY = 0, startIndex = 0, targetIndex = 0;
     let rows = [], tops = [], heights = [];
+    // Mouse-only: has this gesture's direction (vertical drag vs. anything
+    // else) already been decided? Touch doesn't need this — the long press
+    // itself is what commits to a reorder there.
+    let mouseDecided = false;
 
     const shiftFor = (i) => {
       if(i === startIndex) return '';
@@ -561,11 +565,55 @@ function wireCollectionReorder(){
       try{ card.setPointerCapture(pointerId); }catch(e){}
     };
 
+    const applyDragFrame = (clientY) => {
+      const dy = clientY - startY;
+      row.style.transform = `translateY(${dy}px)`;
+
+      // Every top/height here is from the pre-drag layout, since nothing
+      // else actually moves in the DOM until drop — only the dragged
+      // row's own translateY changes live, so its neighbors' positions
+      // stay a stable yardstick for "has it been dragged past this one
+      // yet".
+      const draggedCenter = tops[startIndex] + heights[startIndex] / 2 + dy;
+      let newIndex = startIndex;
+      rows.forEach((r, i) => {
+        if(i === startIndex) return;
+        const center = tops[i] + heights[i] / 2;
+        if(i < startIndex && draggedCenter < center) newIndex = Math.min(newIndex, i);
+        if(i > startIndex && draggedCenter > center) newIndex = Math.max(newIndex, i);
+      });
+      targetIndex = newIndex;
+
+      rows.forEach((r, i) => {
+        if(i === startIndex) return;
+        r.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
+        r.style.transform = shiftFor(i);
+      });
+    };
+
     card.addEventListener('pointerdown', (e) => {
       if(e.pointerType === 'mouse' && e.button !== 0) return;
       startX = e.clientX; startY = e.clientY;
       dragging = false;
+      mouseDecided = false;
       cancelLongPress();
+      // A mouse has no page-scroll gesture to disambiguate against — that's
+      // what the long press below exists for on touch — and no on-screen
+      // affordance hints at "hold to pick up" the way a phone home screen
+      // does. Desktop users expect an ordinary click-and-drag to just work,
+      // so mouse skips the wait entirely; pointermove below decides by
+      // direction instead, the same way wireCollectionSwipe already does.
+      if(e.pointerType === 'mouse'){
+        // Captured immediately, before any movement — touch gets this for
+        // free as implicit capture (every browser routes a touch's moves
+        // back to wherever it started), but a mouse doesn't, so without
+        // this the moment the cursor crosses into the row below, the
+        // browser starts hit-testing pointermove events onto THAT row's
+        // card instead of this one, and the direction decision below
+        // never sees its own gesture past the first ~row height.
+        try{ card.setPointerCapture(e.pointerId); }catch(err){}
+        return;
+      }
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
         beginDrag(e.pointerId);
@@ -574,29 +622,22 @@ function wireCollectionReorder(){
 
     card.addEventListener('pointermove', (e) => {
       if(dragging){
-        const dy = e.clientY - startY;
-        row.style.transform = `translateY(${dy}px)`;
-
-        // Every top/height here is from the pre-drag layout, since nothing
-        // else actually moves in the DOM until drop — only the dragged
-        // row's own translateY changes live, so its neighbors' positions
-        // stay a stable yardstick for "has it been dragged past this one
-        // yet".
-        const draggedCenter = tops[startIndex] + heights[startIndex] / 2 + dy;
-        let newIndex = startIndex;
-        rows.forEach((r, i) => {
-          if(i === startIndex) return;
-          const center = tops[i] + heights[i] / 2;
-          if(i < startIndex && draggedCenter < center) newIndex = Math.min(newIndex, i);
-          if(i > startIndex && draggedCenter > center) newIndex = Math.max(newIndex, i);
-        });
-        targetIndex = newIndex;
-
-        rows.forEach((r, i) => {
-          if(i === startIndex) return;
-          r.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
-          r.style.transform = shiftFor(i);
-        });
+        applyDragFrame(e.clientY);
+        return;
+      }
+      if(e.pointerType === 'mouse'){
+        if(mouseDecided) return;
+        const mx = e.clientX - startX, my = e.clientY - startY;
+        if(Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        mouseDecided = true;
+        // Horizontal movement is wireCollectionSwipe's own gesture (reveal
+        // delete) — leave it alone rather than also claiming it here.
+        if(Math.abs(my) <= Math.abs(mx)) return;
+        beginDrag(e.pointerId);
+        // Apply this same move as the drag's first frame instead of
+        // waiting for the next pointermove, so the row doesn't lag a step
+        // behind the cursor the moment the drag starts.
+        if(dragging) applyDragFrame(e.clientY);
         return;
       }
       // Still waiting out the hold — real movement this early means it's a
