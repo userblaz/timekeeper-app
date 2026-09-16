@@ -82,6 +82,16 @@ function buildGmtRingLabelsHtml(cx, cy, rotationDeg){
     const x = cx + ringR * Math.cos(rad), y = cy + ringR * Math.sin(rad);
     labels += `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" font-size="11" font-family="'Inter',sans-serif" font-weight="600" fill="#3B82F6">${h}</text>`;
   }
+  // A real GMT bezel marks the odd hours in between its printed numbers
+  // with a plain dot rather than a second number, so the scale still reads
+  // as continuous hours rather than jumping in steps of two. Same radius
+  // and color as the numbers above — just the in-between angles (odd h).
+  for(let h = 1; h < 24; h += 2){
+    const angle = (h / 24 * 360) + rotationDeg;
+    const rad = (angle - 90) * Math.PI / 180;
+    const x = cx + ringR * Math.cos(rad), y = cy + ringR * Math.sin(rad);
+    labels += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.8" fill="#3B82F6" />`;
+  }
   return labels;
 }
 
