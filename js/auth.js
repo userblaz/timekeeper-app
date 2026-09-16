@@ -34,13 +34,6 @@ let authMode = 'signin';
 let codeSentToEmail = ''; // locked in once a code is sent, so editing the
 // email field mid-verify can't send the code to one address and verify
 // against another.
-// Set right before any of the three actions that actually complete a sign-
-// in (password, signup, code verify — signInWithOtp itself only sends the
-// code, it doesn't sign anyone in) and read once by handleSignedIn, so it
-// can tell a real sign-in apart from onAuthStateChange firing for a plain
-// page refresh restoring an existing session — those otherwise look
-// identical by the time that callback runs.
-let expectFreshSignIn = false;
 
 function showApp(){
   if(authScreenEl) authScreenEl.style.display = 'none';
@@ -59,22 +52,29 @@ function showAuthScreen(){
   if(authScreenEl) authScreenEl.style.display = '';
 }
 
-async function handleSignedIn(user, isFreshSignIn){
+async function handleSignedIn(user){
   // onAuthStateChange and the initial getSession() check can both fire for
   // the same session — guard against loading everything twice.
   if(currentUser && currentUser.id === user.id){ showApp(); return; }
   currentUser = user;
-  // Only an actual sign-in resets this to Data — a session that had ended
-  // on some other tab (Profile included) shouldn't reopen there right
-  // after signing back in. A plain page refresh is a *different* case
-  // (isFreshSignIn is false for it, see the two call sites below): it
-  // restores whatever tab was last active instead (see the activeTab
-  // declaration in app.js) — reloading mid-task on, say, Collection
-  // shouldn't dump you back on Snap.
-  if(isFreshSignIn){
-    activeTab = 'data';
-    try{ localStorage.setItem('timekeeper-active-tab', 'data'); }catch(e){}
-  }
+  // Every path into this function resets to Data now — a plain page load
+  // that finds an existing session (getSession(), below) used to restore
+  // whatever tab was last active instead, on the theory that reloading
+  // mid-task on, say, Collection shouldn't dump you back on Snap. In
+  // practice that's exactly what made mobile Safari/Chrome look broken:
+  // reopening the app after it had been backgrounded long enough to be
+  // discarded runs through this same "restore" path, landing back on
+  // whatever tab (and scroll position) was last open instead of a clean
+  // Snap. Always landing on Data, scrolled to the top, is what "opening the
+  // app" should look like regardless of which of these two ways it happened.
+  activeTab = 'data';
+  try{ localStorage.setItem('timekeeper-active-tab', 'data'); }catch(e){}
+  // scrollRestoration:'manual' (index.html, set as early as possible) stops
+  // the browser's own attempt to put the old offset back before this even
+  // runs; the second call catches whatever the first one landed before
+  // (layout, e.g. photos/fonts) has settled into its final height.
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => window.scrollTo(0, 0));
   // The bottom bar lives outside #root (see syncBottomTabs in app.js), so
   // just changing activeTab here doesn't move its highlight — without this,
   // signing back in right after signing out from some other tab left the
@@ -144,7 +144,6 @@ if(authSendBtnEl){
       authStatusEl.textContent = 'Signing in…';
       const { error } = await sb.auth.signInWithPassword({ email, password });
       authSendBtnEl.disabled = false;
-      if(!error) expectFreshSignIn = true;
       authStatusEl.textContent = error ? 'Wrong email or password.' : '';
       return;
     }
@@ -165,7 +164,6 @@ if(authSendBtnEl){
         authStatusEl.textContent = 'Account created — check your email to confirm it, then sign in.';
         return;
       }
-      expectFreshSignIn = true;
       authStatusEl.textContent = ''; // onAuthStateChange takes it from here
       return;
     }
@@ -192,7 +190,6 @@ if(authSendBtnEl){
       authStatusEl.textContent = 'Verifying…';
       const { error } = await sb.auth.verifyOtp({ email: codeSentToEmail, token: code, type: 'email' });
       authSendBtnEl.disabled = false;
-      if(!error) expectFreshSignIn = true;
       authStatusEl.textContent = error ? 'Wrong or expired code — try again.' : '';
       return;
     }
@@ -237,22 +234,18 @@ if(signOutBtnEl){
 
 sb.auth.onAuthStateChange((event, session) => {
   if(session && session.user){
-    // Consumed once, immediately — this event also fires for a token
-    // refresh or (in some SDK versions) the initial session restore
-    // itself, and expectFreshSignIn must never carry over to one of those.
-    handleSignedIn(session.user, expectFreshSignIn);
-    expectFreshSignIn = false;
+    handleSignedIn(session.user);
   } else {
     handleSignedOut();
   }
 });
 
 // Covers the very first load, before onAuthStateChange's initial event
-// fires — never a fresh sign-in itself, just this tab noticing a session
-// that (per Supabase's own storage) already existed before it opened.
+// fires — this tab noticing a session that (per Supabase's own storage)
+// already existed before it opened.
 sb.auth.getSession().then(({ data }) => {
   if(data && data.session && data.session.user){
-    handleSignedIn(data.session.user, false);
+    handleSignedIn(data.session.user);
   } else {
     showAuthScreen();
   }

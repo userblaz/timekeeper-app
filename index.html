@@ -21,6 +21,17 @@
     }
     if(t === 'light') document.documentElement.setAttribute('data-theme', 'light');
   }catch(e){}
+  // Mobile Safari/Chrome sometimes restore the page's old scroll offset on
+  // their own — most visibly when a backgrounded tab gets fully reloaded
+  // rather than just resumed, which is exactly the "reopen the app, land
+  // signed in" case (see handleSignedIn, auth.js). That's the browser's own
+  // scroll-restoration feature, separate from anything render() does, and
+  // it can win the race against our own scroll-to-top since it runs this
+  // early. 'manual' turns it off script-wide so only our own explicit
+  // scrollTo calls ever move the page. As early in <head> as possible, same
+  // reasoning as the theme read just above — it has to beat the browser's
+  // own restoration, not run after it.
+  try{ if('scrollRestoration' in history) history.scrollRestoration = 'manual'; }catch(e){}
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -34,7 +45,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=217"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="css/styles.css?v=218"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="authScreen" style="display:none;">
@@ -167,14 +178,14 @@
   </button>
 </div>
 
-<script src="js/utils.js?v=217"></script>
-<script src="js/data.js?v=217"></script>
-<script src="js/charts.js?v=217"></script>
-<script src="js/timegrapher.js?v=217"></script>
-<script src="js/clock.js?v=217"></script>
-<script src="js/collection.js?v=217"></script>
-<script src="js/demo.js?v=217"></script>
-<script src="js/app.js?v=217"></script>
-<script src="js/auth.js?v=217"></script>
-<script src="js/profile.js?v=217"></script></body>
+<script src="js/utils.js?v=218"></script>
+<script src="js/data.js?v=218"></script>
+<script src="js/charts.js?v=218"></script>
+<script src="js/timegrapher.js?v=218"></script>
+<script src="js/clock.js?v=218"></script>
+<script src="js/collection.js?v=218"></script>
+<script src="js/demo.js?v=218"></script>
+<script src="js/app.js?v=218"></script>
+<script src="js/auth.js?v=218"></script>
+<script src="js/profile.js?v=218"></script></body>
 </html>
