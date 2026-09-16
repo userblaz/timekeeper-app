@@ -1563,11 +1563,13 @@ function attachCollectionHandlers(){
       render();
       // scrollPanelIntoView (app.js) is the same "land this exactly where
       // it reads best against the sticky header/dock" scroll the Snap tab's
-      // own snap-to-card behavior uses — not pinned flush to the top the
-      // way scrollToPageTop's plain open does, since the goal here is
-      // "bring the chart into view", not "go to the top of the page".
+      // own snap-to-card behavior uses. Pinned flush to the header
+      // (pinTop:true) rather than merely "somewhere on screen" — a tall
+      // desktop viewport can easily already have the chart in view with no
+      // scrolling at all, which reads as the tap having done nothing; this
+      // way tapping the chart always visibly jumps to it, on any screen.
       const chartEl = document.querySelector('.collection-detail-body .chart-box');
-      if(chartEl && typeof scrollPanelIntoView === 'function') scrollPanelIntoView(chartEl, false);
+      if(chartEl && typeof scrollPanelIntoView === 'function') scrollPanelIntoView(chartEl, true);
     };
   });
   wireCollectionSwipe();
