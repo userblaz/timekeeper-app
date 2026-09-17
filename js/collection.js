@@ -18,8 +18,13 @@ let watchSearchQuery = '';
 // app.js) rather than one — empty means "no filter", same as before, but
 // picking more than one value within the same filter now widens the
 // match instead of narrowing it (an OR within the filter, an AND across
-// the three).
+// the four). Case material and dial hold *group* labels (see
+// CASE_MATERIAL_GROUPS/dialColorGroupOf below), not the catalog's own raw
+// values — case_material alone already runs to 13 distinct real values,
+// too many for a usable checkbox list, so the filter groups them into a
+// handful of buckets and matches a raw value through the same grouping.
 let watchSearchCaseMaterials = [];
+let watchSearchCaseDiameters = [];
 let watchSearchMovementTypes = [];
 let watchSearchDials = [];
 let viewingCollectionId = null;
@@ -113,13 +118,84 @@ function matchesCatalogQuery(entry, query){
     .filter(Boolean).join(' ').toLowerCase().includes(q);
 }
 
+// Case material has 13 distinct real values in the catalog — too many for
+// a usable checkbox list — so the filter offers these broader groups
+// instead. The raw value on the watch itself is never touched by this;
+// it's purely how the filter buckets and matches against it. "Silver"
+// folds into Steel rather than getting its own group — modern watches
+// essentially never use solid silver as a case, so in practice it's
+// describing a steel case's finish, not a different material.
+const CASE_MATERIAL_GROUPS = [
+  ['Steel', ['Steel', 'Silver']],
+  ['Two-tone', ['Gold/Steel']],
+  ['Gold', ['Yellow gold', 'Rose gold', 'Gold-plated']],
+  ['White gold / Platinum', ['White gold', 'Platinum']],
+  ['Titanium', ['Titanium']],
+  ['Ceramic', ['Ceramic']],
+  ['Carbon', ['Carbon']],
+  ['Other', ['Aluminum', 'Plastic']]
+];
+function caseMaterialGroupOf(raw){
+  if(!raw) return null;
+  const hit = CASE_MATERIAL_GROUPS.find(([, raws]) => raws.includes(raw));
+  // A raw value nobody anticipated (a typo, a material added later) still
+  // needs to land somewhere findable rather than silently matching no
+  // filter at all — "Other" is that catch-all, the same role it plays for
+  // the values already routed there on purpose.
+  return hit ? hit[0] : 'Other';
+}
+
+// Case diameter (case_size_mm) is numeric, not categorical — grouped into
+// 2mm-wide bands through 36-45mm, where almost every watch actually falls,
+// with wider catch-alls outside that range. Order matters: the first band
+// whose upper bound the rounded size doesn't exceed wins, so this only
+// needs an upper bound per step, not a min/max pair. Rounded to the
+// nearest whole mm first, so a half-size (39.5mm, say) lands wherever it
+// visually reads closest to rather than needing its own boundary case.
+const CASE_DIAMETER_GROUPS = [
+  ['≤35mm', mm => mm <= 35],
+  ['36–37mm', mm => mm <= 37],
+  ['38–39mm', mm => mm <= 39],
+  ['40–41mm', mm => mm <= 41],
+  ['42–43mm', mm => mm <= 43],
+  ['44–45mm', mm => mm <= 45],
+  ['46mm+', () => true]
+];
+function caseDiameterGroupOf(raw){
+  const mm = Number(raw);
+  if(raw === null || raw === undefined || Number.isNaN(mm)) return null;
+  const rounded = Math.round(mm);
+  const hit = CASE_DIAMETER_GROUPS.find(([, fits]) => fits(rounded));
+  return hit ? hit[0] : null;
+}
+
+// Dial colors have far more raw variety than case material — a finish
+// (matte, sunburst, embossed, gradient, "fumé"...) is usually appended to
+// a base color rather than the catalog sticking to a fixed word list — so
+// rather than an exhaustive raw-value table like case material's, this
+// looks for one of these main color words inside whatever the raw value
+// actually says. "Black Matt" and "Black Embossed" both fold into "Black"
+// this way without needing to list every finish anyone's ever typed in.
+const DIAL_COLOR_GROUPS = [
+  'Black', 'White', 'Blue', 'Green', 'Silver', 'Grey', 'Brown',
+  'Champagne', 'Salmon', 'Gold', 'Red', 'Orange', 'Purple', 'Yellow',
+  'Mother-of-pearl', 'Skeleton'
+];
+function dialColorGroupOf(raw){
+  if(!raw) return null;
+  const lower = raw.toLowerCase();
+  const hit = DIAL_COLOR_GROUPS.find(color => lower.includes(color.toLowerCase()));
+  return hit || 'Other';
+}
+
 function filteredWatchCatalog(){
   const list = watchCatalog || [];
   return list.filter(entry =>
     matchesCatalogQuery(entry, watchSearchQuery) &&
-    (!watchSearchCaseMaterials.length || watchSearchCaseMaterials.includes(entry.case_material)) &&
+    (!watchSearchCaseMaterials.length || watchSearchCaseMaterials.includes(caseMaterialGroupOf(entry.case_material))) &&
+    (!watchSearchCaseDiameters.length || watchSearchCaseDiameters.includes(caseDiameterGroupOf(entry.case_size_mm))) &&
     (!watchSearchMovementTypes.length || watchSearchMovementTypes.includes(entry.movement_type)) &&
-    (!watchSearchDials.length || watchSearchDials.includes(entry.dial_color))
+    (!watchSearchDials.length || watchSearchDials.includes(dialColorGroupOf(entry.dial_color)))
   );
 }
 
@@ -134,10 +210,24 @@ function catalogFilterOptions(field){
   return Array.from(new Set(list.map(e => e[field]).filter(Boolean))).sort();
 }
 
+// Grouped counterpart to catalogFilterOptions, for case material/diameter/
+// dial: still only offers a group if something in the currently fetched
+// catalog actually falls into it (same "grows/shrinks with the real data"
+// rule), but ordered by orderedGroups (a fixed, meaningful order — cheapest
+// to widest, most to least common material) rather than alphabetically,
+// since these labels don't sort into a sensible order on their own
+// ("36–37mm" before "40–41mm" is only an accident of alphabetical sort,
+// and it breaks entirely once a two-digit and "≤"/"+" label are compared).
+function catalogFilterGroupOptions(rawField, groupFn, orderedGroups){
+  const list = watchCatalog || [];
+  const present = new Set(list.map(e => groupFn(e[rawField])).filter(Boolean));
+  return orderedGroups.filter(g => present.has(g));
+}
+
 // Options come from whatever's actually in the fetched catalog (see
-// catalogFilterOptions), so this list — and therefore what shows up here —
-// grows on its own as more watches are added to watch_catalog, with no
-// code change needed on this end.
+// catalogFilterOptions/catalogFilterGroupOptions), so this list — and
+// therefore what shows up here — grows on its own as more watches are
+// added to watch_catalog, with no code change needed on this end.
 function buildCatalogFiltersHtml(){
   // While the catalog fetch is still in flight, watchCatalog is null and
   // every option list below would be empty — rendering nothing here until
@@ -148,23 +238,27 @@ function buildCatalogFiltersHtml(){
   // just fills it in place once the data lands, with nothing to shift.
   if(watchCatalog === null){
     return `
-      <div class="row3 watch-catalog-filters">
+      <div class="watch-catalog-filters">
         ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', [], watchSearchCaseMaterials)}
+        ${buildMultiSelect('catalogFilterCaseDiameter', 'Size', [], watchSearchCaseDiameters)}
         ${buildMultiSelect('catalogFilterMovementType', 'Movement', [], watchSearchMovementTypes)}
         ${buildMultiSelect('catalogFilterDial', 'Dial', [], watchSearchDials)}
       </div>
     `;
   }
-  const caseMaterials = catalogFilterOptions('case_material');
+  const caseMaterialGroups = catalogFilterGroupOptions('case_material', caseMaterialGroupOf, CASE_MATERIAL_GROUPS.map(([g]) => g));
+  const caseDiameterGroups = catalogFilterGroupOptions('case_size_mm', caseDiameterGroupOf, CASE_DIAMETER_GROUPS.map(([g]) => g));
   const movementTypes = catalogFilterOptions('movement_type');
-  const dialColors = catalogFilterOptions('dial_color');
-  if(!caseMaterials.length && !movementTypes.length && !dialColors.length) return '';
-  const caseOptions = caseMaterials.map(v => [v, v]);
+  const dialGroups = catalogFilterGroupOptions('dial_color', dialColorGroupOf, DIAL_COLOR_GROUPS.concat(['Other']));
+  if(!caseMaterialGroups.length && !caseDiameterGroups.length && !movementTypes.length && !dialGroups.length) return '';
+  const caseMaterialOptions = caseMaterialGroups.map(v => [v, v]);
+  const caseDiameterOptions = caseDiameterGroups.map(v => [v, v]);
   const movementOptions = movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)]);
-  const dialOptions = dialColors.map(v => [v, v]);
+  const dialOptions = dialGroups.map(v => [v, v]);
   return `
-    <div class="row3 watch-catalog-filters">
-      ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', caseOptions, watchSearchCaseMaterials)}
+    <div class="watch-catalog-filters">
+      ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', caseMaterialOptions, watchSearchCaseMaterials)}
+      ${buildMultiSelect('catalogFilterCaseDiameter', 'Size', caseDiameterOptions, watchSearchCaseDiameters)}
       ${buildMultiSelect('catalogFilterMovementType', 'Movement', movementOptions, watchSearchMovementTypes)}
       ${buildMultiSelect('catalogFilterDial', 'Dial', dialOptions, watchSearchDials)}
     </div>
@@ -1699,6 +1793,7 @@ function attachCollectionHandlers(){
     addWatchMode = 'search';
     watchSearchQuery = '';
     watchSearchCaseMaterials = [];
+    watchSearchCaseDiameters = [];
     watchSearchMovementTypes = [];
     watchSearchDials = [];
     // Called before render(), not after: ensureCatalogLoaded() sets its
@@ -1830,13 +1925,18 @@ function attachCollectionHandlers(){
 // 'change' on the hidden input when a value is picked (see app.js) — a real
 // <select> does this on its own, these custom ones didn't used to need to.
 // Pulled out on its own (rather than left inline in attachCollectionHandlers
-// above) so refreshCatalogFilters() below can rewire the exact same three
+// above) so refreshCatalogFilters() below can rewire the exact same four
 // listeners after it rebuilds #watchCatalogFilters from scratch, instead of
 // a second, easily-drifting copy of this.
 function wireCatalogFilterHandlers(){
   const caseMaterialFilter = document.getElementById('catalogFilterCaseMaterial');
   if(caseMaterialFilter) caseMaterialFilter.addEventListener('change', () => {
     watchSearchCaseMaterials = caseMaterialFilter.value ? caseMaterialFilter.value.split(',') : [];
+    refreshCatalogResults();
+  });
+  const caseDiameterFilter = document.getElementById('catalogFilterCaseDiameter');
+  if(caseDiameterFilter) caseDiameterFilter.addEventListener('change', () => {
+    watchSearchCaseDiameters = caseDiameterFilter.value ? caseDiameterFilter.value.split(',') : [];
     refreshCatalogResults();
   });
   const movementTypeFilter = document.getElementById('catalogFilterMovementType');

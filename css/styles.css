@@ -2382,12 +2382,28 @@
   /* Filters sit closer to the search field than the result list below does
      — they narrow the same query, so grouping them visually with the field
      they modify (rather than evenly with everything else in the card)
-     reads as "search + its options" instead of three unrelated rows. */
+     reads as "search + its options" instead of four unrelated rows. Four
+     filters (Case material, Case diameter, Movement, Dial) no longer fit
+     one row at phone width the way the original three did — wrapping to a
+     2x2 grid instead of shrinking each button illegibly thin. No longer
+     borrows .row3 for its flex basics (used to double as a fourth
+     column) — this now carries its own display:flex, since a "row3" name
+     stopped fitting a row of four. */
   .watch-catalog-filters{
+    display:flex;
+    flex-wrap:wrap;
     gap:6px;
     margin-top:-4px;
   }
-  .watch-catalog-filters .select-wrap{flex:1 1 0;min-width:0;}
+  /* calc(50% - 3px) rather than the plain flex:1 a same-row layout used —
+     half the row each, minus half the 6px gap between the pair, so two
+     side by side always fill it exactly instead of leaving a sliver short
+     or wrapping a lone third item onto its own line. */
+  .watch-catalog-filters .select-wrap{flex:1 1 calc(50% - 3px);min-width:0;}
+  .watch-catalog-filters .condition-select{
+    font-size:12px;
+    padding:10px 8px;
+  }
   /* The square-touching-corners treatment above (.select-wrap.select-open
      .condition-select) reads as one continuous shape with the menu right
      below a single trigger — it stops making sense here since an open
