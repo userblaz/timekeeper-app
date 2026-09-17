@@ -500,6 +500,16 @@ function watchPlaceholderIconSvg(){
   </svg>`;
 }
 
+// A plain pencil — the watch bar's own way into edit mode now (see
+// buildCollectionWatchBarHtml), replacing the old full-width "Edit watch
+// details" button that used to sit further down the detail page.
+function editIconSvg(){
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+  </svg>`;
+}
+
 function windIconSvg(){
   return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
    <g transform="rotate(180 12 12)">
@@ -1336,8 +1346,6 @@ function buildCollectionDetailHtml(w){
     <div class="collection-detail-body">
       ${hasStats ? dialSectionHtml : ''}
 
-      <button type="button" class="btn-secondary" data-action="startcollectionedit" data-id="${w.id}" style="margin-top:20px;width:100%;">Edit watch details</button>
-
       ${buildConditionInsightsHtml(w)}
 
       ${bundle.chartsHtml}
@@ -1364,11 +1372,14 @@ function buildCollectionWatchBarHtml(w){
       <div class="collection-card" style="cursor:default;">
         ${photoHtml}
         <div class="collection-card-body">
-          <div class="collection-card-name">${escapeHtml(w.name)}</div>
+          <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span></div>
           <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
           ${buildPowerReserveHtml(w)}
         </div>
         <div class="collection-card-actions">
+          <button type="button" class="zoom-btn collection-edit-btn" data-action="startcollectionedit" data-id="${w.id}" aria-label="Edit ${escapeHtml(w.name)}'s details" title="Edit details">
+            ${editIconSvg()}
+          </button>
           <button type="button" class="zoom-btn collection-wind-btn" data-action="markwound" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as fully wound" title="Fully wound now">
             ${windIconSvg()}
           </button>
@@ -1384,55 +1395,253 @@ function buildCollectionWatchBarHtml(w){
   `;
 }
 
-function buildCollectionEditForm(w){
-  const accuracyRange = parseAccuracySpec(w.accuracySpec);
-  // A catalog-sourced watch keeps its identifying details and factory specs
-  // locked to whatever the catalog actually says, so an edit here can never
-  // quietly drift it out of sync with the real spec — only the personal
-  // fields (photo, price, date, condition) stay editable, same split the
-  // catalog draws when the watch is first created (addWatchFromCatalog,
-  // data.js). A manually-added watch has no catalog entry behind it, so
-  // nothing here is locked; every field works exactly as it always has.
-  const locked = !!w.catalogId;
-  const lockedNote = locked ? ' <span class="field-locked-hint">from catalog</span>' : '';
+// --- Edit form field registry --------------------------------------------
+// The watches table now mirrors watch_catalog's own spec columns (see the
+// expand_watches.sql migration), so a manually-added watch can carry the
+// same depth of data a catalog-sourced one has on its linked watch_catalog
+// row. These lists are what drive the Movement and Functions sections'
+// boolean checklists — grouped the same way watch_catalog's own comments
+// group them (timekeeping/power + movement architecture/finishing under
+// Movement; complications, plus the handful of timekeeping display
+// functions like jumping hours, under Functions, matching "chronograph,
+// GMT, jumping hour" as the example given for that section).
+//
+// The lists themselves hold the columns' own snake_case db names (reads
+// naturally next to the SQL, and is what a checkbox's data-field carries),
+// but every local watch object property here follows the rest of this
+// codebase's own camelCase convention (purchasePrice, photoUrl, ...) — this
+// converts between the two wherever a boolean's *value* is actually read
+// off `w`, e.g. w[snakeToCamel('co_axial_escapement')] rather than the raw
+// w['co_axial_escapement'].
+function snakeToCamel(s){
+  return s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+const MOVEMENT_BOOL_FIELDS = [
+  'automatic_winding', 'manual_winding', 'bidirectional_winding', 'unidirectional_winding',
+  'hand_winding_capability', 'hacking_seconds', 'central_seconds', 'small_seconds', 'deadbeat_seconds',
+  'swiss_lever_escapement', 'co_axial_escapement', 'constant_force_mechanism', 'remontoire', 'fusee_and_chain',
+  'free_sprung_balance', 'variable_inertia_balance', 'micro_adjustment_regulation', 'multi_position_regulation',
+  'breguet_overcoil', 'silicon_hairspring', 'anti_magnetic_construction', 'shock_protection', 'ceramic_bearings',
+  'jewelled_bearings', 'full_balance_bridge', 'three_quarter_plate', 'twin_mainspring_barrels', 'multiple_barrels',
+  'screwed_balance', 'swan_neck_regulator', 'geneva_stripes', 'perlage', 'anglage', 'black_polishing',
+  'hand_engraving', 'skeletonization', 'openworked_bridges', 'gold_chatons'
+];
+const FUNCTIONS_BOOL_FIELDS = [
+  'display_24h', 'jumping_hours', 'jumping_minutes', 'retrograde_time_display', 'regulator_display', 'wandering_hours',
+  'has_date', 'day_date', 'big_date', 'triple_calendar', 'complete_calendar', 'annual_calendar', 'perpetual_calendar',
+  'moonphase', 'gmt_dual_time', 'world_time', 'equation_of_time', 'chronograph', 'flyback_chronograph',
+  'split_seconds_chronograph', 'chronograph_counters', 'alarm', 'minute_repeater', 'petite_sonnerie', 'grande_sonnerie',
+  'tourbillon', 'double_tourbillon', 'multi_axis_tourbillon', 'carrousel', 'automaton'
+];
+// Only the handful where turning a snake_case column into Title Case word
+// by word doesn't already read right on its own.
+const BOOL_FIELD_LABEL_OVERRIDES = {
+  has_date: 'Date', display_24h: '24-hour display', gmt_dual_time: 'GMT / dual time',
+  world_time: 'World time', hand_winding_capability: 'Hand-winding capability',
+  co_axial_escapement: 'Co-Axial escapement', swiss_lever_escapement: 'Swiss lever escapement',
+  anti_magnetic_construction: 'Anti-magnetic construction', three_quarter_plate: 'Three-quarter plate',
+  multi_axis_tourbillon: 'Multi-axis tourbillon'
+};
+function boolFieldLabel(key){
+  if(BOOL_FIELD_LABEL_OVERRIDES[key]) return BOOL_FIELD_LABEL_OVERRIDES[key];
+  return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
 
+// Non-boolean spec fields, grouped by section — everything else on the form
+// (Brand/Model/Reference/Photo/case summary/Dial in Basic info; Purchase
+// details; Notes) keeps its own hand-written markup below, either because
+// it predates this registry or because its layout (the photo picker, the
+// price+currency row, the slow/fast accuracy steppers) doesn't fit this
+// shared one. camelCase key is the local watch object's own property name;
+// db is the watches/watch_catalog column both read from and save to.
+const EDIT_FIELD_SECTIONS = {
+  movement: [
+    { key: 'movementType', db: 'movement_type', label: 'Movement', placeholder: 'e.g. automatic, manual, quartz' },
+    { key: 'movement', db: 'movement', label: 'Caliber', placeholder: 'e.g. Caliber 8800' },
+    { key: 'beatRateVph', db: 'beat_rate_vph', label: 'Beat rate (vph)', type: 'number', placeholder: 'e.g. 28800' }
+  ],
+  case: [
+    { key: 'crystal', db: 'crystal', label: 'Crystal', placeholder: 'e.g. Sapphire' },
+    { key: 'waterResistanceM', db: 'water_resistance_m', label: 'Water resistance (m)', type: 'number', placeholder: 'e.g. 300' }
+  ],
+  other: [
+    { key: 'productionYears', db: 'production_years', label: 'Production years', placeholder: 'e.g. 2018–current' }
+  ]
+};
+
+// Whether the "+ Add more data" toggle for a given section (buildAddMoreRow
+// below) has been clicked already this edit session — reset wherever
+// editingCollectionId is set (starting a fresh edit) so it doesn't carry
+// over from a previous watch, but otherwise survives that section's own
+// targeted refresh (refreshEditSection) so revealing the rest of a
+// section's fields doesn't collapse it back the next time this same watch
+// re-renders.
+let collectionEditExpandedSections = new Set();
+
+// One field's row: for a locked (catalog) watch, read-only and only shown
+// at all if it actually has a value — an empty catalog field just isn't
+// rendered, there's nothing to "fill in" on a watch whose spec comes from
+// elsewhere. For an unlocked (manual) watch, an editable input — but only
+// shown up front if it already has a value; an empty one waits behind that
+// section's "+ Add more data" until expanded, per the "don't show a form
+// full of empty fields for a two-minute-old watch" rule this whole
+// redesign is built around.
+function buildEditFieldRow(w, locked, field, expanded){
+  const value = w[field.key];
+  const hasValue = value !== null && value !== undefined && value !== '';
+  if(locked){
+    if(!hasValue) return '';
+    return `
+      <div class="field">
+        <label>${escapeHtml(field.label)} <span class="field-locked-hint">from catalog</span></label>
+        <div class="field-readonly">${escapeHtml(String(value))}</div>
+      </div>`;
+  }
+  if(!hasValue && !expanded) return '';
+  const id = 'col' + field.key.charAt(0).toUpperCase() + field.key.slice(1) + '_' + w.id;
+  const type = field.type || 'text';
+  return `
+    <div class="field">
+      <label for="${id}">${escapeHtml(field.label)}</label>
+      <input type="${type}" id="${id}" ${type==='number' ? 'step="1"' : ''} value="${escapeHtml(hasValue ? String(value) : '')}" placeholder="${escapeHtml(field.placeholder || '')}" />
+    </div>`;
+}
+
+// A section's whole boolean checklist. Locked (catalog): a single
+// comma-joined summary line of whichever of these are true — the same
+// "features" text watch_catalog_display computes server-side, just done
+// here client-side so a manually-added watch (nothing on the server to
+// compute it from) gets the identical treatment. Nothing shown at all if
+// none are true (a locked section has no "add more" to fall back on — see
+// buildEditBoolSection below for how that reads instead). Unlocked
+// (manual): real checkboxes, editable — only the already-checked ones up
+// front, the rest behind "+ Add more data" same as buildEditFieldRow.
+function buildEditBoolChecklist(w, locked, fields, expanded){
+  if(locked){
+    const trueLabels = fields.filter(f => !!w[snakeToCamel(f)]).map(f => boolFieldLabel(f));
+    if(!trueLabels.length) return '';
+    return `<p class="edit-feature-summary">${escapeHtml(trueLabels.join(', '))}</p>`;
+  }
+  const shown = expanded ? fields : fields.filter(f => !!w[snakeToCamel(f)]);
+  if(!shown.length) return '';
+  return `
+    <div class="cert-checkbox-list edit-bool-checklist">
+      ${shown.map(f => `
+        <label class="cert-checkbox">
+          <input type="checkbox" class="colFeat_${w.id}" data-field="${escapeHtml(f)}" ${w[snakeToCamel(f)] ? 'checked' : ''} />
+          <span>${escapeHtml(boolFieldLabel(f))}</span>
+        </label>
+      `).join('')}
+    </div>`;
+}
+
+// The "+ Add more data" link itself — only for an unlocked watch (a locked
+// section already shows everything the catalog has, there's nothing more
+// to reveal) and only when there's actually something left hidden (every
+// field already showing, or already expanded, means there's nothing more
+// this could add).
+function buildAddMoreRow(w, locked, sectionKey, fields, expanded){
+  if(locked || expanded) return '';
+  const stillHidden = fields.some(f => {
+    const isBool = typeof f === 'string';
+    if(isBool) return !w[snakeToCamel(f)];
+    const value = w[f.key];
+    if(Array.isArray(value)) return value.length === 0;
+    return value === null || value === undefined || value === '';
+  });
+  if(!stillHidden) return '';
+  return `<button type="button" class="manual-link" data-action="expandeditsection" data-section="${sectionKey}" data-id="${w.id}">+ Add more data</button>`;
+}
+
+// One full section: heading, whatever fields/checklist actually render,
+// and (unlocked only) the add-more link — wrapped in an id'd container so
+// refreshEditSection can rebuild just this one in place when that link is
+// clicked, without touching (and losing whatever's been typed into) any
+// other section still on screen. Nothing rendered at all — not even the
+// heading — when a *locked* section has nothing to show: that's a real
+// "the catalog has no data for this yet" state worth being visible as
+// such elsewhere (see the collection-detail-body's own empty states), but
+// here, on an editing form, an empty locked section is just noise.
+function buildEditSection(w, locked, sectionKey, title, fieldsHtml, addMoreHtml){
+  if(locked && !fieldsHtml) return '';
+  return `
+    <div class="edit-section" id="editSection_${sectionKey}_${w.id}">
+      <div class="edit-section-title">${escapeHtml(title)}</div>
+      ${fieldsHtml || (locked ? '' : '<p class="hint">Nothing added yet.</p>')}
+      ${addMoreHtml}
+    </div>
+  `;
+}
+
+// Basic info is the one section with bespoke, always-shown fields (Photo,
+// Brand — a watch always has at least a brand, per the minimum a manually-
+// added one starts with) alongside the same conditionally-shown ones every
+// other section uses. The case-size/material line duplicates the Case
+// section further down on purpose (confirmed) — but only as a quick-glance
+// readout here, never its own separate editable copy, so there's exactly
+// one place (Case) that actually writes case_size_mm/case_material.
+function buildEditSectionBasic(w, locked){
+  const expanded = collectionEditExpandedSections.has('basic');
+  const modelRefFields = [
+    { key: 'model', db: 'model', label: 'Model', placeholder: 'e.g. Speedmaster, Submariner…' },
+    { key: 'reference', db: 'reference', label: 'Reference number', placeholder: 'e.g. 311.30.42.30.01.005' }
+  ];
+  const dialField = { key: 'dialColor', db: 'dial_color', label: 'Dial', placeholder: 'e.g. Black' };
+  const modelRefHtml = `<div class="row2">${modelRefFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('')}</div>`;
+  const caseSummary = [
+    w.caseSizeMm !== null && w.caseSizeMm !== undefined && w.caseSizeMm !== '' ? `${w.caseSizeMm}mm` : '',
+    w.caseMaterial || ''
+  ].filter(Boolean).join(' · ');
+  const caseSummaryHtml = caseSummary ? `
+    <div class="field">
+      <label>Case</label>
+      <div class="field-readonly">${escapeHtml(caseSummary)}</div>
+    </div>` : '';
+  const dialHtml = buildEditFieldRow(w, locked, dialField, expanded);
+  const addMoreHtml = buildAddMoreRow(w, locked, 'basic', modelRefFields.concat([dialField]), expanded);
   const nameFieldHtml = locked ? `
     <div class="field">
-      <label>Brand${lockedNote}</label>
+      <label>Brand <span class="field-locked-hint">from catalog</span></label>
       <div class="field-readonly">${escapeHtml(w.name || '—')}</div>
     </div>` : `
     <div class="field">
       <label for="colName_${w.id}">Brand</label>
       <input type="text" id="colName_${w.id}" value="${escapeHtml(w.name || '')}" placeholder="e.g. Rolex, Omega, Seiko…" />
     </div>`;
+  return `
+    <div class="edit-section" id="editSection_basic_${w.id}">
+      <div class="edit-section-title">Basic info</div>
+      ${nameFieldHtml}
+      <div class="field">
+        <label for="colPhoto_${w.id}">Photo</label>
+        <label class="btn-secondary" style="text-align:center;cursor:pointer;">
+          ${collectionPhotoFile ? 'New photo selected' : (w.photoUrl ? 'Change photo' : 'Add photo')}
+          <input type="file" id="colPhoto_${w.id}" accept="image/*" style="display:none;" />
+        </label>
+      </div>
+      ${modelRefHtml}
+      ${caseSummaryHtml}
+      ${dialHtml}
+      ${addMoreHtml}
+    </div>
+  `;
+}
 
-  const modelReferenceHtml = locked ? `
-    <div class="row2">
-      <div class="field">
-        <label>Model${lockedNote}</label>
-        <div class="field-readonly">${escapeHtml(w.model || '—')}</div>
-      </div>
-      <div class="field">
-        <label>Reference number${lockedNote}</label>
-        <div class="field-readonly">${escapeHtml(w.reference || '—')}</div>
-      </div>
-    </div>` : `
-    <div class="row2">
-      <div class="field">
-        <label for="colModel_${w.id}">Model</label>
-        <input type="text" id="colModel_${w.id}" value="${escapeHtml(w.model || '')}" placeholder="e.g. Speedmaster, Submariner…" />
-      </div>
-      <div class="field">
-        <label for="colReference_${w.id}">Reference number</label>
-        <input type="text" id="colReference_${w.id}" value="${escapeHtml(w.reference || '')}" placeholder="e.g. 311.30.42.30.01.005" />
-      </div>
-    </div>`;
-
-  const accuracyFieldHtml = locked ? `
+function buildEditSectionMovement(w, locked){
+  const expanded = collectionEditExpandedSections.has('movement');
+  const accuracyRange = parseAccuracySpec(w.accuracySpec);
+  const hasAccuracy = !!w.accuracySpec;
+  const hasReserve = w.powerReserveHours !== null && w.powerReserveHours !== undefined && w.powerReserveHours !== '';
+  // Accuracy's slow/fast stepper pair and reserve's plain number input keep
+  // their own hand-written markup — bespoke widgets the generic
+  // buildEditFieldRow (built for a single plain input) doesn't cover —
+  // but still follow the same locked/has-value/expanded rule as every
+  // other field here.
+  const accuracyHtml = locked ? (hasAccuracy ? `
     <div class="field">
-      <label>Factory accuracy spec (s/day)${lockedNote}</label>
-      <div class="field-readonly">${escapeHtml(w.accuracySpec || '—')}</div>
-    </div>` : `
+      <label>Factory accuracy spec (s/day) <span class="field-locked-hint">from catalog</span></label>
+      <div class="field-readonly">${escapeHtml(w.accuracySpec)}</div>
+    </div>` : '') : (hasAccuracy || expanded ? `
     <div class="field">
       <label>Factory accuracy spec (s/day)</label>
       <div class="row2">
@@ -1453,23 +1662,64 @@ function buildCollectionEditForm(w){
           </div>
         </div>
       </div>
-    </div>`;
-
-  const reserveFieldHtml = locked ? `
+    </div>` : '');
+  const reserveHtml = locked ? (hasReserve ? `
     <div class="field">
-      <label>Power reserve (hours)${lockedNote}</label>
-      <div class="field-readonly">${w.powerReserveHours ? escapeHtml(String(w.powerReserveHours)) : '—'}</div>
-    </div>` : `
+      <label>Power reserve (hours) <span class="field-locked-hint">from catalog</span></label>
+      <div class="field-readonly">${escapeHtml(String(w.powerReserveHours))}</div>
+    </div>` : '') : (hasReserve || expanded ? `
     <div class="field">
       <label for="colReserve_${w.id}">Power reserve (hours)</label>
-      <input type="number" id="colReserve_${w.id}" step="1" min="0" placeholder="e.g. 70" value="${w.powerReserveHours || ''}" />
-    </div>`;
+      <input type="number" id="colReserve_${w.id}" step="1" min="0" placeholder="e.g. 70" value="${w.powerReserveHours ?? ''}" />
+    </div>` : '');
+  const textFields = EDIT_FIELD_SECTIONS.movement;
+  const textHtml = textFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  const boolHtml = buildEditBoolChecklist(w, locked, MOVEMENT_BOOL_FIELDS, expanded);
+  const fieldsHtml = [textHtml, reserveHtml, accuracyHtml, boolHtml].filter(Boolean).join('');
+  // accuracySpec/powerReserveHours aren't in EDIT_FIELD_SECTIONS.movement
+  // (their bespoke widgets are built by hand just above), so buildAddMoreRow
+  // needs them named explicitly here to know there's still more to reveal.
+  const hideableFields = textFields.concat(MOVEMENT_BOOL_FIELDS).concat([
+    { key: 'accuracySpec' }, { key: 'powerReserveHours' }
+  ]);
+  const addMoreHtml = buildAddMoreRow(w, locked, 'movement', hideableFields, expanded);
+  return buildEditSection(w, locked, 'movement', 'Movement', fieldsHtml, addMoreHtml);
+}
 
-  const certsFieldHtml = locked ? `
+function buildEditSectionFunctions(w, locked){
+  const expanded = collectionEditExpandedSections.has('functions');
+  const boolHtml = buildEditBoolChecklist(w, locked, FUNCTIONS_BOOL_FIELDS, expanded);
+  const addMoreHtml = buildAddMoreRow(w, locked, 'functions', FUNCTIONS_BOOL_FIELDS, expanded);
+  return buildEditSection(w, locked, 'functions', 'Functions', boolHtml, addMoreHtml);
+}
+
+function buildEditSectionCase(w, locked){
+  const expanded = collectionEditExpandedSections.has('case');
+  // Size/material are already up in Basic info (a quick-glance summary —
+  // see buildCollectionEditForm) but belong here too for the full spec,
+  // per your own call that the duplication is intentional.
+  const sizeMaterialFields = [
+    { key: 'caseSizeMm', db: 'case_size_mm', label: 'Case size (mm)', type: 'number', placeholder: 'e.g. 41' },
+    { key: 'caseMaterial', db: 'case_material', label: 'Case material', placeholder: 'e.g. Steel' }
+  ];
+  const allFields = sizeMaterialFields.concat(EDIT_FIELD_SECTIONS.case);
+  const fieldsHtml = allFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  const addMoreHtml = buildAddMoreRow(w, locked, 'case', allFields, expanded);
+  return buildEditSection(w, locked, 'case', 'Case', fieldsHtml, addMoreHtml);
+}
+
+function buildEditSectionOther(w, locked){
+  const expanded = collectionEditExpandedSections.has('other');
+  const hasCerts = !!(w.certifications && w.certifications.length);
+  // Certificates keeps its own hand-written checkbox-list markup (a fixed
+  // option set — COSC, METAS, etc. — not a boolean column, so it doesn't
+  // fit buildEditFieldRow or buildEditBoolChecklist either), but follows
+  // the same locked/has-value/expanded rule as everything else here.
+  const certsHtml = locked ? (hasCerts ? `
     <div class="field">
-      <label>Certificates${lockedNote}</label>
-      <div class="field-readonly">${(w.certifications && w.certifications.length) ? escapeHtml(w.certifications.join(', ')) : '—'}</div>
-    </div>` : `
+      <label>Certificates <span class="field-locked-hint">from catalog</span></label>
+      <div class="field-readonly">${escapeHtml(w.certifications.join(', '))}</div>
+    </div>` : '') : (hasCerts || expanded ? `
     <div class="field">
       <label>Certificates</label>
       <div class="cert-checkbox-list">
@@ -1480,19 +1730,45 @@ function buildCollectionEditForm(w){
           </label>
         `).join('')}
       </div>
-    </div>`;
+    </div>` : '');
+  const fields = EDIT_FIELD_SECTIONS.other;
+  const fieldsHtml = fields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('') + certsHtml;
+  const addMoreHtml = buildAddMoreRow(w, locked, 'other', fields.concat([{ key: 'certifications' }]), expanded);
+  return buildEditSection(w, locked, 'other', 'Other', fieldsHtml, addMoreHtml);
+}
 
+// Rebuilds one section in place after its "+ Add more data" is clicked —
+// deliberately not a full render(): the other sections on this same form
+// can easily have text sitting in their own inputs that hasn't been saved
+// yet, and a full render() would wipe every one of them back to whatever
+// `w` still says, the same lesson the Add Watch search box's own targeted
+// refreshCatalogResults() (above) is built around. Nothing needs rewiring
+// afterward — the section that was just replaced has no "+ Add more data"
+// button left inside it (buildAddMoreRow drops it the moment a section is
+// expanded), and every other section's own button was never touched, so
+// it's still wired from attachCollectionHandlers' own delegated listener.
+function refreshEditSection(watchId, sectionKey){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return;
+  collectionEditExpandedSections.add(sectionKey);
+  const el = document.getElementById('editSection_' + sectionKey + '_' + watchId);
+  if(!el) return;
+  const locked = !!w.catalogId;
+  const builders = { movement: buildEditSectionMovement, functions: buildEditSectionFunctions, case: buildEditSectionCase, other: buildEditSectionOther };
+  const builder = builders[sectionKey];
+  if(!builder) return;
+  el.outerHTML = builder(w, locked);
+}
+
+// Purchase details and Notes are the two sections that were never
+// catalog data to begin with — every watch, locked or not, always owns
+// its own price/date/condition regardless of where the rest of its spec
+// comes from, so these two skip the locked/has-value/expanded machinery
+// entirely and just always show, same as they always have.
+function buildEditSectionPurchase(w){
   return `
-    <div class="collection-card collection-card-edit">
-      ${nameFieldHtml}
-      <div class="field">
-        <label for="colPhoto_${w.id}">Photo</label>
-        <label class="btn-secondary" style="text-align:center;cursor:pointer;">
-          ${collectionPhotoFile ? 'New photo selected' : (w.photoUrl ? 'Change photo' : 'Add photo')}
-          <input type="file" id="colPhoto_${w.id}" accept="image/*" style="display:none;" />
-        </label>
-      </div>
-      ${modelReferenceHtml}
+    <div class="edit-section">
+      <div class="edit-section-title">Purchase details</div>
       <div class="row2">
         <div class="field">
           <label for="colPrice_${w.id}">Purchase price</label>
@@ -1506,19 +1782,58 @@ function buildCollectionEditForm(w){
           <input type="date" id="colDate_${w.id}" value="${w.purchaseDate || ''}" />
         </div>
       </div>
-      ${accuracyFieldHtml}
-      ${reserveFieldHtml}
-      ${certsFieldHtml}
+    </div>
+  `;
+}
+
+function buildEditSectionNotes(w){
+  return `
+    <div class="edit-section">
+      <div class="edit-section-title">Notes</div>
       <div class="field">
         <label for="colNotes_${w.id}">Notes / condition</label>
         <input type="text" id="colNotes_${w.id}" value="${escapeHtml(w.conditionNotes || '')}" placeholder="full set, box & papers…" />
       </div>
+    </div>
+  `;
+}
+
+function buildCollectionEditForm(w){
+  // A catalog-sourced watch keeps its identifying details and factory specs
+  // locked to whatever the catalog actually says, so an edit here can never
+  // quietly drift it out of sync with the real spec — only the personal
+  // fields (photo, price, date, condition) stay editable, same split the
+  // catalog draws when the watch is first created (addWatchFromCatalog,
+  // data.js). A manually-added watch has no catalog entry behind it, so
+  // nothing here is locked; every field works exactly as it always has.
+  const locked = !!w.catalogId;
+  return `
+    <div class="collection-card collection-card-edit">
+      ${buildEditSectionBasic(w, locked)}
+      ${buildEditSectionMovement(w, locked)}
+      ${buildEditSectionFunctions(w, locked)}
+      ${buildEditSectionCase(w, locked)}
+      ${buildEditSectionOther(w, locked)}
+      ${buildEditSectionPurchase(w)}
+      ${buildEditSectionNotes(w)}
       ${saveStatus === 'error' ? '<p class="hint" style="color:var(--bad);">Save failed — check your connection, or the database may be missing the collection columns (see the setup SQL).</p>' : ''}
       <button type="button" class="btn-primary" data-action="savecollection" data-id="${w.id}" style="width:100%;margin-top:6px;">${saveStatus==='saving' ? 'Saving…' : 'Save'}</button>
       <button type="button" class="manual-link manual-link-inline" data-action="deletecollectionwatch" data-id="${w.id}" style="margin:14px auto 0;"><span style="color:var(--bad);">Delete</span>&nbsp;"${escapeHtml(w.name)}"</button>
     </div>
   `;
 }
+
+// Every EDIT_FIELD_SECTIONS.* entry plus the hand-built ones outside that
+// registry (case size/material, dial) — matches buildEditFieldRow's own
+// id scheme (col<PascalKey>_<watchId>) so saveCollectionEdit can look each
+// one up the same way regardless of which section built it.
+const ALL_EDIT_TEXT_FIELDS = [].concat(
+  EDIT_FIELD_SECTIONS.movement, EDIT_FIELD_SECTIONS.case, EDIT_FIELD_SECTIONS.other,
+  [
+    { key: 'model', db: 'model' }, { key: 'reference', db: 'reference' }, { key: 'dialColor', db: 'dial_color' },
+    { key: 'caseSizeMm', db: 'case_size_mm', type: 'number' }, { key: 'caseMaterial', db: 'case_material' }
+  ]
+);
 
 async function saveCollectionEdit(watchId){
   const w = state.watches.find(x => x.id === watchId);
@@ -1542,12 +1857,24 @@ async function saveCollectionEdit(watchId){
   // reading its own just-reset form back, not what was on screen a moment
   // earlier.
   const nameEl = locked ? null : document.getElementById('colName_'+watchId);
-  const modelEl = locked ? null : document.getElementById('colModel_'+watchId);
-  const referenceEl = locked ? null : document.getElementById('colReference_'+watchId);
   const reserveEl = locked ? null : document.getElementById('colReserve_'+watchId);
   const accuracySlowEl = locked ? null : document.getElementById('colAccuracySlow_'+watchId);
   const accuracyFastEl = locked ? null : document.getElementById('colAccuracyFast_'+watchId);
   const certifications = locked ? [] : Array.from(document.querySelectorAll('.colCert_'+watchId+':checked')).map(el => el.value);
+  // Not every one of these exists in the DOM — a field that was never
+  // "+ Add more data"-expanded, and had nothing in it to begin with, was
+  // never rendered at all (see buildEditFieldRow). null here just means
+  // "this field wasn't on screen to change" — handled below by omitting it
+  // from the update entirely rather than writing null over an existing
+  // value the user never had a chance to see or touch.
+  const textEls = locked ? {} : Object.fromEntries(
+    ALL_EDIT_TEXT_FIELDS.map(f => [f.key, document.getElementById('col' + f.key.charAt(0).toUpperCase() + f.key.slice(1) + '_' + watchId)])
+  );
+  // Same story for booleans, read as a whole rendered set rather than only
+  // :checked — an unchecked-but-rendered box is a real "no" the user could
+  // have toggled, and needs writing just as much as a checked one; a box
+  // that was never rendered at all still needs to be left alone.
+  const boolEls = locked ? [] : Array.from(document.querySelectorAll('.colFeat_'+watchId));
 
   saveStatus = 'saving'; render();
 
@@ -1570,19 +1897,41 @@ async function saveCollectionEdit(watchId){
   };
 
   if(!locked){
-    const slowVal = accuracySlowEl.value === '' ? null : Number(accuracySlowEl.value);
-    const fastVal = accuracyFastEl.value === '' ? null : Number(accuracyFastEl.value);
-    const accuracySpec = (slowVal !== null || fastVal !== null)
-      ? `${slowVal !== null ? (slowVal>0?'-':'')+slowVal : '—'}/${fastVal !== null ? (fastVal>0?'+':'')+fastVal : '—'} s/day`
-      : null;
-
     // a watch always needs a name, so an emptied field keeps the old one
     updates.name = (nameEl.value || '').trim() || w.name;
-    updates.model = (modelEl.value || '').trim() || null;
-    updates.reference = (referenceEl.value || '').trim() || null;
-    updates.accuracy_spec = accuracySpec;
-    updates.power_reserve_hours = reserveEl.value !== '' ? Number(reserveEl.value) : null;
-    updates.certifications = certifications.length ? certifications.join(',') : null;
+
+    // accuracySlowEl/accuracyFastEl, same as every textEls lookup below:
+    // null means the accuracy field was never rendered (nothing in it, and
+    // never expanded), so there's nothing to write — leave accuracy_spec
+    // out of updates entirely rather than overwriting it with null.
+    if(accuracySlowEl || accuracyFastEl){
+      const slowVal = (accuracySlowEl && accuracySlowEl.value !== '') ? Number(accuracySlowEl.value) : null;
+      const fastVal = (accuracyFastEl && accuracyFastEl.value !== '') ? Number(accuracyFastEl.value) : null;
+      updates.accuracy_spec = (slowVal !== null || fastVal !== null)
+        ? `${slowVal !== null ? (slowVal>0?'-':'')+slowVal : '—'}/${fastVal !== null ? (fastVal>0?'+':'')+fastVal : '—'} s/day`
+        : null;
+    }
+    if(reserveEl) updates.power_reserve_hours = reserveEl.value !== '' ? Number(reserveEl.value) : null;
+    // Certificates has the same "was this section ever rendered/expanded"
+    // question as the other bespoke widgets, but unlike a single hidden
+    // input there's no one element whose presence answers it — check for
+    // any of its own checkboxes instead.
+    if(document.querySelector('.colCert_'+watchId)) updates.certifications = certifications.length ? certifications.join(',') : null;
+
+    ALL_EDIT_TEXT_FIELDS.forEach(f => {
+      const el = textEls[f.key];
+      if(!el) return; // never rendered — leave this column untouched
+      if(f.type === 'number'){
+        updates[f.db] = el.value !== '' ? Number(el.value) : null;
+      } else {
+        updates[f.db] = (el.value || '').trim() || null;
+      }
+    });
+    // Same "only touch what was actually on screen" rule for booleans —
+    // boolEls is every *rendered* checkbox (checked or not), so this
+    // covers a deliberate uncheck as much as a fresh check; anything not
+    // rendered this session is left exactly as it already was in the db.
+    boolEls.forEach(el => { updates[el.dataset.field] = el.checked; });
   }
 
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
@@ -1595,11 +1944,20 @@ async function saveCollectionEdit(watchId){
 
   if(!locked){
     w.name = updates.name;
-    w.model = updates.model || '';
-    w.reference = updates.reference || '';
-    w.accuracySpec = updates.accuracy_spec || '';
-    w.powerReserveHours = updates.power_reserve_hours;
-    w.certifications = updates.certifications ? updates.certifications.split(',').filter(Boolean) : [];
+    if('accuracy_spec' in updates) w.accuracySpec = updates.accuracy_spec || '';
+    if('power_reserve_hours' in updates) w.powerReserveHours = updates.power_reserve_hours;
+    if('certifications' in updates) w.certifications = updates.certifications ? updates.certifications.split(',').filter(Boolean) : [];
+    // model/reference/dialColor/caseSizeMm/caseMaterial and every Movement/
+    // Case/Other text field all go through here too — ALL_EDIT_TEXT_FIELDS
+    // covers every one of them, number fields kept as null rather than ''
+    // (matching how they're read from the db everywhere else), text
+    // fields falling back to '' the same way the rest of this object
+    // already does (w.model, w.reference, ...).
+    ALL_EDIT_TEXT_FIELDS.forEach(f => {
+      if(!(f.db in updates)) return;
+      w[f.key] = f.type === 'number' ? updates[f.db] : (updates[f.db] || '');
+    });
+    boolEls.forEach(el => { w[snakeToCamel(el.dataset.field)] = el.checked; });
   }
   w.purchasePrice = updates.purchase_price;
   w.purchaseCurrency = updates.purchase_currency;
@@ -1773,7 +2131,12 @@ function attachCollectionHandlers(){
   };
   const startEditBtn = document.querySelector('[data-action="startcollectionedit"]');
   if(startEditBtn) startEditBtn.onclick = () => {
-    editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = ''; render();
+    editingCollectionId = startEditBtn.dataset.id; collectionPhotoFile = null; saveStatus = '';
+    // A fresh edit session starts with every section collapsed to just its
+    // already-filled fields, regardless of what an earlier edit (this watch
+    // or another one) left expanded.
+    collectionEditExpandedSections = new Set();
+    render();
     // Same fix as opening a watch from a scrolled-down list, and cancelling
     // back out of this same form (see viewcollection and cancelcollection
     // below) — entering edit from partway down the detail page otherwise
@@ -1781,6 +2144,9 @@ function attachCollectionHandlers(){
     // be, rather than at its own top.
     scrollToPageTop(300);
   };
+  document.querySelectorAll('[data-action="expandeditsection"]').forEach(btn => {
+    btn.onclick = () => refreshEditSection(btn.dataset.id, btn.dataset.section);
+  });
   const cancelBtn = document.querySelector('[data-action="cancelcollection"]');
   if(cancelBtn) cancelBtn.onclick = () => {
     editingCollectionId = null; collectionPhotoFile = null; render();

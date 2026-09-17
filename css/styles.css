@@ -187,13 +187,32 @@
   .collection-watch-bar .collection-card{
     width:100%;
   }
-  /* Back and Snap sit side by side here rather than stacked — the base
-     column direction (.collection-card-actions) is for the Data tab's
-     3-button column; this bar only ever has two, and row reads as one
-     aligned pair instead of a lopsided stack. */
+  /* Edit/Wind/Snap/Back sit side by side here rather than stacked — the
+     base column direction (.collection-card-actions) is for the Data
+     tab's own column of these. Sized down from their normal 30-36px (the
+     wind button's own bigger "primary action" treatment doesn't need to
+     win here) and the gap tightened — four of them alongside a photo and
+     a name that can run long (see .card-name-text below) needs every bit
+     of width this card can spare. */
   .collection-watch-bar .collection-card-actions{
     flex-direction:row;
-    gap:10px;
+    gap:6px;
+  }
+  .collection-watch-bar .collection-card-actions .zoom-btn{
+    width:30px;
+    height:30px;
+  }
+  .collection-watch-bar .collection-card-actions .zoom-btn svg{
+    width:16px;
+    height:16px;
+  }
+  /* The name is the part that gives way, same as the list card's own
+     .card-name-text — without it a long model name (Speedmaster
+     Professional Moonwatch, say) wraps across several lines and pushes
+     down into/behind the action buttons instead of eliding in place. */
+  .collection-watch-bar .collection-card-name{
+    display:flex;
+    min-width:0;
   }
   /* Plays once when a watch's detail page opens — a small rise-and-settle so
      the page reads as sliding into place rather than snapping in instantly.
@@ -2378,6 +2397,39 @@
     align-items:stretch;
     gap:12px;
     cursor:default;
+  }
+  /* Basic info/Movement/Functions/Case/Other/Purchase details/Notes — each
+     a direct child of .collection-card-edit above, so its own 12px gap
+     already separates them; this just adds the divider/heading on top of
+     that rather than needing its own spacing rules. */
+  .edit-section{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .edit-section-title{
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    font-weight:700;
+    color:var(--ink);
+    padding-top:12px;
+    border-top:1px solid var(--line);
+  }
+  .edit-section:first-child .edit-section-title{
+    padding-top:0;
+    border-top:none;
+  }
+  /* A locked (catalog) section's whole boolean checklist collapses to one
+     line, comma-joined — the same "features" text watch_catalog_display
+     computes server-side, just read off the true ones directly here
+     instead (buildEditBoolChecklist, collection.js). Reads like body text,
+     not a field, since there's nothing to edit or click. */
+  .edit-feature-summary{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    line-height:1.5;
+    color:var(--grey);
+    margin:0;
   }
   /* Filters sit closer to the search field than the result list below does
      — they narrow the same query, so grouping them visually with the field

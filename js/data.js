@@ -95,6 +95,11 @@ async function loadState(){
       powerReserveHours: w.power_reserve_hours === null || w.power_reserve_hours === undefined ? null : Number(w.power_reserve_hours),
       lastWoundAt: w.last_wound_at || null,
       certifications: w.certifications ? w.certifications.split(',').filter(Boolean) : [],
+      // Every case/movement/functions column the edit form's new sections
+      // read (collection.js) — specFieldsFromRow (below in this file)
+      // shares the same mapping addWatchFromCatalog uses, since it's
+      // reading the same column names off the same table either way.
+      ...specFieldsFromRow(w),
       wornDates: new Set(wearRows.filter(r => r.watch_id === w.id).map(r => r.date)),
       readings: (readingRows || [])
         .filter(r => r.watch_id === w.id)
@@ -222,11 +227,48 @@ function overallStats(watch){
   return { avgRate, days, count: segment.length, sinceReset: lastResetIdx >= 0 };
 }
 
+// The new spec columns (case/movement/functions/etc — see the
+// expand_watches.sql migration) are shared by both addWatch and
+// addWatchFromCatalog below, so their shape lives here once rather than
+// twice. Reuses collection.js's own ALL_EDIT_TEXT_FIELDS/MOVEMENT_BOOL_
+// FIELDS/FUNCTIONS_BOOL_FIELDS/snakeToCamel — safe even though collection.js
+// loads after this file, since none of this runs until a watch is actually
+// added, well after every script has loaded. The empty shape a brand new
+// watch (manual, or catalog before addWatchFromCatalog fills it in) starts
+// with — every text/number field blank, every boolean false.
+function emptySpecFields(){
+  const fields = {};
+  ALL_EDIT_TEXT_FIELDS.forEach(f => { fields[f.key] = f.type === 'number' ? null : ''; });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS).forEach(dbName => { fields[snakeToCamel(dbName)] = false; });
+  return fields;
+}
+// Same shape, read off a real row instead — either a fetched watch_catalog
+// entry, or a watches row Supabase echoes back after insert/update; both
+// use the same column names, so one function covers either source.
+function specFieldsFromRow(row){
+  const fields = {};
+  ALL_EDIT_TEXT_FIELDS.forEach(f => {
+    const raw = row[f.db];
+    fields[f.key] = f.type === 'number' ? (raw === null || raw === undefined ? null : Number(raw)) : (raw || '');
+  });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS).forEach(dbName => { fields[snakeToCamel(dbName)] = !!row[dbName]; });
+  return fields;
+}
+// The insert payload's side of the same mirroring — db column names as
+// keys (what .insert() needs), read straight off a catalog entry (whose
+// own fields are already snake_case, straight from watch_catalog).
+function specInsertPayloadFromEntry(entry){
+  const payload = {};
+  ALL_EDIT_TEXT_FIELDS.forEach(f => { payload[f.db] = entry[f.db] ?? null; });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS).forEach(dbName => { payload[dbName] = !!entry[dbName]; });
+  return payload;
+}
+
 async function addWatch(name){
   saveStatus = 'saving'; render();
-  // Goes on the end of the Collection tab's order, same place a new watch
-  // has always landed (previously that fell out of created_at for free;
-  // sort_order needs it done explicitly).
+  // Goes on the end of the Collection tab's own order, same place a new
+  // watch has always landed (previously that fell out of created_at for
+  // free; sort_order needs it done explicitly).
   const nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0) + 1;
   const { data, error } = await sb.from('watches')
     .insert({ user_id: currentUser.id, name: name.trim(), sort_order: nextOrder })
@@ -240,7 +282,8 @@ async function addWatch(name){
     purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
     accuracySpec: '', powerReserveHours: null, lastWoundAt: null, certifications: [],
     wornDates: new Set(),
-    readings: []
+    readings: [],
+    ...emptySpecFields()
   };
   state.watches.push(w);
   state.activeId = w.id;
@@ -249,11 +292,11 @@ async function addWatch(name){
 
 // The Collection tab's "Add watch" search calls this instead of addWatch()
 // when the user picked a catalog result rather than typing a name from
-// scratch. Only the specs a catalog entry can actually know about get
-// filled in (accuracy spec, power reserve, certifications) — everything
-// personal (price, date, condition, photo) is left blank for the owner,
-// same as a manually-added watch, per the original design for this
-// feature (see the project handoff notes).
+// scratch. The full spec (accuracy, power reserve, certifications, and now
+// every case/movement/functions column — see specInsertPayloadFromEntry
+// above) gets copied onto the new row as a snapshot, same as it always has
+// — everything personal (price, date, condition, photo) is left blank for
+// the owner, same as a manually-added watch.
 async function addWatchFromCatalog(entry){
   saveStatus = 'saving'; render();
   const nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0) + 1;
@@ -267,7 +310,8 @@ async function addWatchFromCatalog(entry){
       power_reserve_hours: entry.power_reserve_hours === null || entry.power_reserve_hours === undefined ? null : entry.power_reserve_hours,
       certifications: entry.certifications || '',
       sort_order: nextOrder,
-      catalog_id: entry.id
+      catalog_id: entry.id,
+      ...specInsertPayloadFromEntry(entry)
     })
     .select().single();
   if(error){ saveStatus = 'error'; render(); return; }
@@ -282,7 +326,8 @@ async function addWatchFromCatalog(entry){
     lastWoundAt: null,
     certifications: data.certifications ? data.certifications.split(',').filter(Boolean) : [],
     wornDates: new Set(),
-    readings: []
+    readings: [],
+    ...specFieldsFromRow(data)
   };
   state.watches.push(w);
   state.activeId = w.id;
