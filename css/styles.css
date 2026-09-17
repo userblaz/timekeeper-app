@@ -2382,28 +2382,16 @@
   /* Filters sit closer to the search field than the result list below does
      — they narrow the same query, so grouping them visually with the field
      they modify (rather than evenly with everything else in the card)
-     reads as "search + its options" instead of four unrelated rows. Four
-     filters (Case material, Case diameter, Movement, Dial) no longer fit
-     one row at phone width the way the original three did — wrapping to a
-     2x2 grid instead of shrinking each button illegibly thin. No longer
-     borrows .row3 for its flex basics (used to double as a fourth
-     column) — this now carries its own display:flex, since a "row3" name
-     stopped fitting a row of four. */
+     reads as "search + its options" instead of three unrelated rows. Back
+     to three (Case, Movement, Dial) — Case material and diameter now live
+     together behind the one Case trigger (buildCaseFilterHtml,
+     collection.js) instead of being their own separate columns, so this
+     is .row3 again rather than needing its own flex-wrap layout. */
   .watch-catalog-filters{
-    display:flex;
-    flex-wrap:wrap;
     gap:6px;
     margin-top:-4px;
   }
-  /* calc(50% - 3px) rather than the plain flex:1 a same-row layout used —
-     half the row each, minus half the 6px gap between the pair, so two
-     side by side always fill it exactly instead of leaving a sliver short
-     or wrapping a lone third item onto its own line. */
-  .watch-catalog-filters .select-wrap{flex:1 1 calc(50% - 3px);min-width:0;}
-  .watch-catalog-filters .condition-select{
-    font-size:12px;
-    padding:10px 8px;
-  }
+  .watch-catalog-filters .select-wrap{flex:1 1 0;min-width:0;}
   /* The square-touching-corners treatment above (.select-wrap.select-open
      .condition-select) reads as one continuous shape with the menu right
      below a single trigger — it stops making sense here since an open
@@ -2415,6 +2403,32 @@
   .watch-catalog-filters .select-wrap.select-open .condition-select,
   .watch-catalog-filters .select-wrap.select-open.drop-up .condition-select{
     border-radius:12px;
+  }
+  /* Case's own menu (buildCaseFilterHtml, collection.js): material and
+     size side by side rather than one flat list — the escape-to-<body>
+     above already sizes this to the whole filter row's width (not just
+     Case's own third), which is exactly the room two columns need.
+     :not([hidden]) matters here — nothing in this app styles [hidden]
+     itself, so visibility relies entirely on the attribute's own default
+     UA display:none; an unconditional display:flex on this class would
+     outrank that default and render the menu open even while hidden is
+     set. */
+  .case-filter-menu:not([hidden]){
+    display:flex;
+    gap:16px;
+  }
+  .case-filter-col{
+    flex:1;
+    min-width:0;
+  }
+  .case-filter-col-label{
+    font-family:'Inter',sans-serif;
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:0.3px;
+    text-transform:uppercase;
+    color:var(--grey);
+    padding:4px 6px 2px;
   }
   /* No max-height/internal scroll — this card isn't a modal, the whole
      Collection tab page scrolls normally, so the list just flows as part

@@ -224,6 +224,51 @@ function catalogFilterGroupOptions(rawField, groupFn, orderedGroups){
   return orderedGroups.filter(g => present.has(g));
 }
 
+// The Case filter combines two independent facets (material, diameter)
+// behind one trigger — Movement and Dial only ever hold one facet each, so
+// buildMultiSelect (app.js) already fits those as-is, but Case needs its
+// own two-hidden-input, two-column markup instead. Deliberately doesn't
+// reuse buildMultiSelect's own data-action="multiselecttoggle": that
+// handler (app.js) assumes every checkbox in a wrap's menu belongs to the
+// SAME one hidden input, which would merge material and diameter picks
+// together. casefiltertoggle (data-group tags which facet a box belongs
+// to) plus its own dedicated change handling below keeps the two apart
+// while still reusing the *shell* (the escape-to-<body>/positioning/
+// outside-click-closes machinery in app.js, which only cares about
+// .select-wrap/.select-menu/[data-action="toggleselect"] and never
+// actually looks at what's inside the menu).
+function buildCaseFilterHtml(materialGroups, diameterGroups){
+  const materialSelected = new Set(watchSearchCaseMaterials);
+  const diameterSelected = new Set(watchSearchCaseDiameters);
+  const total = materialSelected.size + diameterSelected.size;
+  const optionHtml = (value, group, selected) => `
+    <label class="multi-select-option">
+      <input type="checkbox" data-action="casefiltertoggle" data-group="${group}" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''} />
+      <span>${escapeHtml(value)}</span>
+    </label>
+  `;
+  return `
+    <div class="select-wrap multi-select-wrap case-filter-wrap" data-short-label="Case">
+      <input type="hidden" id="catalogFilterCaseMaterial" value="${escapeHtml(Array.from(materialSelected).join(','))}" />
+      <input type="hidden" id="catalogFilterCaseDiameter" value="${escapeHtml(Array.from(diameterSelected).join(','))}" />
+      <button type="button" class="condition-select${total ? '' : ' placeholder'}" data-action="toggleselect" aria-expanded="false">
+        <span class="select-value">Case${total ? ` (${total})` : ''}</span>
+        <svg class="select-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      <div class="select-menu multi-select-menu case-filter-menu" data-for="catalogFilterCaseMaterial" hidden>
+        <div class="case-filter-col">
+          <div class="case-filter-col-label">Material</div>
+          ${materialGroups.map(v => optionHtml(v, 'material', materialSelected)).join('')}
+        </div>
+        <div class="case-filter-col">
+          <div class="case-filter-col-label">Size</div>
+          ${diameterGroups.map(v => optionHtml(v, 'diameter', diameterSelected)).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // Options come from whatever's actually in the fetched catalog (see
 // catalogFilterOptions/catalogFilterGroupOptions), so this list — and
 // therefore what shows up here — grows on its own as more watches are
@@ -238,9 +283,8 @@ function buildCatalogFiltersHtml(){
   // just fills it in place once the data lands, with nothing to shift.
   if(watchCatalog === null){
     return `
-      <div class="watch-catalog-filters">
-        ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', [], watchSearchCaseMaterials)}
-        ${buildMultiSelect('catalogFilterCaseDiameter', 'Size', [], watchSearchCaseDiameters)}
+      <div class="row3 watch-catalog-filters">
+        ${buildCaseFilterHtml([], [])}
         ${buildMultiSelect('catalogFilterMovementType', 'Movement', [], watchSearchMovementTypes)}
         ${buildMultiSelect('catalogFilterDial', 'Dial', [], watchSearchDials)}
       </div>
@@ -251,14 +295,11 @@ function buildCatalogFiltersHtml(){
   const movementTypes = catalogFilterOptions('movement_type');
   const dialGroups = catalogFilterGroupOptions('dial_color', dialColorGroupOf, DIAL_COLOR_GROUPS.concat(['Other']));
   if(!caseMaterialGroups.length && !caseDiameterGroups.length && !movementTypes.length && !dialGroups.length) return '';
-  const caseMaterialOptions = caseMaterialGroups.map(v => [v, v]);
-  const caseDiameterOptions = caseDiameterGroups.map(v => [v, v]);
   const movementOptions = movementTypes.map(v => [v, v.charAt(0).toUpperCase() + v.slice(1)]);
   const dialOptions = dialGroups.map(v => [v, v]);
   return `
-    <div class="watch-catalog-filters">
-      ${buildMultiSelect('catalogFilterCaseMaterial', 'Case', caseMaterialOptions, watchSearchCaseMaterials)}
-      ${buildMultiSelect('catalogFilterCaseDiameter', 'Size', caseDiameterOptions, watchSearchCaseDiameters)}
+    <div class="row3 watch-catalog-filters">
+      ${buildCaseFilterHtml(caseMaterialGroups, caseDiameterGroups)}
       ${buildMultiSelect('catalogFilterMovementType', 'Movement', movementOptions, watchSearchMovementTypes)}
       ${buildMultiSelect('catalogFilterDial', 'Dial', dialOptions, watchSearchDials)}
     </div>
@@ -1925,18 +1966,38 @@ function attachCollectionHandlers(){
 // 'change' on the hidden input when a value is picked (see app.js) — a real
 // <select> does this on its own, these custom ones didn't used to need to.
 // Pulled out on its own (rather than left inline in attachCollectionHandlers
-// above) so refreshCatalogFilters() below can rewire the exact same four
+// above) so refreshCatalogFilters() below can rewire the exact same
 // listeners after it rebuilds #watchCatalogFilters from scratch, instead of
 // a second, easily-drifting copy of this.
 function wireCatalogFilterHandlers(){
-  const caseMaterialFilter = document.getElementById('catalogFilterCaseMaterial');
-  if(caseMaterialFilter) caseMaterialFilter.addEventListener('change', () => {
-    watchSearchCaseMaterials = caseMaterialFilter.value ? caseMaterialFilter.value.split(',') : [];
-    refreshCatalogResults();
-  });
-  const caseDiameterFilter = document.getElementById('catalogFilterCaseDiameter');
-  if(caseDiameterFilter) caseDiameterFilter.addEventListener('change', () => {
-    watchSearchCaseDiameters = caseDiameterFilter.value ? caseDiameterFilter.value.split(',') : [];
+  // The Case combo (buildCaseFilterHtml) doesn't dispatch a plain 'change'
+  // on one hidden input the way the others do — see the comment there for
+  // why casefiltertoggle needs its own handling instead of app.js's shared
+  // multiselecttoggle one. Delegated on the menu itself (survives this
+  // function re-running after every refreshCatalogFilters() rebuild,
+  // without needing to re-find and re-bind each individual checkbox).
+  const caseFilterMenu = document.querySelector('.case-filter-menu');
+  if(caseFilterMenu) caseFilterMenu.addEventListener('change', (e) => {
+    if(!e.target.closest('[data-action="casefiltertoggle"]')) return;
+    watchSearchCaseMaterials = Array.from(caseFilterMenu.querySelectorAll('[data-group="material"]:checked')).map(el => el.value);
+    watchSearchCaseDiameters = Array.from(caseFilterMenu.querySelectorAll('[data-group="diameter"]:checked')).map(el => el.value);
+    const materialHidden = document.getElementById('catalogFilterCaseMaterial');
+    if(materialHidden) materialHidden.value = watchSearchCaseMaterials.join(',');
+    const diameterHidden = document.getElementById('catalogFilterCaseDiameter');
+    if(diameterHidden) diameterHidden.value = watchSearchCaseDiameters.join(',');
+    // Not .closest('.case-filter-wrap') — opening the menu escapes it to
+    // <body> (the toggleselect handler, app.js, for any filter menu wide
+    // enough to need the whole row), which detaches it from the wrap
+    // entirely. findSelectWrap looks the wrap up by the hidden input's id
+    // instead, unaffected by where the menu itself currently lives — the
+    // exact fix already used for the same "escaped menu" issue in app.js's
+    // own multiselecttoggle handler.
+    const wrap = findSelectWrap(caseFilterMenu);
+    const total = watchSearchCaseMaterials.length + watchSearchCaseDiameters.length;
+    const valueEl = wrap && wrap.querySelector('.select-value');
+    if(valueEl) valueEl.textContent = 'Case' + (total ? ` (${total})` : '');
+    const toggleBtn = wrap && wrap.querySelector('[data-action="toggleselect"]');
+    if(toggleBtn) toggleBtn.classList.toggle('placeholder', total === 0);
     refreshCatalogResults();
   });
   const movementTypeFilter = document.getElementById('catalogFilterMovementType');
