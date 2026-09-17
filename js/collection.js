@@ -19,10 +19,10 @@ let watchSearchQuery = '';
 // picking more than one value within the same filter now widens the
 // match instead of narrowing it (an OR within the filter, an AND across
 // the four). Case material and dial hold *group* labels (see
-// CASE_MATERIAL_GROUPS/dialColorGroupOf below), not the catalog's own raw
-// values — case_material alone already runs to 13 distinct real values,
-// too many for a usable checkbox list, so the filter groups them into a
-// handful of buckets and matches a raw value through the same grouping.
+// caseMaterialGroupOf/dialColorGroupOf below), not the catalog's own raw
+// values — case_material alone already has far more raw variety than is
+// usable in a checkbox list, so the filter groups them into a handful of
+// buckets and matches a raw value through the same grouping.
 let watchSearchCaseMaterials = [];
 let watchSearchCaseDiameters = [];
 let watchSearchMovementTypes = [];
@@ -118,31 +118,48 @@ function matchesCatalogQuery(entry, query){
     .filter(Boolean).join(' ').toLowerCase().includes(q);
 }
 
-// Case material has 13 distinct real values in the catalog — too many for
-// a usable checkbox list — so the filter offers these broader groups
-// instead. The raw value on the watch itself is never touched by this;
-// it's purely how the filter buckets and matches against it. "Silver"
-// folds into Steel rather than getting its own group — modern watches
-// essentially never use solid silver as a case, so in practice it's
-// describing a steel case's finish, not a different material.
-const CASE_MATERIAL_GROUPS = [
-  ['Steel', ['Steel', 'Silver']],
-  ['Two-tone', ['Gold/Steel']],
-  ['Gold', ['Yellow gold', 'Rose gold', 'Gold-plated']],
-  ['White gold / Platinum', ['White gold', 'Platinum']],
-  ['Titanium', ['Titanium']],
-  ['Ceramic', ['Ceramic']],
-  ['Carbon', ['Carbon']],
-  ['Other', ['Aluminum', 'Plastic']]
-];
+// Case material has far more raw variety in the catalog than a fixed list
+// of exact values can keep up with — brand-specific terms (Oystersteel,
+// Rolesor, Everose) and descriptive phrasing (Satin-polished stainless
+// steel) keep showing up that an exact-match table would just dump into
+// "Other". This looks for a family keyword inside whatever the raw value
+// actually says instead: any value mentioning two different families
+// (Gold/Steel, "steel and rose gold", or a brand portmanteau like Rolesor
+// that doesn't spell either one out) is Two-tone; one family on its own
+// maps to its own group. The raw value on the watch itself is never
+// touched by this — it's purely how the filter buckets and matches
+// against it. "Silver" folds into Steel rather than getting its own group
+// — modern watches essentially never use solid silver as a case, so in
+// practice it's describing a steel case's finish, not a different
+// material.
+const CASE_MATERIAL_GROUP_ORDER = ['Steel', 'Two-tone', 'Gold', 'White gold / Platinum', 'Titanium', 'Ceramic', 'Carbon', 'Other'];
 function caseMaterialGroupOf(raw){
   if(!raw) return null;
-  const hit = CASE_MATERIAL_GROUPS.find(([, raws]) => raws.includes(raw));
-  // A raw value nobody anticipated (a typo, a material added later) still
-  // needs to land somewhere findable rather than silently matching no
-  // filter at all — "Other" is that catch-all, the same role it plays for
-  // the values already routed there on purpose.
-  return hit ? hit[0] : 'Other';
+  const lower = raw.toLowerCase();
+  // Rolex's own names for a steel+precious-metal case, neither of which
+  // spells out "steel" or "gold"/"platinum" in the text at all — these
+  // have to be caught explicitly rather than by family-counting below.
+  if(/rolesor|rolesium/.test(lower)) return 'Two-tone';
+  const families = {
+    steel: /steel|silver/.test(lower),
+    gold: /gold|everose/.test(lower),
+    platinum: /platinum/.test(lower),
+    titanium: /titanium/.test(lower),
+    ceramic: /ceramic/.test(lower),
+    carbon: /carbon/.test(lower)
+  };
+  const familyCount = Object.values(families).filter(Boolean).length;
+  if(familyCount >= 2) return 'Two-tone';
+  if(families.steel) return 'Steel';
+  if(/white gold/.test(lower) || families.platinum) return 'White gold / Platinum';
+  if(families.gold) return 'Gold';
+  if(families.titanium) return 'Titanium';
+  if(families.ceramic) return 'Ceramic';
+  if(families.carbon) return 'Carbon';
+  // A raw value nobody anticipated (aluminum, plastic, a typo, a material
+  // added later) still needs to land somewhere findable rather than
+  // silently matching no filter at all.
+  return 'Other';
 }
 
 // Case diameter (case_size_mm) is numeric, not categorical — grouped into
@@ -290,7 +307,7 @@ function buildCatalogFiltersHtml(){
       </div>
     `;
   }
-  const caseMaterialGroups = catalogFilterGroupOptions('case_material', caseMaterialGroupOf, CASE_MATERIAL_GROUPS.map(([g]) => g));
+  const caseMaterialGroups = catalogFilterGroupOptions('case_material', caseMaterialGroupOf, CASE_MATERIAL_GROUP_ORDER);
   const caseDiameterGroups = catalogFilterGroupOptions('case_size_mm', caseDiameterGroupOf, CASE_DIAMETER_GROUPS.map(([g]) => g));
   const movementTypes = catalogFilterOptions('movement_type');
   const dialGroups = catalogFilterGroupOptions('dial_color', dialColorGroupOf, DIAL_COLOR_GROUPS.concat(['Other']));
