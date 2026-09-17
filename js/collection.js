@@ -169,14 +169,17 @@ function caseMaterialGroupOf(raw){
 // needs an upper bound per step, not a min/max pair. Rounded to the
 // nearest whole mm first, so a half-size (39.5mm, say) lands wherever it
 // visually reads closest to rather than needing its own boundary case.
+// Labels leave "mm" off each one — the column header (buildCaseFilterHtml)
+// says "Size (mm)" once instead, freeing up the width every row was
+// repeating it at.
 const CASE_DIAMETER_GROUPS = [
-  ['≤35mm', mm => mm <= 35],
-  ['36–37mm', mm => mm <= 37],
-  ['38–39mm', mm => mm <= 39],
-  ['40–41mm', mm => mm <= 41],
-  ['42–43mm', mm => mm <= 43],
-  ['44–45mm', mm => mm <= 45],
-  ['46mm+', () => true]
+  ['≤35', mm => mm <= 35],
+  ['36–37', mm => mm <= 37],
+  ['38–39', mm => mm <= 39],
+  ['40–41', mm => mm <= 41],
+  ['42–43', mm => mm <= 43],
+  ['44–45', mm => mm <= 45],
+  ['46+', () => true]
 ];
 function caseDiameterGroupOf(raw){
   const mm = Number(raw);
@@ -277,8 +280,8 @@ function buildCaseFilterHtml(materialGroups, diameterGroups){
           <div class="case-filter-col-label">Material</div>
           ${materialGroups.map(v => optionHtml(v, 'material', materialSelected)).join('')}
         </div>
-        <div class="case-filter-col">
-          <div class="case-filter-col-label">Size</div>
+        <div class="case-filter-col case-filter-col-size">
+          <div class="case-filter-col-label">Size (mm)</div>
           ${diameterGroups.map(v => optionHtml(v, 'diameter', diameterSelected)).join('')}
         </div>
       </div>

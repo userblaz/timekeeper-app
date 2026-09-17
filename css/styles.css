@@ -2417,9 +2417,18 @@
     display:flex;
     gap:16px;
   }
+  /* Material's own labels run long ("White gold / Platinum"); size's are
+     now bare numbers ("Size (mm)" says the unit once in the column header
+     instead — see buildCaseFilterHtml), so it doesn't need an equal share
+     of the row — flex:1 here, vs. flex:1.6 on Material below, leaves the
+     size column sitting narrower and further right rather than wasting
+     width matching Material's own. */
   .case-filter-col{
-    flex:1;
+    flex:1.6;
     min-width:0;
+  }
+  .case-filter-col-size{
+    flex:1;
   }
   .case-filter-col-label{
     font-family:'Inter',sans-serif;
