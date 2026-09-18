@@ -2392,6 +2392,16 @@
   .reserve-hint{color:var(--grey-light);}
   .reserve-label.low{color:var(--warn);}
   .reserve-label.empty{color:var(--bad);}
+  /* The Collection detail page's watch bar (buildMovementTypeHtml,
+     collection.js) — same size/weight/spacing as .reserve-row/.reserve-
+     label above (the power-reserve bar it replaced there), just its own
+     name since there's no bar or button riding alongside it here. */
+  .movement-type-row{margin-top:6px;}
+  .movement-type-label{
+    font-family:'Inter',sans-serif;
+    font-size:10.5px;
+    color:var(--grey);
+  }
   .collection-card-edit{
     flex-direction:column;
     align-items:stretch;

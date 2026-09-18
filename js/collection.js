@@ -447,6 +447,18 @@ function formatReserveRemaining(hoursLeft){
   return `${Math.max(1, Math.ceil(hoursLeft))}h`;
 }
 
+// Which movement the watch bar shows now instead of the power-reserve bar
+// (buildCollectionWatchBarHtml) — free text from the catalog or the edit
+// form's own Movement section, not a fixed enum, so this only capitalizes
+// it rather than mapping through a label table. Nothing shown at all when
+// it isn't known, same "don't show empty data" rule as the edit form's own
+// sections.
+function buildMovementTypeHtml(w){
+  if(!w.movementType) return '';
+  const label = w.movementType.charAt(0).toUpperCase() + w.movementType.slice(1);
+  return `<div class="movement-type-row"><span class="movement-type-label">${escapeHtml(label)}</span></div>`;
+}
+
 // Nothing at all when no reserve has been set: a bar with a guessed capacity
 // would be worse than no bar. Before the first wind it shows an empty track
 // prompting the button rather than a full one, which would be a claim the
@@ -1374,14 +1386,11 @@ function buildCollectionWatchBarHtml(w){
         <div class="collection-card-body">
           <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span></div>
           <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
-          ${buildPowerReserveHtml(w)}
+          ${buildMovementTypeHtml(w)}
         </div>
         <div class="collection-card-actions">
           <button type="button" class="zoom-btn collection-edit-btn" data-action="startcollectionedit" data-id="${w.id}" aria-label="Edit ${escapeHtml(w.name)}'s details" title="Edit details">
             ${editIconSvg()}
-          </button>
-          <button type="button" class="zoom-btn collection-wind-btn" data-action="markwound" data-id="${w.id}" aria-label="Mark ${escapeHtml(w.name)} as fully wound" title="Fully wound now">
-            ${windIconSvg()}
           </button>
           <button type="button" class="zoom-btn collection-snap-btn" data-action="snapthiswatch" data-id="${w.id}" aria-label="Take a snap with ${escapeHtml(w.name)}" title="Take a snap">
             ${cameraIconSvg()}
