@@ -2262,10 +2262,18 @@ function playWoundFlash(card){
 
 async function addCollectionWatch(name){
   if(!name || !name.trim()) return;
-  await addWatch(name.trim());
+  const w = await addWatch(name.trim());
+  if(!w){
+    // Stay on the Add Watch screen so a failed insert is obvious and
+    // retryable, rather than silently opening whatever watch happened to
+    // be active before this was called — same fix as selectCatalogWatch's
+    // own version of this bug.
+    render();
+    return;
+  }
   addingCollectionWatch = false;
-  viewingCollectionId = state.activeId;
-  editingCollectionId = state.activeId;
+  viewingCollectionId = w.id;
+  editingCollectionId = w.id;
   render();
 }
 
@@ -2684,8 +2692,19 @@ async function selectCatalogWatch(entryId){
   const entry = (watchCatalog || []).find(e => String(e.id) === String(entryId));
   if(!entry) return;
   addingCollectionWatch = false;
-  await addWatchFromCatalog(entry);
-  viewingCollectionId = state.activeId;
-  editingCollectionId = state.activeId;
+  const w = await addWatchFromCatalog(entry);
+  // A failed insert (see addWatchFromCatalog's own error handling) returns
+  // null rather than throwing — used to be ignored here entirely, which is
+  // what let this silently jump to state.activeId (some unrelated,
+  // already-existing watch left over from before this call) instead of
+  // showing anything went wrong. Back to the search instead, so the retry
+  // is obvious and nothing stale gets opened.
+  if(!w){
+    addingCollectionWatch = true;
+    render();
+    return;
+  }
+  viewingCollectionId = w.id;
+  editingCollectionId = w.id;
   render();
 }

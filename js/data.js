@@ -273,7 +273,16 @@ async function addWatch(name){
   const { data, error } = await sb.from('watches')
     .insert({ user_id: currentUser.id, name: name.trim(), sort_order: nextOrder })
     .select().single();
-  if(error){ saveStatus = 'error'; render(); return; }
+  if(error){
+    saveStatus = 'error';
+    // Same reasoning as addWatchFromCatalog's own error handling — a null
+    // return here is what lets addCollectionWatch (collection.js) tell a
+    // real failure apart from success, instead of blindly opening whatever
+    // watch was already active before this was ever called.
+    if(typeof showToast === 'function') showToast(error.message || "Couldn't add that watch — the write was rejected.", 'error');
+    render();
+    return null;
+  }
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
     sortOrder: data.sort_order === null || data.sort_order === undefined ? nextOrder : Number(data.sort_order),
@@ -288,6 +297,7 @@ async function addWatch(name){
   state.watches.push(w);
   state.activeId = w.id;
   saveState();
+  return w;
 }
 
 // The Collection tab's "Add watch" search calls this instead of addWatch()
@@ -314,7 +324,19 @@ async function addWatchFromCatalog(entry){
       ...specInsertPayloadFromEntry(entry)
     })
     .select().single();
-  if(error){ saveStatus = 'error'; render(); return; }
+  if(error){
+    saveStatus = 'error';
+    // Without this, a failed insert (e.g. the watches table missing a
+    // column specInsertPayloadFromEntry just tried to write — see
+    // expand_watches_2.sql) failed completely silently: the caller
+    // (selectCatalogWatch, collection.js) used to unconditionally jump to
+    // state.activeId regardless of whether this actually returned a new
+    // watch, landing on whatever watch happened to be active *before* this
+    // was ever called instead of reporting anything went wrong.
+    if(typeof showToast === 'function') showToast(error.message || "Couldn't add that watch — the write was rejected.", 'error');
+    render();
+    return null;
+  }
   const w = {
     id: data.id, name: data.name, model: data.model || '', reference: data.reference || '',
     sortOrder: data.sort_order === null || data.sort_order === undefined ? nextOrder : Number(data.sort_order),
