@@ -827,25 +827,17 @@
     flex-shrink:0;
   }
   .manual-link.manual-link-inline:active{background:rgba(255,255,255,0.06);}
-  /* Sits right after a locked field's label — never its own line, so a
-     locked field reads as "the normal field, with a small note" rather
-     than a visually distinct thing to learn the meaning of. */
-  .field-locked-hint{
-    color:var(--grey-light);
-    font-style:italic;
-  }
-  /* A locked field's value: same box an input would draw (so nothing
-     visibly jumps when a card that's mid-fields switches between locked
-     and editable), just inert — surface-2 background and no border reads
-     as "this is a value", not "this is somewhere to type". */
-  .field-readonly{
-    background:var(--surface-2);
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:11px 13px;
+  /* A locked (catalog) field's value — plain text, deliberately not boxed
+     the way an input is: a box read as "this could be edited", which for
+     a catalog-sourced field it never can be. Same font-size/color an
+     input's own text would use, just without the border/background/
+     padding that implied it was one — the label above it (unchanged,
+     .field label) is enough on its own to say what this is, so there's no
+     "from catalog" hint needed alongside it either. */
+  .field-plain-value{
+    font-family:'Inter',sans-serif;
     font-size:14px;
     color:var(--ink);
-    box-sizing:border-box;
   }
   .cert-checkbox-list{
     display:flex;
@@ -2575,6 +2567,21 @@
     justify-content:center;
     color:var(--grey);
     font-size:20px;
+  }
+  /* Edit form's Photo field (buildEditSectionBasic, collection.js) — the
+     photo itself (or its placeholder) is the picker now, not a separate
+     button: the whole label is one tap target, native <label for="...">
+     behavior opening the file input without any JS. */
+  .edit-photo-picker{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    cursor:pointer;
+  }
+  .edit-photo-picker-label{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    color:var(--accent);
   }
   .collection-card-body{flex:1;min-width:0;}
   .collection-card-name{

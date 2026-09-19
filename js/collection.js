@@ -1502,8 +1502,8 @@ function buildEditFieldRow(w, locked, field, expanded){
     if(!hasValue) return '';
     return `
       <div class="field">
-        <label>${escapeHtml(field.label)} <span class="field-locked-hint">from catalog</span></label>
-        <div class="field-readonly">${escapeHtml(String(value))}</div>
+        <label>${escapeHtml(field.label)}</label>
+        <div class="field-plain-value">${escapeHtml(String(value))}</div>
       </div>`;
   }
   if(!hasValue && !expanded) return '';
@@ -1529,7 +1529,7 @@ function buildEditBoolChecklist(w, locked, fields, expanded){
   if(locked){
     const trueLabels = fields.filter(f => !!w[snakeToCamel(f)]).map(f => boolFieldLabel(f));
     if(!trueLabels.length) return '';
-    return `<p class="edit-feature-summary">${escapeHtml(trueLabels.join(', '))}</p>`;
+    return `<p class="edit-feature-summary">${escapeHtml(trueLabels.join(' · '))}</p>`;
   }
   const shown = expanded ? fields : fields.filter(f => !!w[snakeToCamel(f)]);
   if(!shown.length) return '';
@@ -1604,30 +1604,42 @@ function buildEditSectionBasic(w, locked){
   const caseSummaryHtml = caseSummary ? `
     <div class="field">
       <label>Case</label>
-      <div class="field-readonly">${escapeHtml(caseSummary)}</div>
+      <div class="field-plain-value">${escapeHtml(caseSummary)}</div>
     </div>` : '';
   const dialHtml = buildEditFieldRow(w, locked, dialField, expanded);
   const addMoreHtml = buildAddMoreRow(w, locked, 'basic', modelRefFields.concat([dialField]), expanded);
   const nameFieldHtml = locked ? `
     <div class="field">
-      <label>Brand <span class="field-locked-hint">from catalog</span></label>
-      <div class="field-readonly">${escapeHtml(w.name || '—')}</div>
+      <label>Brand</label>
+      <div class="field-plain-value">${escapeHtml(w.name || '—')}</div>
     </div>` : `
     <div class="field">
       <label for="colName_${w.id}">Brand</label>
       <input type="text" id="colName_${w.id}" value="${escapeHtml(w.name || '')}" placeholder="e.g. Rolex, Omega, Seiko…" />
     </div>`;
+  // Personal, regardless of locked/unlocked — a photo is never something
+  // the catalog supplies (that's a separate, later feature — see the
+  // notes on image_url in expand_watches.sql), so this is always the
+  // editable version. The photo itself is the picker now: no button, tap
+  // the image (or its placeholder) to open the file chooser, same <label
+  // for="..."> trick the old button used, just wrapping a preview instead
+  // of button text.
+  const photoPreviewHtml = w.photoUrl
+    ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" />`
+    : `<div class="collection-photo collection-photo-empty">${watchPlaceholderIconSvg()}</div>`;
+  const photoFieldHtml = `
+    <div class="field">
+      <label class="edit-photo-picker" for="colPhoto_${w.id}">
+        ${photoPreviewHtml}
+        <span class="edit-photo-picker-label">${collectionPhotoFile ? 'New photo selected' : (w.photoUrl ? 'Tap to change photo' : 'Tap to add a photo')}</span>
+        <input type="file" id="colPhoto_${w.id}" accept="image/*" style="display:none;" />
+      </label>
+    </div>`;
   return `
     <div class="edit-section" id="editSection_basic_${w.id}">
       <div class="edit-section-title">Basic info</div>
+      ${photoFieldHtml}
       ${nameFieldHtml}
-      <div class="field">
-        <label for="colPhoto_${w.id}">Photo</label>
-        <label class="btn-secondary" style="text-align:center;cursor:pointer;">
-          ${collectionPhotoFile ? 'New photo selected' : (w.photoUrl ? 'Change photo' : 'Add photo')}
-          <input type="file" id="colPhoto_${w.id}" accept="image/*" style="display:none;" />
-        </label>
-      </div>
       ${modelRefHtml}
       ${caseSummaryHtml}
       ${dialHtml}
@@ -1648,8 +1660,8 @@ function buildEditSectionMovement(w, locked){
   // other field here.
   const accuracyHtml = locked ? (hasAccuracy ? `
     <div class="field">
-      <label>Factory accuracy spec (s/day) <span class="field-locked-hint">from catalog</span></label>
-      <div class="field-readonly">${escapeHtml(w.accuracySpec)}</div>
+      <label>Factory accuracy spec (s/day)</label>
+      <div class="field-plain-value">${escapeHtml(w.accuracySpec)}</div>
     </div>` : '') : (hasAccuracy || expanded ? `
     <div class="field">
       <label>Factory accuracy spec (s/day)</label>
@@ -1674,8 +1686,8 @@ function buildEditSectionMovement(w, locked){
     </div>` : '');
   const reserveHtml = locked ? (hasReserve ? `
     <div class="field">
-      <label>Power reserve (hours) <span class="field-locked-hint">from catalog</span></label>
-      <div class="field-readonly">${escapeHtml(String(w.powerReserveHours))}</div>
+      <label>Power reserve (hours)</label>
+      <div class="field-plain-value">${escapeHtml(String(w.powerReserveHours))}</div>
     </div>` : '') : (hasReserve || expanded ? `
     <div class="field">
       <label for="colReserve_${w.id}">Power reserve (hours)</label>
@@ -1726,8 +1738,8 @@ function buildEditSectionOther(w, locked){
   // the same locked/has-value/expanded rule as everything else here.
   const certsHtml = locked ? (hasCerts ? `
     <div class="field">
-      <label>Certificates <span class="field-locked-hint">from catalog</span></label>
-      <div class="field-readonly">${escapeHtml(w.certifications.join(', '))}</div>
+      <label>Certificates</label>
+      <div class="field-plain-value">${escapeHtml(w.certifications.join(' · '))}</div>
     </div>` : '') : (hasCerts || expanded ? `
     <div class="field">
       <label>Certificates</label>
