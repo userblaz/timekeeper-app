@@ -187,24 +187,21 @@
   .collection-watch-bar .collection-card{
     width:100%;
   }
-  /* Edit/Wind/Snap/Back sit side by side here rather than stacked — the
-     base column direction (.collection-card-actions) is for the Data
-     tab's own column of these. Sized down from their normal 30-36px (the
-     wind button's own bigger "primary action" treatment doesn't need to
-     win here) and the gap tightened — four of them alongside a photo and
-     a name that can run long (see .card-name-text below) needs every bit
-     of width this card can spare. */
+  /* Edit/Snap/Back sit side by side here rather than stacked — the base
+     column direction (.collection-card-actions) is for the Data tab's own
+     column of these. Back at the standard 36px/10px-gap every other
+     Collection card action button uses (was sized down to fit a 4th, the
+     wind button, alongside these — now that it's back to 3, per
+     .collection-edit-btn below, there's no need to shrink them). */
   .collection-watch-bar .collection-card-actions{
     flex-direction:row;
-    gap:6px;
+    gap:10px;
   }
-  .collection-watch-bar .collection-card-actions .zoom-btn{
-    width:30px;
-    height:30px;
-  }
-  .collection-watch-bar .collection-card-actions .zoom-btn svg{
-    width:16px;
-    height:16px;
+  /* Matches its siblings here (.collection-snap-btn/.collection-back-btn,
+     both 36px) rather than falling back to the plain .zoom-btn default. */
+  .collection-edit-btn{
+    width:36px;
+    height:36px;
   }
   /* The name is the part that gives way, same as the list card's own
      .card-name-text — without it a long model name (Speedmaster
