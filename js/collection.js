@@ -950,8 +950,8 @@ function buildCollectionCard(w){
       ${photoHtml}
       <div class="collection-card-body">
         <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span></div>
-        ${statsHtml ? `<div class="collection-card-stats">${statsHtml}</div>` : ''}
         <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
+        ${statsHtml ? `<div class="collection-card-stats">${statsHtml}</div>` : ''}
         ${wearStats ? `<div class="collection-card-wear">${Math.round(wearStats.avgPerMonth)} days/mo worn</div>` : ''}
       </div>
       ${sparkHtml ? `<div class="collection-card-spark" data-action="viewcollectionchart" data-id="${w.id}" role="button" aria-label="View ${escapeHtml(w.name)}'s charts">${sparkHtml}</div>` : ''}
