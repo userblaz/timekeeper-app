@@ -1529,14 +1529,26 @@ const FUNCTIONS_BOOL_FIELDS = [
 // per option rather than a single crown_type/bezel_type enum, same
 // reasoning as every other feature column here: a watch can be both
 // screw_down_crown and crown_guards, or both bezel_unidirectional and
-// bezel_gmt (a GMT-Master II), at once. Lives in the Case section (see
-// buildEditSectionCase) since that's what these physically are, rather
-// than Movement or Functions.
-const CASE_BOOL_FIELDS = [
-  'screw_down_crown', 'push_pull_crown', 'twin_lock_crown', 'oversized_crown', 'recessed_crown', 'crown_guards',
-  'has_tachymeter', 'bezel_fixed', 'bezel_unidirectional', 'bezel_bidirectional', 'bezel_gmt', 'bezel_countdown',
+// bezel_gmt (a GMT-Master II), at once. Split into two groups — Crown and
+// Bezel each get their own dropdown in the Case section (buildEditSectionCase/
+// buildCrownBezelHtml) rather than one flat checklist, since they're really
+// two independent choices rather than one feature list. has_tachymeter is
+// deliberately its own thing, not in either group — it lives under Other
+// (buildEditSectionOther) since "does this watch have a tachymeter at all"
+// is a watch-level fact, not a crown or bezel property (bezel_tachymeter
+// below is only about *where* that scale sits, when it does).
+const CROWN_BOOL_FIELDS = [
+  'screw_down_crown', 'push_pull_crown', 'twin_lock_crown', 'oversized_crown', 'recessed_crown', 'crown_guards'
+];
+const BEZEL_BOOL_FIELDS = [
+  'bezel_fixed', 'bezel_unidirectional', 'bezel_bidirectional', 'bezel_gmt', 'bezel_countdown',
   'bezel_tachymeter', 'bezel_pulsometer', 'bezel_telemeter', 'bezel_slide_rule', 'bezel_compass'
 ];
+// The full case-related boolean set, for data.js's spec-copying helpers
+// (emptySpecFields/specFieldsFromRow/specInsertPayloadFromEntry) — those
+// don't care about the UI's Crown/Bezel/Other grouping, just that every
+// boolean column gets copied.
+const CASE_BOOL_FIELDS = CROWN_BOOL_FIELDS.concat(BEZEL_BOOL_FIELDS, ['has_tachymeter']);
 // Only the handful where turning a snake_case column into Title Case word
 // by word doesn't already read right on its own.
 const BOOL_FIELD_LABEL_OVERRIDES = {
@@ -1572,11 +1584,13 @@ const EDIT_FIELD_SECTIONS = {
   ],
   case: [
     { key: 'crystal', db: 'crystal', label: 'Crystal', placeholder: 'e.g. Sapphire' },
-    { key: 'waterResistanceM', db: 'water_resistance_m', label: 'Water resistance (m)', type: 'number', placeholder: 'e.g. 300' },
-    { key: 'serviceIntervalYears', db: 'service_interval_years', label: 'Recommended service interval (years)', type: 'number', placeholder: 'e.g. 5' }
+    { key: 'waterResistanceM', db: 'water_resistance_m', label: 'Water resistance (m)', type: 'number', placeholder: 'e.g. 300' }
   ],
   other: [
     { key: 'productionYears', db: 'production_years', label: 'Production years', placeholder: 'e.g. 2018–current' }
+  ],
+  service: [
+    { key: 'serviceIntervalYears', db: 'service_interval_years', label: 'Recommended service interval (years)', type: 'number', placeholder: 'e.g. 5' }
   ]
 };
 
@@ -1827,10 +1841,62 @@ function buildEditSectionCase(w, locked){
   ];
   const allFields = sizeMaterialFields.concat(EDIT_FIELD_SECTIONS.case);
   const textFieldsHtml = allFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
-  const boolHtml = buildEditBoolChecklist(w, locked, CASE_BOOL_FIELDS, expanded);
-  const fieldsHtml = textFieldsHtml + boolHtml;
-  const addMoreHtml = buildAddMoreRow(w, locked, 'case', allFields.concat(CASE_BOOL_FIELDS), expanded);
+  const crownBezelHtml = buildCrownBezelHtml(w, locked);
+  const fieldsHtml = textFieldsHtml + crownBezelHtml;
+  // Crown/Bezel aren't gated behind "+ Add more data" — unlike a wall of
+  // empty text inputs, two compact dropdowns (always shown once unlocked)
+  // aren't the clutter that rule was written to avoid — so only the plain
+  // text fields above count toward whether there's more to reveal here.
+  const addMoreHtml = buildAddMoreRow(w, locked, 'case', allFields, expanded);
   return buildEditSection(w, locked, 'case', 'Case', fieldsHtml, addMoreHtml);
+}
+
+// Crown and Bezel as two side-by-side dropdowns (reusing buildMultiSelect,
+// app.js — the same escaped-menu checkbox-list component the catalog
+// search filters use) rather than one flat checklist, per your call that
+// they read as two separate choices, not one feature list. Locked
+// (catalog): the same plain-text-tag treatment as everywhere else in this
+// form, just as two separately-labeled lines instead of one merged one,
+// so it's still obvious at a glance which tags are crown vs. bezel.
+function buildCrownBezelHtml(w, locked){
+  if(locked){
+    const crownTrue = CROWN_BOOL_FIELDS.filter(f => !!w[snakeToCamel(f)]).map(boolFieldLabel);
+    const bezelTrue = BEZEL_BOOL_FIELDS.filter(f => !!w[snakeToCamel(f)]).map(boolFieldLabel);
+    const row = (label, tags) => tags.length ? `
+      <div class="field">
+        <label>${escapeHtml(label)}</label>
+        <div class="field-plain-value">${escapeHtml(tags.join(' · '))}</div>
+      </div>` : '';
+    return row('Crown', crownTrue) + row('Bezel', bezelTrue);
+  }
+  const crownOptions = CROWN_BOOL_FIELDS.map(f => [f, boolFieldLabel(f)]);
+  const bezelOptions = BEZEL_BOOL_FIELDS.map(f => [f, boolFieldLabel(f)]);
+  const crownSelected = CROWN_BOOL_FIELDS.filter(f => !!w[snakeToCamel(f)]);
+  const bezelSelected = BEZEL_BOOL_FIELDS.filter(f => !!w[snakeToCamel(f)]);
+  return `
+    <div class="row2">
+      <div class="field">
+        <label>Crown</label>
+        ${buildMultiSelect('colCrown_'+w.id, 'Crown', crownOptions, crownSelected)}
+      </div>
+      <div class="field">
+        <label>Bezel</label>
+        ${buildMultiSelect('colBezel_'+w.id, 'Bezel', bezelOptions, bezelSelected)}
+      </div>
+    </div>`;
+}
+
+// Recommended service interval gets its own section rather than sitting in
+// Case — it's brand-level maintenance guidance, not a physical spec of the
+// watch itself, so it doesn't belong grouped with crystal/water
+// resistance/crown/bezel. Same locked/editable/add-more machinery as
+// every other section here, just with one field in it.
+function buildEditSectionService(w, locked){
+  const expanded = collectionEditExpandedSections.has('service');
+  const fields = EDIT_FIELD_SECTIONS.service;
+  const fieldsHtml = fields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  const addMoreHtml = buildAddMoreRow(w, locked, 'service', fields, expanded);
+  return buildEditSection(w, locked, 'service', 'Service / Maintenance', fieldsHtml, addMoreHtml);
 }
 
 function buildEditSectionOther(w, locked){
@@ -1857,8 +1923,13 @@ function buildEditSectionOther(w, locked){
       </div>
     </div>` : '');
   const fields = EDIT_FIELD_SECTIONS.other;
-  const fieldsHtml = fields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('') + certsHtml;
-  const addMoreHtml = buildAddMoreRow(w, locked, 'other', fields.concat([{ key: 'certifications' }]), expanded);
+  // Tachymeter moved here from Case's Crown/Bezel dropdowns — "does this
+  // watch have a tachymeter at all" is a fact about the watch as a whole,
+  // not specifically a crown or bezel property (bezel_tachymeter, in the
+  // Bezel dropdown, is only about *where* that scale sits when it does).
+  const tachymeterHtml = buildEditBoolChecklist(w, locked, ['has_tachymeter'], expanded);
+  const fieldsHtml = fields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('') + tachymeterHtml + certsHtml;
+  const addMoreHtml = buildAddMoreRow(w, locked, 'other', fields.concat(['has_tachymeter'], [{ key: 'certifications' }]), expanded);
   return buildEditSection(w, locked, 'other', 'Other', fieldsHtml, addMoreHtml);
 }
 
@@ -1879,7 +1950,7 @@ function refreshEditSection(watchId, sectionKey){
   const el = document.getElementById('editSection_' + sectionKey + '_' + watchId);
   if(!el) return;
   const locked = !!w.catalogId;
-  const builders = { basic: buildEditSectionBasic, movement: buildEditSectionMovement, functions: buildEditSectionFunctions, case: buildEditSectionCase, other: buildEditSectionOther };
+  const builders = { basic: buildEditSectionBasic, movement: buildEditSectionMovement, functions: buildEditSectionFunctions, case: buildEditSectionCase, service: buildEditSectionService, other: buildEditSectionOther };
   const builder = builders[sectionKey];
   if(!builder) return;
   el.outerHTML = builder(w, locked);
@@ -1938,6 +2009,7 @@ function buildCollectionEditForm(w){
       ${buildEditSectionMovement(w, locked)}
       ${buildEditSectionFunctions(w, locked)}
       ${buildEditSectionCase(w, locked)}
+      ${buildEditSectionService(w, locked)}
       ${buildEditSectionOther(w, locked)}
       ${buildEditSectionPurchase(w)}
       ${buildEditSectionNotes(w)}
@@ -1953,7 +2025,7 @@ function buildCollectionEditForm(w){
 // id scheme (col<PascalKey>_<watchId>) so saveCollectionEdit can look each
 // one up the same way regardless of which section built it.
 const ALL_EDIT_TEXT_FIELDS = [].concat(
-  EDIT_FIELD_SECTIONS.movement, EDIT_FIELD_SECTIONS.case, EDIT_FIELD_SECTIONS.other,
+  EDIT_FIELD_SECTIONS.movement, EDIT_FIELD_SECTIONS.case, EDIT_FIELD_SECTIONS.other, EDIT_FIELD_SECTIONS.service,
   [
     { key: 'model', db: 'model' }, { key: 'reference', db: 'reference' }, { key: 'dialColor', db: 'dial_color' },
     { key: 'caseSizeMm', db: 'case_size_mm', type: 'number' }, { key: 'caseMaterial', db: 'case_material' }
@@ -2000,6 +2072,14 @@ async function saveCollectionEdit(watchId){
   // have toggled, and needs writing just as much as a checked one; a box
   // that was never rendered at all still needs to be left alone.
   const boolEls = locked ? [] : Array.from(document.querySelectorAll('.colFeat_'+watchId));
+  // Crown and Bezel are dropdowns (buildMultiSelect), not individual
+  // checkboxes, so they don't show up in boolEls above — each one's own
+  // hidden input holds its selections as a comma-separated list of db
+  // column names instead. Always rendered once unlocked (see
+  // buildCrownBezelHtml — not gated behind "+ Add more data"), so unlike
+  // textEls/boolEls there's no "was this even on screen" case to handle.
+  const crownEl = locked ? null : document.getElementById('colCrown_'+watchId);
+  const bezelEl = locked ? null : document.getElementById('colBezel_'+watchId);
 
   saveStatus = 'saving'; render();
 
@@ -2057,6 +2137,22 @@ async function saveCollectionEdit(watchId){
     // covers a deliberate uncheck as much as a fresh check; anything not
     // rendered this session is left exactly as it already was in the db.
     boolEls.forEach(el => { updates[el.dataset.field] = el.checked; });
+
+    if(crownEl){
+      const crownSelected = new Set(crownEl.value ? crownEl.value.split(',') : []);
+      CROWN_BOOL_FIELDS.forEach(f => { updates[f] = crownSelected.has(f); });
+    }
+    if(bezelEl){
+      const bezelSelected = new Set(bezelEl.value ? bezelEl.value.split(',') : []);
+      BEZEL_BOOL_FIELDS.forEach(f => { updates[f] = bezelSelected.has(f); });
+      // A tachymeter bezel means the watch has a tachymeter, full stop —
+      // forced true here regardless of whether the standalone Tachymeter
+      // checkbox (Other section, above) was ever expanded/rendered this
+      // session, or was left unchecked on screen. One-directional only:
+      // removing the bezel option never unchecks it back, since the watch
+      // might still have a tachymeter scale elsewhere (dial/chapter ring).
+      if(bezelSelected.has('bezel_tachymeter')) updates.has_tachymeter = true;
+    }
   }
 
   const { error } = await sb.from('watches').update(updates).eq('id', watchId);
@@ -2083,6 +2179,11 @@ async function saveCollectionEdit(watchId){
       w[f.key] = f.type === 'number' ? updates[f.db] : (updates[f.db] || '');
     });
     boolEls.forEach(el => { w[snakeToCamel(el.dataset.field)] = el.checked; });
+    if(crownEl) CROWN_BOOL_FIELDS.forEach(f => { w[snakeToCamel(f)] = updates[f]; });
+    if(bezelEl) BEZEL_BOOL_FIELDS.forEach(f => { w[snakeToCamel(f)] = updates[f]; });
+    // Applied after boolEls above so the bezel_tachymeter override (if any)
+    // wins over whatever the Tachymeter checkbox itself said.
+    if('has_tachymeter' in updates) w.hasTachymeter = updates.has_tachymeter;
   }
   w.purchasePrice = updates.purchase_price;
   w.purchaseCurrency = updates.purchase_currency;

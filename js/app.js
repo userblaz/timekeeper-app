@@ -411,6 +411,22 @@ document.addEventListener('change', (e) => {
   hidden.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
+// Bezel → Tachymeter live sync (buildCrownBezelHtml, collection.js): a
+// tachymeter bezel implies the watch has a tachymeter at all, so picking
+// it also ticks the separate, always-rendered Tachymeter checkbox in the
+// Other section if it's currently on screen — one-directional and
+// additive only, matching saveCollectionEdit's own save-time version of
+// this same rule (which is what actually guarantees it, whether or not
+// this checkbox happens to be rendered/visible right now).
+document.addEventListener('change', (e) => {
+  const hidden = e.target;
+  if(!hidden.id || !hidden.id.startsWith('colBezel_') || hidden.type !== 'hidden') return;
+  if(!hidden.value.split(',').includes('bezel_tachymeter')) return;
+  const watchId = hidden.id.slice('colBezel_'.length);
+  const tachEl = document.querySelector(`.colFeat_${watchId}[data-field="has_tachymeter"]`);
+  if(tachEl) tachEl.checked = true;
+});
+
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape'){
     if(noteEditorFor){ closeNoteEditor(false); return; }
