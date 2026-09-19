@@ -1775,7 +1775,7 @@ function refreshEditSection(watchId, sectionKey){
   const el = document.getElementById('editSection_' + sectionKey + '_' + watchId);
   if(!el) return;
   const locked = !!w.catalogId;
-  const builders = { movement: buildEditSectionMovement, functions: buildEditSectionFunctions, case: buildEditSectionCase, other: buildEditSectionOther };
+  const builders = { basic: buildEditSectionBasic, movement: buildEditSectionMovement, functions: buildEditSectionFunctions, case: buildEditSectionCase, other: buildEditSectionOther };
   const builder = builders[sectionKey];
   if(!builder) return;
   el.outerHTML = builder(w, locked);
