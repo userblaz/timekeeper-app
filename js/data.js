@@ -239,7 +239,7 @@ function overallStats(watch){
 function emptySpecFields(){
   const fields = {};
   ALL_EDIT_TEXT_FIELDS.forEach(f => { fields[f.key] = f.type === 'number' ? null : ''; });
-  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS).forEach(dbName => { fields[snakeToCamel(dbName)] = false; });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS, CASE_BOOL_FIELDS).forEach(dbName => { fields[snakeToCamel(dbName)] = false; });
   return fields;
 }
 // Same shape, read off a real row instead — either a fetched watch_catalog
@@ -251,7 +251,7 @@ function specFieldsFromRow(row){
     const raw = row[f.db];
     fields[f.key] = f.type === 'number' ? (raw === null || raw === undefined ? null : Number(raw)) : (raw || '');
   });
-  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS).forEach(dbName => { fields[snakeToCamel(dbName)] = !!row[dbName]; });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS, CASE_BOOL_FIELDS).forEach(dbName => { fields[snakeToCamel(dbName)] = !!row[dbName]; });
   return fields;
 }
 // The insert payload's side of the same mirroring — db column names as
@@ -260,7 +260,7 @@ function specFieldsFromRow(row){
 function specInsertPayloadFromEntry(entry){
   const payload = {};
   ALL_EDIT_TEXT_FIELDS.forEach(f => { payload[f.db] = entry[f.db] ?? null; });
-  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS).forEach(dbName => { payload[dbName] = !!entry[dbName]; });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS, CASE_BOOL_FIELDS).forEach(dbName => { payload[dbName] = !!entry[dbName]; });
   return payload;
 }
 

@@ -1377,35 +1377,57 @@ function buildCollectionDetailHtml(w){
 // A best-effort guess at what a watch is "for," since the database has no
 // column that actually says so. There's no ground truth here — it's a
 // simple point score built entirely out of data we do have (water
-// resistance, complication booleans, case material) plus a few brand/
-// model keyword hints for the well-known cases those numbers alone can't
-// tell apart (e.g. a chronograph could be a Daytona or a Speedmaster
-// either way, but the name at least narrows "racing" vs "everything
-// else"). Deliberately limited to a handful of buckets confident enough
-// to be worth showing, rather than the full real-world list (Flieger,
-// Military, Tactical, Nautical, Railroad, integrated-bracelet, ... all
-// hinge on bezel/crown/bracelet/dial details this schema doesn't store)
-// — always shown as a suggestion (see buildWatchPurposeTagHtml's title
-// tooltip), never as fact.
+// resistance, crown/bezel construction, complication booleans, case
+// material) plus a few brand/model keyword hints for the well-known cases
+// those alone can't tell apart (e.g. a chronograph could be a Daytona or
+// a Speedmaster either way, but the name at least narrows "racing" vs
+// "everything else"). Crown/bezel type (CASE_BOOL_FIELDS, added after the
+// original 68 columns) sharpened this a lot over the first version — a
+// unidirectional dive bezel or a slide-rule bezel is a far more direct
+// tell than water resistance or a name guess ever was. Still deliberately
+// limited to a handful of buckets confident enough to be worth showing,
+// rather than the full real-world list (Flieger, Military, Tactical,
+// Nautical, Railroad, integrated-bracelet, ... would need bracelet/dial
+// details this schema still doesn't store) — always shown as a
+// suggestion (see buildWatchPurposeTagHtml's title tooltip), never as
+// fact.
 function inferWatchPurpose(w){
   const name = [w.name, w.model, w.reference].filter(Boolean).join(' ').toLowerCase();
   const wr = Number(w.waterResistanceM) || 0;
   const scores = {};
   const add = (purpose, points) => { scores[purpose] = (scores[purpose] || 0) + points; };
 
-  if(wr >= 100) add('Diver’s watch', 3);
-  if(wr >= 200) add('Diver’s watch', 2);
+  // A rotating unidirectional bezel plus a sealed (screw-down/Twin-Lock)
+  // crown is the actual ISO 6425 dive-watch signature — a much stronger
+  // signal than water resistance alone (a dressy piece can be 100m water
+  // resistant with no dive intent whatsoever), so these now carry more
+  // weight than the depth rating did on its own.
+  if(w.bezelUnidirectional) add('Diver’s watch', 3);
+  if(w.screwDownCrown || w.twinLockCrown) add('Diver’s watch', 2);
+  if(wr >= 100) add('Diver’s watch', 2);
+  if(wr >= 200) add('Diver’s watch', 1);
   if(/submariner|seamaster|diver|aquaracer|superocean|planet ocean|fifty fathoms|sea-dweller|black bay/.test(name)) add('Diver’s watch', 3);
 
+  if(w.hasTachymeter || w.bezelTachymeter) add('Racing / Chronograph watch', 3);
+  if(w.bezelPulsometer || w.bezelTelemeter) add('Racing / Chronograph watch', 1);
   if(w.chronograph || w.flybackChronograph || w.splitSecondsChronograph || w.chronographCounters) add('Racing / Chronograph watch', 3);
   if(/daytona|speedmaster|carrera|monaco|autavia|chronomat/.test(name)) add('Racing / Chronograph watch', 3);
 
+  if(w.bezelGmt) add('Travel / GMT watch', 3);
   if(w.gmtDualTime || w.worldTime) add('Travel / GMT watch', 3);
   if(/gmt-master|world\s?timer/.test(name)) add('Travel / GMT watch', 2);
 
+  // A slide-rule bezel is about as distinctive a pilot-watch tell as a
+  // dive bezel is for divers (it's a circular slide rule for in-flight
+  // fuel/speed/distance calculations — the Navitimer's whole reason for
+  // being) — weighted the same as the strongest name-keyword match.
+  if(w.bezelSlideRule) add('Pilot / Aviation watch', 4);
   if(/pilot|flieger|aviator|navitimer|spitfire|top gun|type\s?x{1,2}/.test(name)) add('Pilot / Aviation watch', 4);
   if(w.display24h) add('Pilot / Aviation watch', 1);
 
+  // A compass bezel is a genuine expedition/orienteering tool, not
+  // decoration — as strong a tell here as the name keywords.
+  if(w.bezelCompass) add('Explorer / Field watch', 4);
   if(/explorer|field|khaki|expedition/.test(name)) add('Explorer / Field watch', 4);
 
   const dressyComplications = ['moonphase', 'tourbillon', 'doubleTourbillon', 'multiAxisTourbillon',
@@ -1430,7 +1452,7 @@ function inferWatchPurpose(w){
 function buildWatchPurposeTagHtml(w){
   const purpose = inferWatchPurpose(w);
   if(!purpose) return '';
-  return `<div class="watch-purpose-tag" title="Estimated from water resistance, functions, and case data — not exact">${escapeHtml(purpose)}</div>`;
+  return `<div class="watch-purpose-tag" title="Estimated from water resistance, crown/bezel type, functions, and case data — not exact">${escapeHtml(purpose)}</div>`;
 }
 
 function buildCollectionWatchBarHtml(w){
@@ -1502,6 +1524,19 @@ const FUNCTIONS_BOOL_FIELDS = [
   'split_seconds_chronograph', 'chronograph_counters', 'alarm', 'minute_repeater', 'petite_sonnerie', 'grande_sonnerie',
   'tourbillon', 'double_tourbillon', 'multi_axis_tourbillon', 'carrousel', 'automaton'
 ];
+// Crown and bezel construction — added to watch_catalog (and mirrored onto
+// watches, see expand_watches_2.sql) after the original 68. One boolean
+// per option rather than a single crown_type/bezel_type enum, same
+// reasoning as every other feature column here: a watch can be both
+// screw_down_crown and crown_guards, or both bezel_unidirectional and
+// bezel_gmt (a GMT-Master II), at once. Lives in the Case section (see
+// buildEditSectionCase) since that's what these physically are, rather
+// than Movement or Functions.
+const CASE_BOOL_FIELDS = [
+  'screw_down_crown', 'push_pull_crown', 'twin_lock_crown', 'oversized_crown', 'recessed_crown', 'crown_guards',
+  'has_tachymeter', 'bezel_fixed', 'bezel_unidirectional', 'bezel_bidirectional', 'bezel_gmt', 'bezel_countdown',
+  'bezel_tachymeter', 'bezel_pulsometer', 'bezel_telemeter', 'bezel_slide_rule', 'bezel_compass'
+];
 // Only the handful where turning a snake_case column into Title Case word
 // by word doesn't already read right on its own.
 const BOOL_FIELD_LABEL_OVERRIDES = {
@@ -1509,7 +1544,13 @@ const BOOL_FIELD_LABEL_OVERRIDES = {
   world_time: 'World time', hand_winding_capability: 'Hand-winding capability',
   co_axial_escapement: 'Co-Axial escapement', swiss_lever_escapement: 'Swiss lever escapement',
   anti_magnetic_construction: 'Anti-magnetic construction', three_quarter_plate: 'Three-quarter plate',
-  multi_axis_tourbillon: 'Multi-axis tourbillon'
+  multi_axis_tourbillon: 'Multi-axis tourbillon',
+  screw_down_crown: 'Screw-down crown', push_pull_crown: 'Push/pull crown', twin_lock_crown: 'Twin-Lock crown',
+  oversized_crown: 'Oversized crown', recessed_crown: 'Recessed crown', crown_guards: 'Crown guards',
+  has_tachymeter: 'Tachymeter', bezel_fixed: 'Fixed bezel', bezel_unidirectional: 'Unidirectional bezel',
+  bezel_bidirectional: 'Bidirectional bezel', bezel_gmt: 'GMT bezel', bezel_countdown: 'Countdown bezel',
+  bezel_tachymeter: 'Tachymeter bezel', bezel_pulsometer: 'Pulsometer bezel', bezel_telemeter: 'Telemeter bezel',
+  bezel_slide_rule: 'Slide rule bezel', bezel_compass: 'Compass bezel'
 };
 function boolFieldLabel(key){
   if(BOOL_FIELD_LABEL_OVERRIDES[key]) return BOOL_FIELD_LABEL_OVERRIDES[key];
@@ -1531,7 +1572,8 @@ const EDIT_FIELD_SECTIONS = {
   ],
   case: [
     { key: 'crystal', db: 'crystal', label: 'Crystal', placeholder: 'e.g. Sapphire' },
-    { key: 'waterResistanceM', db: 'water_resistance_m', label: 'Water resistance (m)', type: 'number', placeholder: 'e.g. 300' }
+    { key: 'waterResistanceM', db: 'water_resistance_m', label: 'Water resistance (m)', type: 'number', placeholder: 'e.g. 300' },
+    { key: 'serviceIntervalYears', db: 'service_interval_years', label: 'Recommended service interval (years)', type: 'number', placeholder: 'e.g. 5' }
   ],
   other: [
     { key: 'productionYears', db: 'production_years', label: 'Production years', placeholder: 'e.g. 2018–current' }
@@ -1784,8 +1826,10 @@ function buildEditSectionCase(w, locked){
     { key: 'caseMaterial', db: 'case_material', label: 'Case material', placeholder: 'e.g. Steel' }
   ];
   const allFields = sizeMaterialFields.concat(EDIT_FIELD_SECTIONS.case);
-  const fieldsHtml = allFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
-  const addMoreHtml = buildAddMoreRow(w, locked, 'case', allFields, expanded);
+  const textFieldsHtml = allFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  const boolHtml = buildEditBoolChecklist(w, locked, CASE_BOOL_FIELDS, expanded);
+  const fieldsHtml = textFieldsHtml + boolHtml;
+  const addMoreHtml = buildAddMoreRow(w, locked, 'case', allFields.concat(CASE_BOOL_FIELDS), expanded);
   return buildEditSection(w, locked, 'case', 'Case', fieldsHtml, addMoreHtml);
 }
 
