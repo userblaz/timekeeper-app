@@ -1536,10 +1536,12 @@ function attachHandlers(watch){
   const clockTimezoneSelectEl = document.getElementById('clockTimezoneSelect');
   if(clockTimezoneSelectEl){
     clockTimezoneSelectEl.onchange = () => {
-      setClockTimezone(clockTimezoneSelectEl.value || null);
-      // Full render(): the label row above the dial (name + offset +
-      // "automatic") needs to update too, not just the hands.
-      render();
+      setClockTimezoneOffsetMinutes(parseInt(clockTimezoneSelectEl.value, 10) || 0);
+      // Just the face, same as the GMT offset select below — nothing else
+      // on the page depends on which offset is picked.
+      const wrap = document.querySelector('.analog-clock-wrap');
+      if(wrap) wrap.innerHTML = buildAnalogClockFace();
+      updateAnalogClock();
     };
   }
   const clockGmtToggleEl = document.getElementById('clockGmtToggle');

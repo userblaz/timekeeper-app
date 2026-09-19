@@ -40,75 +40,46 @@ function setClockGmtOffsetMinutes(v){
   syncClockPrefToAccount({ clock_gmt_offset_minutes: v });
 }
 
-// The Clock tab's own timezone, separate from utcOffsetLabel's "this
-// phone" hint above (that one's only ever used to annotate the reference
-// time in the sticky header). null means "automatic" — always follow
-// whatever Intl reports as the device's own timezone, live, including if
-// the device's timezone itself changes (e.g. travel) without needing a
-// manual reset. Anything else is an explicit IANA zone name the person
-// picked instead, which then simply stays put regardless of the device.
-let clockTimezone = (() => {
-  try{ return localStorage.getItem('timekeeper-clock-timezone') || null; }catch(e){ return null; }
+// The Clock tab's own timezone, as a plain UTC offset in minutes — same
+// representation and picker style as the second-timezone/GMT-bezel offset
+// below (clockGmtOffsetMinutes), rather than a real IANA zone name, so the
+// two selectors read and behave identically. null means "automatic" —
+// always follow the device's own current offset, live (including across
+// a DST transition or actual travel), until the person picks a fixed one
+// from the list instead.
+let clockTimezoneOffsetMinutes = (() => {
+  try{
+    const saved = localStorage.getItem('timekeeper-clock-timezone-offset');
+    return saved === null || saved === '' ? null : parseInt(saved, 10);
+  }catch(e){ return null; }
 })();
-function setClockTimezone(v){
-  clockTimezone = v || null;
+function setClockTimezoneOffsetMinutes(v){
+  clockTimezoneOffsetMinutes = (v === null || v === '') ? null : v;
   try{
-    if(clockTimezone) localStorage.setItem('timekeeper-clock-timezone', clockTimezone);
-    else localStorage.removeItem('timekeeper-clock-timezone');
+    if(clockTimezoneOffsetMinutes === null) localStorage.removeItem('timekeeper-clock-timezone-offset');
+    else localStorage.setItem('timekeeper-clock-timezone-offset', String(clockTimezoneOffsetMinutes));
   }catch(e){}
-  syncClockPrefToAccount({ clock_timezone: clockTimezone });
+  syncClockPrefToAccount({ clock_timezone_offset_minutes: clockTimezoneOffsetMinutes });
 }
-function deviceTimezone(){
-  try{ return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }catch(e){ return 'UTC'; }
+function deviceOffsetMinutes(){
+  return -new Date().getTimezoneOffset();
 }
-function effectiveClockTimezone(){
-  return clockTimezone || deviceTimezone();
+function effectiveClockOffsetMinutes(){
+  return clockTimezoneOffsetMinutes === null ? deviceOffsetMinutes() : clockTimezoneOffsetMinutes;
 }
-// Every zone Intl knows about, for the picker — falls back to just the
-// device's own zone on the rare engine without supportedValuesOf (older
-// Safari), since there's nothing else safe to offer as an alternative.
-function timezoneOptionsList(){
-  try{
-    if(typeof Intl.supportedValuesOf === 'function'){
-      const list = Intl.supportedValuesOf('timeZone');
-      if(list && list.length) return list;
-    }
-  }catch(e){}
-  return [deviceTimezone()];
-}
-// h/m/s/day-of-month for `date`, as read in `tz` — the actual mechanism
-// that lets the dial show a timezone other than the device's own, since
-// nothing about the device's real system clock can be changed. Intl's own
-// per-zone formatting (DST included) does the conversion; this just picks
-// the numeric parts back out of it.
-function zonedParts(date, tz){
-  try{
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz, hour12: false,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    }).formatToParts(date);
-    const get = t => Number(parts.find(p => p.type === t).value);
-    return {
-      year: get('year'), month: get('month'), day: get('day'),
-      hour: get('hour') % 24, minute: get('minute'), second: get('second')
-    };
-  }catch(e){
-    return {
-      year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(),
-      hour: date.getHours(), minute: date.getMinutes(), second: date.getSeconds()
-    };
-  }
-}
-// The zone's own current UTC offset, in minutes — same shape formatGmtOffset
-// already expects, so the picker can show e.g. "Europe/Belgrade (UTC+2)"
-// with the label. Derived by diffing Intl's zoned wall-clock reading
-// against the real UTC one, rather than a lookup table, so it's always
-// correct for the zone's current DST state.
-function zoneOffsetMinutes(date, tz){
-  const zoned = zonedParts(date, tz);
-  const zonedMs = Date.UTC(zoned.year, zoned.month - 1, zoned.day, zoned.hour, zoned.minute, zoned.second);
-  return Math.round((zonedMs - date.getTime()) / 60000);
+// h/m/s/day-of-month for `date`, shifted by `offsetMinutes` — the actual
+// mechanism that lets the dial show a timezone other than the device's
+// own, since nothing about the device's real system clock can be changed.
+// Shifting the raw UTC instant and reading it back with the UTC getters
+// (rather than the local ones, which would additionally apply the
+// device's own offset on top) gives exactly the wall-clock time at that
+// offset.
+function partsAtOffset(date, offsetMinutes){
+  const shifted = new Date(date.getTime() + offsetMinutes * 60000);
+  return {
+    year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(), minute: shifted.getUTCMinutes(), second: shifted.getUTCSeconds()
+  };
 }
 
 // Merges one or more of these three prefs into the account's own
@@ -219,7 +190,7 @@ function buildAnalogClockFace(){
   let dateWindow = '';
   if(showClockDate){
     const x = cx + (R - 8 - 40); // 3 o'clock: straight out along +x, no trig needed
-    const day = zonedParts(trueNow(), effectiveClockTimezone()).day;
+    const day = partsAtOffset(trueNow(), effectiveClockOffsetMinutes()).day;
     // Stable ids so the date-setting demo (runClockDateDemo below) can
     // update the day and pulse the window directly, the same way it drives
     // the hands by id — without going through a full rebuild that would
@@ -298,7 +269,7 @@ function updateAnalogClock(){
   const minuteEl = document.getElementById('analogMinuteHand');
   const secondEl = document.getElementById('analogSecondHand');
   const now = trueNow();
-  const zoned = zonedParts(now, effectiveClockTimezone());
+  const zoned = partsAtOffset(now, effectiveClockOffsetMinutes());
   const h = zoned.hour % 12, m = zoned.minute, s = zoned.second, ms = now.getMilliseconds();
 
   const tickIntervalSec = 3600 / CLOCK_TICK_BPH;
@@ -395,7 +366,7 @@ async function runClockDateDemo(){
 
   try{
     const startNow = trueNow();
-    const startZoned = zonedParts(startNow, effectiveClockTimezone());
+    const startZoned = partsAtOffset(startNow, effectiveClockOffsetMinutes());
     const startHour = (startZoned.hour % 12) + startZoned.minute/60;
     const startMinute = startZoned.minute + startZoned.second/60;
     let curHourAngle = startHour / 12 * 360;
@@ -423,7 +394,7 @@ async function runClockDateDemo(){
     // the date rolls over) and on to the real current time. A couple of
     // extra full laps are folded in purely so the "fast forward" actually
     // reads as time passing rather than a small, easy-to-miss nudge.
-    const endZoned0 = zonedParts(trueNow(), effectiveClockTimezone());
+    const endZoned0 = partsAtOffset(trueNow(), effectiveClockOffsetMinutes());
     const endHourFraction = (endZoned0.hour % 12) + endZoned0.minute/60 + endZoned0.second/3600;
     const hoursForward = ((endHourFraction - 6 + 12) % 12) + 24;
     let dateFlipped = false;
@@ -441,7 +412,7 @@ async function runClockDateDemo(){
         // AM from PM, so this is the closest it can point to.
         if(!dateFlipped && elapsed >= 6){
           dateFlipped = true;
-          const trueDay = zonedParts(trueNow(), effectiveClockTimezone()).day;
+          const trueDay = partsAtOffset(trueNow(), effectiveClockOffsetMinutes()).day;
           dateTextEl.textContent = String(trueDay);
           pulseDateWindow();
         }
@@ -546,32 +517,20 @@ async function runClockGmtDemo(){
 }
 
 
-// The timezone row itself — a name/offset readout that doubles as the
-// picker's trigger label, plus the actual <select> (visually hidden,
-// stacked under the label) so the native picker UI still opens on tap
-// without a second bespoke dropdown to build and maintain. "Automatic"
-// stays selected — and keeps tracking the device — until the person
-// actually picks a specific zone from the list.
-function buildClockTimezoneRowHtml(){
-  const tz = effectiveClockTimezone();
-  const now = trueNow();
-  const offsetLabel = formatGmtOffset(zoneOffsetMinutes(now, tz));
-  const auto = !clockTimezone;
-  const optionsHtml = timezoneOptionsList().map(z =>
-    `<option value="${z}" ${z === tz ? 'selected' : ''}>${z.replace(/_/g, ' ')}</option>`
+// Just the offset select itself — same GMT_OFFSET_OPTIONS list and
+// formatGmtOffset labels as the second-timezone picker below
+// (buildClockGmtOffsetHtml), so picking, say, "UTC+2:00" here reads
+// identically to picking it there. Defaults to (and keeps tracking) the
+// device's own current offset, live, until a specific one is chosen —
+// but shows only that plain offset either way, never a zone name or the
+// word "automatic".
+function buildClockTimezoneSelectHtml(){
+  const offset = effectiveClockOffsetMinutes();
+  const options = Array.from(new Set([...GMT_OFFSET_OPTIONS, offset])).sort((a,b) => a-b);
+  const optionsHtml = options.map(m =>
+    `<option value="${m}" ${m === offset ? 'selected' : ''}>${formatGmtOffset(m)}</option>`
   ).join('');
-  return `
-    <div class="clock-timezone-row">
-      <label class="clock-timezone-label" for="clockTimezoneSelect">
-        <span class="clock-timezone-name">${escapeHtml(tz.replace(/_/g, ' '))}</span>
-        <span class="clock-timezone-offset">${offsetLabel}${auto ? ' · automatic' : ''}</span>
-      </label>
-      <select id="clockTimezoneSelect">
-        <option value="" ${auto ? 'selected' : ''}>Automatic (this device)</option>
-        ${optionsHtml}
-      </select>
-    </div>
-  `;
+  return `<select id="clockTimezoneSelect" class="clock-timezone-select">${optionsHtml}</select>`;
 }
 
 function buildClockTabHtml(){
@@ -579,9 +538,7 @@ function buildClockTabHtml(){
     <div class="section" style="margin-top:0;padding-top:0;border-top:none;">
       <div class="section-title-row">
         <h2 class="section-title">Set your watch</h2>
-      </div>
-      ${buildClockTimezoneRowHtml()}
-      <div class="section-title-row" style="margin-top:-4px;">
+        ${buildClockTimezoneSelectHtml()}
         <span class="hint">Match hands to this dial</span>
       </div>
       <div class="analog-clock-wrap">

@@ -122,11 +122,11 @@ async function handleSignedIn(user, isFreshSignIn){
     clockGmtOffsetMinutes = Number(meta.clock_gmt_offset_minutes) || 0;
     try{ localStorage.setItem('timekeeper-clock-gmt-offset', String(clockGmtOffsetMinutes)); }catch(e){}
   }
-  if(meta.clock_timezone !== undefined){
-    clockTimezone = meta.clock_timezone || null;
+  if(meta.clock_timezone_offset_minutes !== undefined){
+    clockTimezoneOffsetMinutes = meta.clock_timezone_offset_minutes === null ? null : Number(meta.clock_timezone_offset_minutes);
     try{
-      if(clockTimezone) localStorage.setItem('timekeeper-clock-timezone', clockTimezone);
-      else localStorage.removeItem('timekeeper-clock-timezone');
+      if(clockTimezoneOffsetMinutes === null) localStorage.removeItem('timekeeper-clock-timezone-offset');
+      else localStorage.setItem('timekeeper-clock-timezone-offset', String(clockTimezoneOffsetMinutes));
     }catch(e){}
   }
   showApp();
