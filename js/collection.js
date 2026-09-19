@@ -1374,6 +1374,65 @@ function buildCollectionDetailHtml(w){
 // circular back button beside it — replacing the row of watch-name tabs
 // the Data tab puts there, so the card stays pinned under the clock as the
 // rest of the detail page scrolls up underneath it.
+// A best-effort guess at what a watch is "for," since the database has no
+// column that actually says so. There's no ground truth here — it's a
+// simple point score built entirely out of data we do have (water
+// resistance, complication booleans, case material) plus a few brand/
+// model keyword hints for the well-known cases those numbers alone can't
+// tell apart (e.g. a chronograph could be a Daytona or a Speedmaster
+// either way, but the name at least narrows "racing" vs "everything
+// else"). Deliberately limited to a handful of buckets confident enough
+// to be worth showing, rather than the full real-world list (Flieger,
+// Military, Tactical, Nautical, Railroad, integrated-bracelet, ... all
+// hinge on bezel/crown/bracelet/dial details this schema doesn't store)
+// — always shown as a suggestion (see buildWatchPurposeTagHtml's title
+// tooltip), never as fact.
+function inferWatchPurpose(w){
+  const name = [w.name, w.model, w.reference].filter(Boolean).join(' ').toLowerCase();
+  const wr = Number(w.waterResistanceM) || 0;
+  const scores = {};
+  const add = (purpose, points) => { scores[purpose] = (scores[purpose] || 0) + points; };
+
+  if(wr >= 100) add('Diver’s watch', 3);
+  if(wr >= 200) add('Diver’s watch', 2);
+  if(/submariner|seamaster|diver|aquaracer|superocean|planet ocean|fifty fathoms|sea-dweller|black bay/.test(name)) add('Diver’s watch', 3);
+
+  if(w.chronograph || w.flybackChronograph || w.splitSecondsChronograph || w.chronographCounters) add('Racing / Chronograph watch', 3);
+  if(/daytona|speedmaster|carrera|monaco|autavia|chronomat/.test(name)) add('Racing / Chronograph watch', 3);
+
+  if(w.gmtDualTime || w.worldTime) add('Travel / GMT watch', 3);
+  if(/gmt-master|world\s?timer/.test(name)) add('Travel / GMT watch', 2);
+
+  if(/pilot|flieger|aviator|navitimer|spitfire|top gun|type\s?x{1,2}/.test(name)) add('Pilot / Aviation watch', 4);
+  if(w.display24h) add('Pilot / Aviation watch', 1);
+
+  if(/explorer|field|khaki|expedition/.test(name)) add('Explorer / Field watch', 4);
+
+  const dressyComplications = ['moonphase', 'tourbillon', 'doubleTourbillon', 'multiAxisTourbillon',
+    'minuteRepeater', 'petiteSonnerie', 'grandeSonnerie', 'perpetualCalendar', 'equationOfTime', 'automaton'];
+  dressyComplications.forEach(key => { if(w[key]) add('Dress / Luxury watch', 2); });
+  if(/gold|platinum/.test((w.caseMaterial || '').toLowerCase()) && wr < 100) add('Dress / Luxury watch', 2);
+
+  let best = null, bestScore = 0;
+  Object.keys(scores).forEach(purpose => {
+    if(scores[purpose] > bestScore){ best = purpose; bestScore = scores[purpose]; }
+  });
+  // Below this, none of the signals were strong enough to call it anything
+  // more specific — "Everyday / Casual" rather than nothing, since a plain
+  // watch with no standout feature genuinely is that, not a data gap.
+  return bestScore >= 3 ? best : 'Everyday / Casual watch';
+}
+
+// Small pill under the movement type, on the watch bar only (not the list
+// card — one experimental guess per screen is enough). The tooltip is the
+// only disclosure that this is a guess; deliberately no "?" icon or
+// asterisk cluttering the bar itself.
+function buildWatchPurposeTagHtml(w){
+  const purpose = inferWatchPurpose(w);
+  if(!purpose) return '';
+  return `<div class="watch-purpose-tag" title="Estimated from water resistance, functions, and case data — not exact">${escapeHtml(purpose)}</div>`;
+}
+
 function buildCollectionWatchBarHtml(w){
   const photoHtml = w.photoUrl
     ? `<img class="collection-photo" src="${w.photoUrl}" alt="${escapeHtml(w.name)}" draggable="false" />`
@@ -1387,6 +1446,7 @@ function buildCollectionWatchBarHtml(w){
           <div class="collection-card-name"><span class="card-name-text">${escapeHtml(w.name)}</span></div>
           <div class="collection-card-value">${subtitle ? escapeHtml(subtitle) : 'no model/reference set'}</div>
           ${buildMovementTypeHtml(w)}
+          ${buildWatchPurposeTagHtml(w)}
         </div>
         <div class="collection-card-actions">
           <button type="button" class="zoom-btn collection-edit-btn" data-action="startcollectionedit" data-id="${w.id}" aria-label="Edit ${escapeHtml(w.name)}'s details" title="Edit details">
