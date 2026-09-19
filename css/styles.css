@@ -603,6 +603,45 @@
     width:auto;
     flex-shrink:0;
   }
+  /* The Clock tab's own timezone row (buildClockTimezoneRowHtml, clock.js),
+     between the "Set your watch" title and the "Match hands to this dial"
+     hint. The visible name/offset is a plain <label>, not a button — the
+     real <select> sits stretched invisibly on top of it (opacity:0) so
+     tapping anywhere on the label opens the native picker directly,
+     without a second bespoke dropdown UI to keep in sync with it. */
+  .clock-timezone-row{
+    position:relative;
+    display:flex;
+    justify-content:center;
+    margin:0 0 8px;
+  }
+  .clock-timezone-label{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:1px;
+    cursor:pointer;
+  }
+  .clock-timezone-name{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .clock-timezone-offset{
+    font-family:'Inter',sans-serif;
+    font-size:11.5px;
+    color:var(--grey);
+  }
+  .clock-timezone-row select{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    opacity:0;
+    cursor:pointer;
+    border:0;
+  }
   /* The second-timezone picker for the GMT hand (buildClockGmtOffsetHtml,
      clock.js) — a plain native <select> rather than this app's own custom
      dropdown (.condition-select and friends), since this is a single,

@@ -122,6 +122,13 @@ async function handleSignedIn(user, isFreshSignIn){
     clockGmtOffsetMinutes = Number(meta.clock_gmt_offset_minutes) || 0;
     try{ localStorage.setItem('timekeeper-clock-gmt-offset', String(clockGmtOffsetMinutes)); }catch(e){}
   }
+  if(meta.clock_timezone !== undefined){
+    clockTimezone = meta.clock_timezone || null;
+    try{
+      if(clockTimezone) localStorage.setItem('timekeeper-clock-timezone', clockTimezone);
+      else localStorage.removeItem('timekeeper-clock-timezone');
+    }catch(e){}
+  }
   showApp();
   await loadState();
   syncTrueTime();

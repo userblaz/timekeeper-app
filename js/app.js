@@ -1533,6 +1533,15 @@ function attachHandlers(watch){
   if(clockDateDemoBtnEl){
     clockDateDemoBtnEl.onclick = () => runClockDateDemo();
   }
+  const clockTimezoneSelectEl = document.getElementById('clockTimezoneSelect');
+  if(clockTimezoneSelectEl){
+    clockTimezoneSelectEl.onchange = () => {
+      setClockTimezone(clockTimezoneSelectEl.value || null);
+      // Full render(): the label row above the dial (name + offset +
+      // "automatic") needs to update too, not just the hands.
+      render();
+    };
+  }
   const clockGmtToggleEl = document.getElementById('clockGmtToggle');
   if(clockGmtToggleEl){
     clockGmtToggleEl.onchange = () => {
