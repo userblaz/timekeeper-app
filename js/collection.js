@@ -27,6 +27,38 @@ let watchSearchCaseMaterials = [];
 let watchSearchCaseDiameters = [];
 let watchSearchMovementTypes = [];
 let watchSearchDials = [];
+
+// Every bit of state a fresh "Add watch" card needs reset to — shared by
+// the Collection tab's own "+ Add watch" button (attachCollectionHandlers
+// below) and the Snap tab's "+" (jumptoaddwatch, app.js), so the two
+// always land on exactly the same view instead of the Snap tab's version
+// drifting out of sync with whatever this one does. Doesn't call render()
+// itself — callers differ on what else needs to happen around it (the
+// Collection tab's button also calls resetAddWatchScroll right after;
+// the Snap tab's also has to switch tabs first).
+function startAddCollectionWatch(){
+  addingCollectionWatch = true;
+  addWatchMode = 'search';
+  watchSearchQuery = '';
+  watchSearchCaseMaterials = [];
+  watchSearchCaseDiameters = [];
+  watchSearchMovementTypes = [];
+  watchSearchDials = [];
+  // Called before render(), not after: ensureCatalogLoaded() sets its
+  // "loading" flag synchronously (an async function body runs up to its
+  // first await immediately, not on a later tick), so the render() right
+  // after this call already paints the correct "Loading catalog…" state
+  // on the very first open instead of a wrong "catalog unavailable" flash
+  // that only corrects itself once the fetch finishes. A no-op, loading
+  // nothing, if the catalog is already cached from earlier this session.
+  ensureCatalogLoaded().then(() => {
+    if(addingCollectionWatch && addWatchMode === 'search'){
+      refreshCatalogFilters();
+      refreshCatalogResults();
+    }
+  });
+}
+
 let viewingCollectionId = null;
 // Set right before the render() that first shows a watch's detail page, and
 // consumed by that one render — so the opening animation plays exactly once
@@ -2789,26 +2821,7 @@ function attachCollectionHandlers(){
 
   const startAddBtn = document.querySelector('[data-action="startaddcollectionwatch"]');
   if(startAddBtn) startAddBtn.onclick = () => {
-    addingCollectionWatch = true;
-    addWatchMode = 'search';
-    watchSearchQuery = '';
-    watchSearchCaseMaterials = [];
-    watchSearchCaseDiameters = [];
-    watchSearchMovementTypes = [];
-    watchSearchDials = [];
-    // Called before render(), not after: ensureCatalogLoaded() sets its
-    // "loading" flag synchronously (an async function body runs up to its
-    // first await immediately, not on a later tick), so the render() right
-    // below already paints the correct "Loading catalog…" state on the
-    // very first open instead of a wrong "catalog unavailable" flash that
-    // only corrects itself once the fetch finishes. A no-op, loading
-    // nothing, if the catalog is already cached from earlier this session.
-    ensureCatalogLoaded().then(() => {
-      if(addingCollectionWatch && addWatchMode === 'search'){
-        refreshCatalogFilters();
-        refreshCatalogResults();
-      }
-    });
+    startAddCollectionWatch();
     render();
     resetAddWatchScroll();
   };

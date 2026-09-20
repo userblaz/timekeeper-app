@@ -1635,11 +1635,17 @@ function attachHandlers(watch){
     activeTab = 'collection';
     viewingCollectionId = null;
     editingCollectionId = null;
-    addingCollectionWatch = true;
+    // Same reset startaddcollectionwatch (collection.js) itself calls,
+    // via the shared startAddCollectionWatch — this used to just set
+    // addingCollectionWatch = true and try to focus a name field that
+    // only exists in the manual-add form, leaving this landing on
+    // whatever addWatchMode/search state happened to be left over from
+    // last time instead of always opening fresh on the catalog search,
+    // the same way the Collection tab's own "+ Add watch" button does.
+    startAddCollectionWatch();
     syncBottomTabs();
     render();
-    const nameEl = document.getElementById('newCollectionWatchName');
-    if(nameEl) nameEl.focus();
+    resetAddWatchScroll();
   };
 
   const form = document.getElementById('readingForm');
