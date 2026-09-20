@@ -1723,6 +1723,10 @@ function buildEditSectionBasic(w, locked){
       <div class="field-plain-value">${escapeHtml(caseSummary)}</div>
     </div>` : '';
   const dialHtml = buildEditFieldRow(w, locked, dialField, expanded);
+  // Same side-by-side treatment as Model/Reference above — Case's own
+  // summary is never itself editable here (see caseSummaryHtml), but it
+  // still pairs with Dial the same way any other two related fields do.
+  const caseDialRowHtml = (caseSummaryHtml || dialHtml) ? `<div class="row2">${caseSummaryHtml}${dialHtml}</div>` : '';
   const addMoreHtml = buildAddMoreRow(w, locked, 'basic', modelRefFields.concat([dialField]), expanded);
   const nameFieldHtml = locked ? `
     <div class="field">
@@ -1757,8 +1761,7 @@ function buildEditSectionBasic(w, locked){
       ${photoFieldHtml}
       ${nameFieldHtml}
       ${modelRefHtml}
-      ${caseSummaryHtml}
-      ${dialHtml}
+      ${caseDialRowHtml}
       ${addMoreHtml}
     </div>
   `;
@@ -1810,9 +1813,19 @@ function buildEditSectionMovement(w, locked){
       <input type="number" id="colReserve_${w.id}" step="1" min="0" placeholder="e.g. 70" value="${w.powerReserveHours ?? ''}" />
     </div>` : '');
   const textFields = EDIT_FIELD_SECTIONS.movement;
-  const textHtml = textFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  // Movement/Caliber on one line, Beat rate/Power reserve on the next —
+  // same side-by-side treatment as Model/Reference in Basic info. Power
+  // reserve is the bespoke widget above (reserveHtml), not part of
+  // textFields, so it joins Beat rate's row by hand rather than through
+  // the textFields.map below.
+  const [movementTypeField, caliberField, beatRateField] = textFields;
+  const movementTypeHtml = buildEditFieldRow(w, locked, movementTypeField, expanded);
+  const caliberHtml = buildEditFieldRow(w, locked, caliberField, expanded);
+  const beatRateHtml = buildEditFieldRow(w, locked, beatRateField, expanded);
+  const movementCaliberRowHtml = (movementTypeHtml || caliberHtml) ? `<div class="row2">${movementTypeHtml}${caliberHtml}</div>` : '';
+  const beatReserveRowHtml = (beatRateHtml || reserveHtml) ? `<div class="row2">${beatRateHtml}${reserveHtml}</div>` : '';
   const boolHtml = buildEditBoolChecklist(w, locked, MOVEMENT_BOOL_FIELDS, expanded);
-  const fieldsHtml = [textHtml, reserveHtml, accuracyHtml, boolHtml].filter(Boolean).join('');
+  const fieldsHtml = [movementCaliberRowHtml, beatReserveRowHtml, accuracyHtml, boolHtml].filter(Boolean).join('');
   // accuracySpec/powerReserveHours aren't in EDIT_FIELD_SECTIONS.movement
   // (their bespoke widgets are built by hand just above), so buildAddMoreRow
   // needs them named explicitly here to know there's still more to reveal.
@@ -1840,7 +1853,17 @@ function buildEditSectionCase(w, locked){
     { key: 'caseMaterial', db: 'case_material', label: 'Case material', placeholder: 'e.g. Steel' }
   ];
   const allFields = sizeMaterialFields.concat(EDIT_FIELD_SECTIONS.case);
-  const textFieldsHtml = allFields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  // Case size/material on one line, Crystal/Water resistance on the next
+  // — same side-by-side treatment as everywhere else in this form.
+  const [caseSizeField, caseMaterialField] = sizeMaterialFields;
+  const [crystalField, waterResistanceField] = EDIT_FIELD_SECTIONS.case;
+  const caseSizeHtml = buildEditFieldRow(w, locked, caseSizeField, expanded);
+  const caseMaterialHtml = buildEditFieldRow(w, locked, caseMaterialField, expanded);
+  const crystalHtml = buildEditFieldRow(w, locked, crystalField, expanded);
+  const waterResistanceHtml = buildEditFieldRow(w, locked, waterResistanceField, expanded);
+  const sizeMaterialRowHtml = (caseSizeHtml || caseMaterialHtml) ? `<div class="row2">${caseSizeHtml}${caseMaterialHtml}</div>` : '';
+  const crystalWaterRowHtml = (crystalHtml || waterResistanceHtml) ? `<div class="row2">${crystalHtml}${waterResistanceHtml}</div>` : '';
+  const textFieldsHtml = sizeMaterialRowHtml + crystalWaterRowHtml;
   const crownBezelHtml = buildCrownBezelHtml(w, locked);
   const fieldsHtml = textFieldsHtml + crownBezelHtml;
   // Crown/Bezel aren't gated behind "+ Add more data" — unlike a wall of
