@@ -74,6 +74,18 @@ async function loadState(){
       wearRows = [];
     }
 
+    // Same "newer table, don't take the whole app down if it's not
+    // migrated yet" treatment as wear_days above (see service_records.sql).
+    let serviceRows = [];
+    try{
+      const { data: serviceData, error: serviceErr } = await sb
+        .from('service_records').select('*').order('service_date', { ascending: true });
+      if(serviceErr) throw serviceErr;
+      serviceRows = serviceData || [];
+    }catch(e){
+      serviceRows = [];
+    }
+
     state.watches = (watchRows || []).map(w => ({
       id: w.id,
       name: w.name,
@@ -95,6 +107,12 @@ async function loadState(){
       powerReserveHours: w.power_reserve_hours === null || w.power_reserve_hours === undefined ? null : Number(w.power_reserve_hours),
       lastWoundAt: w.last_wound_at || null,
       certifications: w.certifications ? w.certifications.split(',').filter(Boolean) : [],
+      // Warranty status is personal data about this one specific watch,
+      // never catalog data — flat fields here, same treatment as
+      // purchasePrice/photoUrl, unaffected by whether the watch is
+      // catalog-locked or manual.
+      underWarranty: !!w.under_warranty,
+      warrantyExpiration: w.warranty_expiration || '',
       // Every case/movement/functions column the edit form's new sections
       // read (collection.js) — specFieldsFromRow (below in this file)
       // shares the same mapping addWatchFromCatalog uses, since it's
@@ -112,7 +130,10 @@ async function loadState(){
           position: r.position || '',
           wearState: r.wear_state || '',
           timeOfDay: r.time_of_day || ''
-        }))
+        })),
+      serviceRecords: serviceRows
+        .filter(r => r.watch_id === w.id)
+        .map(serviceRecordFromRow)
     }));
     state.activeId = state.watches[0] ? state.watches[0].id : null;
   }catch(e){
@@ -264,6 +285,24 @@ function specInsertPayloadFromEntry(entry){
   return payload;
 }
 
+// One service_records row, in the local camelCase shape the Service /
+// Maintenance section (collection.js) reads — same snake_case-in,
+// camelCase-out convention as everything else here.
+function serviceRecordFromRow(r){
+  return {
+    id: r.id,
+    date: r.service_date,
+    types: r.service_types ? r.service_types.split(',').filter(Boolean) : [],
+    notes: r.notes || '',
+    warrantyMonths: r.warranty_months === null || r.warranty_months === undefined ? null : Number(r.warranty_months),
+    coveredByWarranty: !!r.covered_by_warranty,
+    cost: r.cost === null || r.cost === undefined ? null : Number(r.cost),
+    currency: r.currency || 'EUR',
+    provider: r.provider || '',
+    attachmentUrls: r.attachment_urls || []
+  };
+}
+
 async function addWatch(name){
   saveStatus = 'saving'; render();
   // Goes on the end of the Collection tab's own order, same place a new
@@ -290,8 +329,10 @@ async function addWatch(name){
     shareStats: !!data.share_stats,
     purchasePrice: null, purchaseCurrency: 'EUR', purchaseDate: '', photoUrl: '', conditionNotes: '',
     accuracySpec: '', powerReserveHours: null, lastWoundAt: null, certifications: [],
+    underWarranty: false, warrantyExpiration: '',
     wornDates: new Set(),
     readings: [],
+    serviceRecords: [],
     ...emptySpecFields()
   };
   state.watches.push(w);
@@ -347,8 +388,10 @@ async function addWatchFromCatalog(entry){
     powerReserveHours: data.power_reserve_hours === null || data.power_reserve_hours === undefined ? null : Number(data.power_reserve_hours),
     lastWoundAt: null,
     certifications: data.certifications ? data.certifications.split(',').filter(Boolean) : [],
+    underWarranty: false, warrantyExpiration: '',
     wornDates: new Set(),
     readings: [],
+    serviceRecords: [],
     ...specFieldsFromRow(data)
   };
   state.watches.push(w);
@@ -458,6 +501,61 @@ async function deleteReading(watchId, id){
   w.readings = w.readings.filter(x => x.id !== id);
   editingReadingId = null;
   saveState();
+}
+
+// One new row in the watch's service history (collection.js's "+ Add
+// service record" form) — its own immediate save, same as addReading
+// above, rather than folding into the main Save button: a service record
+// is a discrete past event being logged, not a field of the watch itself
+// being edited. `fields.attachmentUrls` is expected already-uploaded
+// (collection.js handles the Storage upload itself, same place the photo
+// picker's own upload happens) — this just writes the resulting URLs.
+// Deliberately doesn't touch saveStatus or call render() itself, unlike
+// addReading/deleteReading above — those are only ever called from a tab
+// of their own, but this one is called from *inside* the Collection tab's
+// edit form (buildServiceRecordFormHtml, collection.js), which can easily
+// have unsaved text sitting in other fields (Notes, Crown/Bezel, ...) at
+// the same time. A full render() here would silently wipe all of that,
+// the exact bug class this whole edit-form redesign was built to avoid.
+// The caller does its own targeted DOM refresh instead (refreshServiceSection).
+async function addServiceRecord(watchId, fields){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return null;
+  const { data, error } = await sb.from('service_records')
+    .insert({
+      watch_id: watchId,
+      service_date: fields.date,
+      service_types: (fields.types || []).length ? fields.types.join(',') : null,
+      notes: (fields.notes || '').trim() || null,
+      warranty_months: fields.warrantyMonths === '' || fields.warrantyMonths === null || fields.warrantyMonths === undefined ? null : Number(fields.warrantyMonths),
+      covered_by_warranty: !!fields.coveredByWarranty,
+      cost: fields.cost === '' || fields.cost === null || fields.cost === undefined ? null : Number(fields.cost),
+      currency: fields.currency || 'EUR',
+      provider: (fields.provider || '').trim() || null,
+      attachment_urls: fields.attachmentUrls || []
+    })
+    .select().single();
+  if(error){
+    if(typeof showToast === 'function') showToast(error.message || "Couldn't save that service record — the write was rejected.", 'error');
+    return null;
+  }
+  const record = serviceRecordFromRow(data);
+  w.serviceRecords.push(record);
+  w.serviceRecords.sort((a, b) => a.date.localeCompare(b.date));
+  return record;
+}
+
+// Same reasoning as addServiceRecord above — no saveStatus/render() here.
+async function deleteServiceRecord(watchId, id){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return false;
+  const { error } = await sb.from('service_records').delete().eq('id', id);
+  if(error){
+    if(typeof showToast === 'function') showToast(error.message || "Couldn't delete that service record.", 'error');
+    return false;
+  }
+  w.serviceRecords = w.serviceRecords.filter(x => x.id !== id);
+  return true;
 }
 
 // A day counts as worn either because it was tapped on directly in the

@@ -1891,13 +1891,271 @@ function buildCrownBezelHtml(w, locked){
 // watch itself, so it doesn't belong grouped with crystal/water
 // resistance/crown/bezel. Same locked/editable/add-more machinery as
 // every other section here, just with one field in it.
+// The free-text tags for a past service event's "Service performed" —
+// service_records.service_types (comma-separated, same convention as
+// watches.certifications), not booleans on the watch itself, since these
+// describe one specific service in its own history row, not the watch as
+// a whole.
+const SERVICE_TYPE_OPTIONS = [
+  'Routine service', 'Full service', 'Crystal replacement', 'Warranty service',
+  'Repair', 'Regulation', 'Inspection', 'Water-resistance service', 'Other'
+];
+
+// Which watch (if any) currently has its "+ Add service record" form
+// open — at most one at a time, same idea as collectionEditExpandedSections,
+// and reset alongside it wherever a fresh edit session starts.
+let addingServiceRecordFor = null;
+
 function buildEditSectionService(w, locked){
   const expanded = collectionEditExpandedSections.has('service');
   const fields = EDIT_FIELD_SECTIONS.service;
-  const fieldsHtml = fields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
+  const intervalHtml = fields.map(f => buildEditFieldRow(w, locked, f, expanded)).join('');
   const addMoreHtml = buildAddMoreRow(w, locked, 'service', fields, expanded);
+  // Warranty status and service history are personal data about this one
+  // watch, never catalog data — always shown regardless of `locked`, same
+  // reasoning as Purchase details/Notes (buildEditSectionPurchase above).
+  // This is also why buildEditSection below never hides this section even
+  // on a fully-locked watch with no service interval published: there's
+  // always at least the warranty checkbox and "+ Add service record" link
+  // to show.
+  const fieldsHtml = intervalHtml + buildServiceWarrantyHtml(w) + buildServiceHistoryHtml(w);
   return buildEditSection(w, locked, 'service', 'Service / Maintenance', fieldsHtml, addMoreHtml);
 }
+
+// Just the expiration date field's own markup — shared between the
+// section's initial render and the live show/hide toggle wired in
+// attachCollectionHandlers below, so the two can't drift out of sync.
+function buildWarrantyExpirationFieldHtml(w){
+  return `
+    <div class="field">
+      <label for="colWarrantyExpiration_${w.id}">Warranty expiration</label>
+      <input type="date" id="colWarrantyExpiration_${w.id}" value="${escapeHtml(w.warrantyExpiration || '')}" />
+    </div>`;
+}
+
+function buildServiceWarrantyHtml(w){
+  return `
+    <div class="field checkbox-row">
+      <label>
+        <input type="checkbox" id="colUnderWarranty_${w.id}" ${w.underWarranty ? 'checked' : ''} />
+        <span>The watch is under warranty</span>
+      </label>
+    </div>
+    <div id="warrantyExpiryWrap_${w.id}">${w.underWarranty ? buildWarrantyExpirationFieldHtml(w) : ''}</div>
+  `;
+}
+
+// One past service event, read-only (editing an existing record isn't
+// supported yet — delete and re-add covers a correction for now, same as
+// several other lists in this app started out).
+function buildServiceRecordItemHtml(w, r){
+  const typesText = r.types.join(' · ');
+  const metaParts = [
+    r.cost !== null ? `${r.cost} ${r.currency}` : '',
+    r.coveredByWarranty ? 'covered by warranty' : '',
+    r.warrantyMonths !== null ? `${r.warrantyMonths}mo service warranty` : ''
+  ].filter(Boolean);
+  const attachmentsHtml = r.attachmentUrls.length ? `
+    <div class="service-record-attachments">
+      ${r.attachmentUrls.map((u, i) => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">File ${i+1}</a>`).join(' · ')}
+    </div>` : '';
+  return `
+    <div class="service-record">
+      <div class="service-record-top">
+        <span class="service-record-date">${escapeHtml(r.date)}</span>
+        <button type="button" class="service-record-delete" data-action="deleteservicerecord" data-id="${w.id}" data-record="${r.id}" aria-label="Delete this service record">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+        </button>
+      </div>
+      ${typesText ? `<div class="service-record-types">${escapeHtml(typesText)}</div>` : ''}
+      ${r.provider ? `<div class="service-record-line">${escapeHtml(r.provider)}</div>` : ''}
+      ${metaParts.length ? `<div class="service-record-line">${escapeHtml(metaParts.join(' · '))}</div>` : ''}
+      ${r.notes ? `<div class="service-record-notes">${escapeHtml(r.notes)}</div>` : ''}
+      ${attachmentsHtml}
+    </div>
+  `;
+}
+
+// The "+ Add service record" form itself — its own immediate Save
+// (saveNewServiceRecord below), not folded into the main edit form's Save
+// button, since a service record is a discrete past event being logged,
+// not a field of the watch being edited.
+function buildServiceRecordFormHtml(w){
+  const typesHtml = SERVICE_TYPE_OPTIONS.map(t => `
+    <label class="cert-checkbox">
+      <input type="checkbox" class="newServiceType_${w.id}" value="${escapeHtml(t)}" />
+      <span>${escapeHtml(t)}</span>
+    </label>
+  `).join('');
+  return `
+    <div class="service-record-form">
+      <div class="field">
+        <label for="newServiceDate_${w.id}">Service date</label>
+        <input type="date" id="newServiceDate_${w.id}" value="${todayStr()}" />
+      </div>
+      <div class="field">
+        <label>Service performed</label>
+        <div class="cert-checkbox-list">${typesHtml}</div>
+      </div>
+      <div class="field">
+        <label for="newServiceNotes_${w.id}">Service notes</label>
+        <input type="text" id="newServiceNotes_${w.id}" placeholder="What was done…" />
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="newServiceCost_${w.id}">Service cost</label>
+          <div class="price-currency-row">
+            <input type="number" id="newServiceCost_${w.id}" step="1" />
+            ${buildSelect('newServiceCurrency_'+w.id, CURRENCY_OPTIONS, w.purchaseCurrency || 'EUR')}
+          </div>
+        </div>
+        <div class="field">
+          <label for="newServiceWarrantyMonths_${w.id}">Service warranty (months)</label>
+          <input type="number" id="newServiceWarrantyMonths_${w.id}" step="1" placeholder="e.g. 12" />
+        </div>
+      </div>
+      <div class="field checkbox-row">
+        <label>
+          <input type="checkbox" id="newServiceCoveredByWarranty_${w.id}" />
+          <span>This service was covered by warranty</span>
+        </label>
+      </div>
+      <div class="field">
+        <label for="newServiceProvider_${w.id}">Service provider</label>
+        <input type="text" id="newServiceProvider_${w.id}" placeholder="Shop/watchmaker name, contact info…" />
+      </div>
+      <div class="field">
+        <label for="newServiceFiles_${w.id}">Attach files</label>
+        <input type="file" id="newServiceFiles_${w.id}" multiple accept="image/*,.pdf" />
+      </div>
+      <div class="row2">
+        <button type="button" class="btn-secondary" data-action="cancelservicerecord" data-id="${w.id}" style="flex:1;">Cancel</button>
+        <button type="button" class="btn-primary" data-action="savenewservicerecord" data-id="${w.id}" style="flex:1;">Save service record</button>
+      </div>
+    </div>
+  `;
+}
+
+function buildServiceHistoryHtml(w){
+  const records = (w.serviceRecords || []).slice().reverse(); // most recent first
+  const listHtml = records.length
+    ? records.map(r => buildServiceRecordItemHtml(w, r)).join('')
+    : '<p class="hint">No service history yet.</p>';
+  const formOpen = addingServiceRecordFor === w.id;
+  return `
+    <div class="service-history">
+      <div class="edit-section-title service-history-title">Service history</div>
+      ${listHtml}
+      ${formOpen ? buildServiceRecordFormHtml(w) : `<button type="button" class="manual-link" data-action="openaddservicerecord" data-id="${w.id}">+ Add service record</button>`}
+    </div>
+  `;
+}
+
+// Reads the "+ Add service record" form (see buildServiceRecordFormHtml),
+// uploads any attached files to Storage first, then writes the record.
+// Its own function rather than folded into saveCollectionEdit — this
+// saves independently and immediately, the same relationship addReading
+// (data.js) has to the Timegrapher tab's own form, not to the Save button
+// on this edit page.
+// Rebuilds just the Service section in place — same targeted-outerHTML
+// idea as refreshEditSection, but without marking 'service' as expanded
+// in collectionEditExpandedSections (that flag is specifically about
+// revealing the section's own empty text fields behind "+ Add more
+// data", unrelated to whether the add-record form or warranty toggle are
+// open). Every interactive element inside the section this replaces is
+// wired as a delegated document-level listener (below), so nothing here
+// needs re-wiring after the swap.
+function refreshServiceSection(watchId){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return;
+  const el = document.getElementById('editSection_service_' + watchId);
+  if(!el) return;
+  el.outerHTML = buildEditSectionService(w, !!w.catalogId);
+}
+
+async function saveNewServiceRecord(watchId, btn){
+  const dateEl = document.getElementById('newServiceDate_'+watchId);
+  if(!dateEl || !dateEl.value) return;
+  const types = Array.from(document.querySelectorAll('.newServiceType_'+watchId+':checked')).map(el => el.value);
+  const notesEl = document.getElementById('newServiceNotes_'+watchId);
+  const costEl = document.getElementById('newServiceCost_'+watchId);
+  const currencyEl = document.getElementById('newServiceCurrency_'+watchId);
+  const warrantyMonthsEl = document.getElementById('newServiceWarrantyMonths_'+watchId);
+  const coveredEl = document.getElementById('newServiceCoveredByWarranty_'+watchId);
+  const providerEl = document.getElementById('newServiceProvider_'+watchId);
+  const filesEl = document.getElementById('newServiceFiles_'+watchId);
+  const files = (filesEl && filesEl.files) ? Array.from(filesEl.files) : [];
+
+  // Imperative, not a render() — this whole function deliberately avoids
+  // rebuilding anything until it's done (see addServiceRecord's own
+  // comment, data.js), so the button speaks for itself in the meantime.
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  const attachmentUrls = [];
+  for(let i = 0; i < files.length; i++){
+    const file = files[i];
+    const ext = file.name.split('.').pop();
+    const path = `${currentUser.id}/${watchId}/${Date.now()}-${i}.${ext}`;
+    const { error: upErr } = await sb.storage.from('service-attachments').upload(path, file);
+    if(upErr){ showToast(upErr.message || "Couldn't upload an attachment.", 'error'); continue; }
+    const { data: pub } = sb.storage.from('service-attachments').getPublicUrl(path);
+    attachmentUrls.push(pub.publicUrl);
+  }
+
+  const record = await addServiceRecord(watchId, {
+    date: dateEl.value,
+    types,
+    notes: notesEl ? notesEl.value : '',
+    warrantyMonths: warrantyMonthsEl ? warrantyMonthsEl.value : '',
+    coveredByWarranty: !!(coveredEl && coveredEl.checked),
+    cost: costEl ? costEl.value : '',
+    currency: (currencyEl && currencyEl.value) || 'EUR',
+    provider: providerEl ? providerEl.value : '',
+    attachmentUrls
+  });
+  if(record){
+    addingServiceRecordFor = null;
+    refreshServiceSection(watchId);
+  } else if(btn){
+    btn.disabled = false;
+    btn.textContent = 'Save service record';
+  }
+}
+
+// Delegated at the document level, not wired per-element in
+// attachCollectionHandlers — every one of these can fire after
+// refreshServiceSection has replaced the Service section's DOM out from
+// under a per-element listener, so only a delegated one keeps working
+// regardless of how many times that's happened.
+document.addEventListener('click', (e) => {
+  const openBtn = e.target.closest('[data-action="openaddservicerecord"]');
+  if(openBtn){ addingServiceRecordFor = openBtn.dataset.id; refreshServiceSection(openBtn.dataset.id); return; }
+  const cancelBtn = e.target.closest('[data-action="cancelservicerecord"]');
+  if(cancelBtn){ addingServiceRecordFor = null; refreshServiceSection(cancelBtn.dataset.id); return; }
+  const saveBtn = e.target.closest('[data-action="savenewservicerecord"]');
+  if(saveBtn){ saveNewServiceRecord(saveBtn.dataset.id, saveBtn); return; }
+  const deleteBtn = e.target.closest('[data-action="deleteservicerecord"]');
+  if(deleteBtn){
+    if(confirm('Delete this service record? This can’t be undone.')){
+      deleteServiceRecord(deleteBtn.dataset.id, deleteBtn.dataset.record).then(ok => {
+        if(ok) refreshServiceSection(deleteBtn.dataset.id);
+      });
+    }
+    return;
+  }
+});
+
+// Same delegation reasoning as the click handler above — the warranty
+// checkbox's own show/hide of the expiration field beneath it.
+document.addEventListener('change', (e) => {
+  const checkbox = e.target.closest('[id^="colUnderWarranty_"]');
+  if(!checkbox) return;
+  const watchId = checkbox.id.slice('colUnderWarranty_'.length);
+  const wrap = document.getElementById('warrantyExpiryWrap_'+watchId);
+  if(!wrap) return;
+  const w = state.watches.find(x => x.id === watchId);
+  wrap.innerHTML = checkbox.checked ? buildWarrantyExpirationFieldHtml(w || { id: watchId, warrantyExpiration: '' }) : '';
+});
 
 function buildEditSectionOther(w, locked){
   const expanded = collectionEditExpandedSections.has('other');
@@ -2044,6 +2302,12 @@ async function saveCollectionEdit(watchId){
   const currencyEl = document.getElementById('colCurrency_'+watchId);
   const dateEl = document.getElementById('colDate_'+watchId);
   const notesEl = document.getElementById('colNotes_'+watchId);
+  // Warranty status, like purchase price/date above, is never catalog
+  // data — always rendered regardless of locked (see buildServiceWarrantyHtml),
+  // so unlike the locked-gated fields below there's no "was this on
+  // screen" question here either.
+  const underWarrantyEl = document.getElementById('colUnderWarranty_'+watchId);
+  const warrantyExpirationEl = document.getElementById('colWarrantyExpiration_'+watchId);
   // Every one of these has to be looked up before the render() below —
   // once that rebuilds the form from `w` (still holding its old values at
   // this point), it replaces these exact input elements with fresh ones
@@ -2093,12 +2357,19 @@ async function saveCollectionEdit(watchId){
     photoUrl = pub.publicUrl;
   }
 
+  const underWarranty = !!(underWarrantyEl && underWarrantyEl.checked);
   const updates = {
     purchase_price: priceEl.value === '' ? null : Number(priceEl.value),
     purchase_currency: (currencyEl && currencyEl.value) || 'EUR',
     purchase_date: dateEl.value || null,
     condition_notes: (notesEl.value || '').trim() || null,
-    photo_url: photoUrl || null
+    photo_url: photoUrl || null,
+    under_warranty: underWarranty,
+    // Only meaningful (and only ever rendered — see buildServiceWarrantyHtml)
+    // while the checkbox above is on; unchecking it clears any expiration
+    // date that had been set, rather than leaving a stale date behind an
+    // unchecked box.
+    warranty_expiration: (underWarranty && warrantyExpirationEl && warrantyExpirationEl.value) ? warrantyExpirationEl.value : null
   };
 
   if(!locked){
@@ -2190,6 +2461,8 @@ async function saveCollectionEdit(watchId){
   w.purchaseDate = updates.purchase_date;
   w.conditionNotes = updates.condition_notes || '';
   w.photoUrl = updates.photo_url || '';
+  w.underWarranty = updates.under_warranty;
+  w.warrantyExpiration = updates.warranty_expiration || '';
 
   editingCollectionId = null;
   collectionPhotoFile = null;
@@ -2370,6 +2643,7 @@ function attachCollectionHandlers(){
     // already-filled fields, regardless of what an earlier edit (this watch
     // or another one) left expanded.
     collectionEditExpandedSections = new Set();
+    addingServiceRecordFor = null;
     render();
     // Same fix as opening a watch from a scrolled-down list, and cancelling
     // back out of this same form (see viewcollection and cancelcollection
@@ -2383,7 +2657,7 @@ function attachCollectionHandlers(){
   });
   const cancelBtn = document.querySelector('[data-action="cancelcollection"]');
   if(cancelBtn) cancelBtn.onclick = () => {
-    editingCollectionId = null; collectionPhotoFile = null; render();
+    editingCollectionId = null; collectionPhotoFile = null; addingServiceRecordFor = null; render();
     // Same fix as opening a watch from a scrolled-down list (see
     // viewcollection above) — cancelling out of the edit form drops back
     // to the detail page, which should land at its own top too, not
@@ -2392,6 +2666,12 @@ function attachCollectionHandlers(){
   };
   const saveBtn = document.querySelector('[data-action="savecollection"]');
   if(saveBtn) saveBtn.onclick = () => saveCollectionEdit(saveBtn.dataset.id);
+  // Service record open/cancel/save/delete and the warranty checkbox are
+  // wired as delegated document-level listeners instead (below), not here
+  // — refreshServiceSection replaces just the Service section's own
+  // outerHTML, same as refreshEditSection does for "+ Add more data", so
+  // any per-element .onclick assigned here would go stale the moment that
+  // happens. Delegated listeners keep working regardless.
   // The Collection list's own card dropped its wind button in favor of the
   // same plain forward chevron the Data tab's card uses (see
   // buildCollectionCard above) — this only ever needs to catch the one on
@@ -2427,6 +2707,9 @@ function attachCollectionHandlers(){
       collectionPhotoFile = e.target.files[0] || null;
       render();
     };
+    // The warranty checkbox's own show/hide is wired as a delegated
+    // document-level listener instead (below) — same reasoning as the
+    // service record buttons above.
     const slowInput = document.getElementById('colAccuracySlow_'+editingCollectionId);
     if(slowInput) slowInput.onblur = () => {
       if(slowInput.value !== '' && Number(slowInput.value) > 0) slowInput.value = 0;

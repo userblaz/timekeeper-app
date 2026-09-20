@@ -880,6 +880,102 @@
     accent-color:var(--accent);
     flex-shrink:0;
   }
+  /* A standalone "yes/no" toggle inside a .field — "the watch is under
+     warranty" (Service / Maintenance) and "this service was covered by
+     warranty" (the add-service-record form) — full-width and label-less
+     above it, unlike .cert-checkbox's compact pills in a list. */
+  .checkbox-row label{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .checkbox-row input[type="checkbox"]{
+    width:16px;
+    height:16px;
+    accent-color:var(--accent);
+    flex-shrink:0;
+  }
+  /* Service / Maintenance's service history (buildServiceHistoryHtml,
+     collection.js) — a divider-style sub-heading (reuses .edit-section-title's
+     own top-border look) followed by each past record as its own card,
+     oldest details at the bottom of each card, most recent record first in
+     the list. */
+  .service-history-title{margin-top:14px;}
+  .service-record{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    padding:11px 13px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface-2);
+    margin-bottom:8px;
+  }
+  .service-record-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .service-record-date{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:700;
+    color:var(--ink);
+  }
+  .service-record-delete{
+    background:none;
+    border:none;
+    padding:2px;
+    color:var(--grey);
+    cursor:pointer;
+    line-height:0;
+  }
+  .service-record-delete:hover{color:var(--bad);}
+  .service-record-types{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--accent);
+  }
+  .service-record-line{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--grey);
+  }
+  .service-record-notes{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--ink);
+    margin-top:2px;
+  }
+  .service-record-attachments{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:2px;
+  }
+  .service-record-attachments a{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    color:var(--accent);
+  }
+  /* The "+ Add service record" form — same card look as a service record
+     itself, its own fields stacked with the usual .field gap rather than
+     side by side, since this one has a lot more of them at once than any
+     other add-more form in this edit view. */
+  .service-record-form{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    padding:13px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface-2);
+    margin-top:8px;
+  }
   .row2{
     display:flex;
     align-items:center;
