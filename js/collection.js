@@ -1365,6 +1365,29 @@ function buildCollectionDetailHtml(w){
       ${buildWearCalendarHtml(w)}
 
       ${bundle.historySectionHtml}
+
+      ${buildWatchExportImportHtml(w)}
+    </div>
+  `;
+}
+
+// Per-watch export/import (data.js: exportWatchData/importWatchData) —
+// same "Backup" look the Profile tab's full export/import uses, just
+// scoped to this one watch, and living at the very end of its detail
+// page rather than in Profile. Only ever exports/imports the personal
+// data this specific watch owns (and, if unlocked, whatever spec the
+// user typed themselves) — never catalog data, see exportableWatchRecord.
+function buildWatchExportImportHtml(w){
+  return `
+    <div class="section">
+      <h2 class="section-title" style="font-size:14px;">This watch's data</h2>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button type="button" class="btn-secondary" data-action="exportwatch" data-id="${w.id}" style="flex:1;font-size:12px;padding:10px;">Export watch (.json)</button>
+        <label class="btn-secondary" style="flex:1;font-size:12px;padding:10px;text-align:center;cursor:pointer;">
+          Import watch
+          <input type="file" class="importWatchFile" data-id="${w.id}" accept="application/json" style="display:none;" />
+        </label>
+      </div>
     </div>
   `;
 }
@@ -2721,6 +2744,16 @@ function attachCollectionHandlers(){
         viewingCollectionId = null;
         deleteWatch(deleteBtn.dataset.id);
       }
+    };
+  });
+  document.querySelectorAll('[data-action="exportwatch"]').forEach(btn => {
+    btn.onclick = () => exportWatchData(btn.dataset.id);
+  });
+  document.querySelectorAll('.importWatchFile').forEach(input => {
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if(file) importWatchData(input.dataset.id, file);
+      e.target.value = '';
     };
   });
 

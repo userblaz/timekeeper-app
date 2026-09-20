@@ -153,8 +153,137 @@ function saveState(){
   render();
 }
 
+// --- Export / Import ------------------------------------------------------
+// The rule throughout: a field only ever travels through export/import if
+// it's something the user actually typed themselves, never catalog data.
+// Personal fields (purchase/photo/notes/warranty, plus the wear calendar,
+// readings, and service history) are never catalog data on any watch, so
+// they always travel. The rest of the spec — model/reference/dial/case/
+// movement/functions/crown/bezel/accuracy/power reserve/certifications —
+// only travels for a watch that's unlocked (catalogId null) at export
+// time, since on a catalog-linked watch every one of those values is just
+// a copy of what watch_catalog already says, not something the user
+// entered. A catalog-linked watch instead exports its catalogId, so
+// import can re-link and pull a *fresh* copy of the spec straight from
+// watch_catalog again rather than carrying around a stale duplicate —
+// this is also exactly what makes importing a manually-typed watch's
+// export onto a later catalog-linked version of the same watch safe: the
+// file simply never contains any spec fields to conflict with the
+// catalog's own.
+
+// Personal fields — always exported, and always importable regardless of
+// whether the target watch is locked or not.
+const PERSONAL_WATCH_FIELDS = [
+  { key: 'purchasePrice', db: 'purchase_price', type: 'number' },
+  { key: 'purchaseCurrency', db: 'purchase_currency' },
+  { key: 'purchaseDate', db: 'purchase_date' },
+  { key: 'photoUrl', db: 'photo_url' },
+  { key: 'conditionNotes', db: 'condition_notes' },
+  { key: 'underWarranty', db: 'under_warranty', type: 'boolean' },
+  { key: 'warrantyExpiration', db: 'warranty_expiration' }
+];
+
+// Every db column name this app knows how to read/write, mapped back to
+// its local camelCase key and type — built from the same field lists
+// collection.js already maintains (ALL_EDIT_TEXT_FIELDS/MOVEMENT_BOOL_
+// FIELDS/etc.), so there's one source of truth for "what fields exist"
+// rather than a second hand-kept list here. Safe to call any time after
+// load despite collection.js loading after this file — see emptySpecFields
+// above for the same cross-file-timing reasoning.
+function watchFieldMap(){
+  const map = {};
+  PERSONAL_WATCH_FIELDS.forEach(f => { map[f.db] = f; });
+  ALL_EDIT_TEXT_FIELDS.forEach(f => { map[f.db] = f; });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS, CASE_BOOL_FIELDS).forEach(dbName => {
+    map[dbName] = { key: snakeToCamel(dbName), db: dbName, type: 'boolean' };
+  });
+  map.accuracy_spec = { key: 'accuracySpec', db: 'accuracy_spec' };
+  map.power_reserve_hours = { key: 'powerReserveHours', db: 'power_reserve_hours', type: 'number' };
+  map.model = { key: 'model', db: 'model' };
+  map.reference = { key: 'reference', db: 'reference' };
+  return map;
+}
+
+// db-keyed payload -> writes straight onto the local watch object, using
+// watchFieldMap for the type coercion each field needs. Shared by both
+// the full-backup restore path and the per-watch merge-import path below,
+// so the two can't drift out of sync on how a given field gets applied.
+function applyDbFieldsToWatch(w, dbPayload){
+  const map = watchFieldMap();
+  Object.keys(dbPayload).forEach(dbKey => {
+    const f = map[dbKey];
+    if(!f) return;
+    const raw = dbPayload[dbKey];
+    w[f.key] = f.type === 'number' ? (raw === null || raw === undefined ? null : Number(raw))
+      : f.type === 'boolean' ? !!raw
+      : (raw || '');
+  });
+}
+
+// A watch's personal fields, as a db-column-keyed payload — usable
+// directly as either an insert or an update payload.
+function personalFieldsInsertPayload(entry){
+  const payload = {};
+  PERSONAL_WATCH_FIELDS.forEach(f => {
+    const v = entry[f.key];
+    payload[f.db] = f.type === 'boolean' ? !!v : (v === undefined || v === '' ? null : v);
+  });
+  return payload;
+}
+
+// A watch's spec fields read off a camelCase *local-shape* object (an
+// imported entry, or another watch's own state) rather than a raw
+// watch_catalog row — the mirror image of specInsertPayloadFromEntry
+// above, which reads the snake_case shape a catalog row already has.
+function specInsertPayloadFromLocalFields(entry){
+  const payload = {};
+  ALL_EDIT_TEXT_FIELDS.forEach(f => {
+    const v = entry[f.key];
+    payload[f.db] = f.type === 'number' ? (v === '' || v === null || v === undefined ? null : Number(v)) : ((v || '').toString().trim() || null);
+  });
+  MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS, CASE_BOOL_FIELDS).forEach(dbName => {
+    payload[dbName] = !!entry[snakeToCamel(dbName)];
+  });
+  return payload;
+}
+
+// One watch, in export-file shape — see the file-level comment above for
+// exactly which fields travel and why.
+function exportableWatchRecord(w){
+  const locked = !!w.catalogId;
+  const record = {
+    name: w.name,
+    model: w.model || '',
+    reference: w.reference || '',
+    catalogId: w.catalogId || null
+  };
+  PERSONAL_WATCH_FIELDS.forEach(f => { record[f.key] = w[f.key]; });
+  record.wornDates = Array.from(w.wornDates || []).sort();
+  record.readings = (w.readings || []).map(r => ({
+    date: r.date, offset: r.offset, note: r.note || '', isReset: !!r.isReset,
+    position: r.position || '', wearState: r.wearState || '', timeOfDay: r.timeOfDay || ''
+  }));
+  record.serviceRecords = (w.serviceRecords || []).map(r => ({
+    date: r.date, types: r.types, notes: r.notes, warrantyMonths: r.warrantyMonths,
+    coveredByWarranty: r.coveredByWarranty, cost: r.cost, currency: r.currency,
+    provider: r.provider, attachmentUrls: r.attachmentUrls
+  }));
+  if(!locked){
+    ALL_EDIT_TEXT_FIELDS.forEach(f => { record[f.key] = w[f.key]; });
+    MOVEMENT_BOOL_FIELDS.concat(FUNCTIONS_BOOL_FIELDS, CASE_BOOL_FIELDS).forEach(dbName => {
+      const key = snakeToCamel(dbName);
+      record[key] = !!w[key];
+    });
+    record.accuracySpec = w.accuracySpec || '';
+    record.powerReserveHours = w.powerReserveHours;
+    record.certifications = w.certifications || [];
+  }
+  return record;
+}
+
 function exportData(){
-  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const payload = { watches: state.watches.map(exportableWatchRecord) };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -167,35 +296,118 @@ function exportData(){
   render();
 }
 
+// One watch only, same record shape exportData uses for each entry in its
+// own array — just wrapped as { watch: {...} } instead of { watches: [...] },
+// so the two file shapes are never ambiguous with each other.
+function exportWatchData(watchId){
+  const w = state.watches.find(x => x.id === watchId);
+  if(!w) return;
+  const blob = new Blob([JSON.stringify({ watch: exportableWatchRecord(w) }, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const slug = (w.name || 'watch').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'watch';
+  a.download = `timekeeper-${slug}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function importData(file){
   const reader = new FileReader();
   reader.onload = async () => {
     try{
       const parsed = JSON.parse(reader.result);
-      if(!parsed.watches) throw new Error('bad format');
-      saveStatus = 'saving';
-      render();
-      for(const w of parsed.watches){
-        const { data: watchRow, error: wErr } = await sb.from('watches')
-          .insert({ user_id: currentUser.id, name: w.name, model: w.model || null, reference: w.reference || null })
-          .select().single();
+      const entries = Array.isArray(parsed.watches) ? parsed.watches : null;
+      if(!entries) throw new Error('bad format');
+      saveStatus = 'saving'; render();
+      // Needed to re-link a catalog-sourced entry and pull its spec fresh
+      // rather than from anything stored in the file itself.
+      await ensureCatalogLoaded();
+      let nextOrder = state.watches.reduce((max, x) => Math.max(max, x.sortOrder || 0), 0);
+      for(const entry of entries){
+        nextOrder += 1;
+        const catalogEntry = entry.catalogId ? (watchCatalog || []).find(c => c.id === entry.catalogId) : null;
+        const insertPayload = catalogEntry ? {
+          user_id: currentUser.id,
+          name: catalogEntry.brand,
+          model: catalogEntry.model || '',
+          reference: catalogEntry.reference || '',
+          accuracy_spec: catalogEntry.accuracy_spec || '',
+          power_reserve_hours: catalogEntry.power_reserve_hours ?? null,
+          certifications: catalogEntry.certifications || '',
+          catalog_id: catalogEntry.id,
+          sort_order: nextOrder,
+          ...specInsertPayloadFromEntry(catalogEntry),
+          ...personalFieldsInsertPayload(entry)
+        } : {
+          // No catalogId, or that catalog entry couldn't be found this
+          // time (a different install, or the row's since been removed)
+          // — falls back to a plain manual watch, using whatever spec the
+          // file actually has (real data for a watch that was unlocked at
+          // export time; just the bare name/model/reference fallback for
+          // one that was catalog-linked but unresolvable here).
+          user_id: currentUser.id,
+          name: entry.name || 'Watch',
+          model: entry.model || null,
+          reference: entry.reference || null,
+          accuracy_spec: entry.accuracySpec || null,
+          power_reserve_hours: entry.powerReserveHours === '' || entry.powerReserveHours === undefined ? null : entry.powerReserveHours,
+          certifications: (entry.certifications || []).length ? entry.certifications.join(',') : null,
+          catalog_id: null,
+          sort_order: nextOrder,
+          ...specInsertPayloadFromLocalFields(entry),
+          ...personalFieldsInsertPayload(entry)
+        };
+        const { data: watchRow, error: wErr } = await sb.from('watches').insert(insertPayload).select().single();
         if(wErr) throw wErr;
         const newWatch = {
-          id: watchRow.id, name: watchRow.name,
-          model: watchRow.model || '', reference: watchRow.reference || '',
-          shareStats: !!watchRow.share_stats, readings: []
+          id: watchRow.id, name: watchRow.name, model: watchRow.model || '', reference: watchRow.reference || '',
+          sortOrder: watchRow.sort_order === null || watchRow.sort_order === undefined ? nextOrder : Number(watchRow.sort_order),
+          catalogId: watchRow.catalog_id || null,
+          shareStats: !!watchRow.share_stats,
+          purchasePrice: watchRow.purchase_price === null || watchRow.purchase_price === undefined ? null : Number(watchRow.purchase_price),
+          purchaseCurrency: watchRow.purchase_currency || 'EUR',
+          purchaseDate: watchRow.purchase_date || '',
+          photoUrl: watchRow.photo_url || '',
+          conditionNotes: watchRow.condition_notes || '',
+          accuracySpec: watchRow.accuracy_spec || '',
+          powerReserveHours: watchRow.power_reserve_hours === null || watchRow.power_reserve_hours === undefined ? null : Number(watchRow.power_reserve_hours),
+          lastWoundAt: null,
+          certifications: watchRow.certifications ? watchRow.certifications.split(',').filter(Boolean) : [],
+          underWarranty: !!watchRow.under_warranty,
+          warrantyExpiration: watchRow.warranty_expiration || '',
+          wornDates: new Set(),
+          readings: [],
+          serviceRecords: [],
+          ...specFieldsFromRow(watchRow)
         };
-        if(w.readings && w.readings.length){
-          const toInsert = w.readings.map(r => ({
-            watch_id: watchRow.id, date: r.date, offset_seconds: r.offset,
-            note: r.note || null, is_reset: !!r.isReset
+        if((entry.wornDates || []).length){
+          const { error: wearErr } = await sb.from('wear_days').insert(entry.wornDates.map(date => ({ watch_id: watchRow.id, date })));
+          if(!wearErr) newWatch.wornDates = new Set(entry.wornDates);
+        }
+        if((entry.readings || []).length){
+          const toInsert = entry.readings.map(r => ({
+            watch_id: watchRow.id, date: r.date, offset_seconds: r.offset, note: r.note || null,
+            is_reset: !!r.isReset, position: r.position || null, wear_state: r.wearState || null, time_of_day: r.timeOfDay || null
           }));
           const { data: readingRows, error: rErr } = await sb.from('readings').insert(toInsert).select();
-          if(rErr) throw rErr;
-          newWatch.readings = readingRows.map(r => ({
-            id: r.id, date: r.date, offset: Number(r.offset_seconds),
-            note: r.note || '', isReset: r.is_reset || undefined
+          if(!rErr && readingRows){
+            newWatch.readings = readingRows.map(r => ({
+              id: r.id, date: r.date, offset: Number(r.offset_seconds), note: r.note || '', isReset: r.is_reset || undefined,
+              position: r.position || '', wearState: r.wear_state || '', timeOfDay: r.time_of_day || ''
+            }));
+          }
+        }
+        if((entry.serviceRecords || []).length){
+          const toInsert = entry.serviceRecords.map(r => ({
+            watch_id: watchRow.id, service_date: r.date, service_types: (r.types || []).length ? r.types.join(',') : null,
+            notes: r.notes || null, warranty_months: r.warrantyMonths ?? null, covered_by_warranty: !!r.coveredByWarranty,
+            cost: r.cost ?? null, currency: r.currency || 'EUR', provider: r.provider || null, attachment_urls: r.attachmentUrls || []
           }));
+          const { data: serviceRows, error: sErr } = await sb.from('service_records').insert(toInsert).select();
+          if(!sErr && serviceRows) newWatch.serviceRecords = serviceRows.map(serviceRecordFromRow);
         }
         state.watches.push(newWatch);
       }
@@ -204,6 +416,86 @@ function importData(file){
       render();
     }catch(e){
       alert("Couldn't import — make sure it's a Timekeeper backup JSON.");
+      saveStatus = 'error';
+      render();
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Per-watch import — merges an exportWatchData file onto an *existing*
+// watch (targetWatchId) rather than creating a new one. Personal fields
+// always apply; spec fields only apply if the target isn't itself
+// catalog-locked (see the file-level comment above — this is what makes
+// importing a manually-typed watch's export onto its later catalog-linked
+// version conflict-free, since the target being locked just means the
+// spec half of dbUpdates never gets built at all). Wear days/readings/
+// service records are merged additively — wear days deduplicated,
+// readings and service records simply appended — never replacing
+// anything already on the target watch.
+function importWatchData(targetWatchId, file){
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const parsed = JSON.parse(reader.result);
+      const entry = parsed.watch;
+      if(!entry || typeof entry !== 'object') throw new Error('bad format');
+      const w = state.watches.find(x => x.id === targetWatchId);
+      if(!w) return;
+      const locked = !!w.catalogId;
+      saveStatus = 'saving'; render();
+
+      const dbUpdates = personalFieldsInsertPayload(entry);
+      if(!locked){
+        Object.assign(dbUpdates, specInsertPayloadFromLocalFields(entry), {
+          model: entry.model || null,
+          reference: entry.reference || null,
+          accuracy_spec: entry.accuracySpec || null,
+          power_reserve_hours: entry.powerReserveHours === '' || entry.powerReserveHours === undefined ? null : entry.powerReserveHours,
+          certifications: (entry.certifications || []).length ? entry.certifications.join(',') : null
+        });
+      }
+      const { error } = await sb.from('watches').update(dbUpdates).eq('id', targetWatchId);
+      if(error) throw error;
+      applyDbFieldsToWatch(w, dbUpdates);
+      if(!locked) w.certifications = entry.certifications || [];
+
+      const incomingWorn = (entry.wornDates || []).filter(d => !w.wornDates.has(d));
+      if(incomingWorn.length){
+        const { error: wearErr } = await sb.from('wear_days').insert(incomingWorn.map(date => ({ watch_id: targetWatchId, date })));
+        if(!wearErr) incomingWorn.forEach(d => w.wornDates.add(d));
+      }
+      if((entry.readings || []).length){
+        const toInsert = entry.readings.map(r => ({
+          watch_id: targetWatchId, date: r.date, offset_seconds: r.offset, note: r.note || null,
+          is_reset: !!r.isReset, position: r.position || null, wear_state: r.wearState || null, time_of_day: r.timeOfDay || null
+        }));
+        const { data: readingRows, error: rErr } = await sb.from('readings').insert(toInsert).select();
+        if(!rErr && readingRows){
+          w.readings.push(...readingRows.map(r => ({
+            id: r.id, date: r.date, offset: Number(r.offset_seconds), note: r.note || '', isReset: r.is_reset || undefined,
+            position: r.position || '', wearState: r.wear_state || '', timeOfDay: r.time_of_day || ''
+          })));
+        }
+      }
+      if((entry.serviceRecords || []).length){
+        const toInsert = entry.serviceRecords.map(r => ({
+          watch_id: targetWatchId, service_date: r.date, service_types: (r.types || []).length ? r.types.join(',') : null,
+          notes: r.notes || null, warranty_months: r.warrantyMonths ?? null, covered_by_warranty: !!r.coveredByWarranty,
+          cost: r.cost ?? null, currency: r.currency || 'EUR', provider: r.provider || null, attachment_urls: r.attachmentUrls || []
+        }));
+        const { data: serviceRows, error: sErr } = await sb.from('service_records').insert(toInsert).select();
+        if(!sErr && serviceRows){
+          w.serviceRecords.push(...serviceRows.map(serviceRecordFromRow));
+          w.serviceRecords.sort((a, b) => a.date.localeCompare(b.date));
+        }
+      }
+
+      saveStatus = 'saved';
+      if(typeof showToast === 'function') showToast('Watch data imported.');
+      render();
+    }catch(e){
+      alert("Couldn't import — make sure it's a Timekeeper watch export JSON.");
       saveStatus = 'error';
       render();
     }
