@@ -130,6 +130,21 @@ const TG_SUBHARMONIC_FRAC = 0.65;
 // those seven checks a pass, while a real harmonic multiple — genuinely
 // strong at every sub-position — still clears it easily.
 const TG_SUBHARMONIC_GATE_MULT = 1.8;
+// Dividing by exactly 2 gets its own, more lenient bar, separate from
+// TG_SUBHARMONIC_FRAC/TG_SUBHARMONIC_GATE_MULT above. Confirmed against a
+// second real reading: a watch whose tick and tock are audibly different
+// loudness correlates *more strongly* at twice its true beat period than
+// at the true period itself — matching every other beat only ever
+// compares the louder half against itself, cleaner than matching tick
+// against tock does — so the strict bar (raised specifically to stop a
+// coincidental noise match at one of seven checked positions) was also
+// rejecting this completely different, genuinely common situation: a
+// real watch, correctly and repeatably measured at exactly half its
+// actual rate. Halving is by far the single most common real-world
+// harmonic confusion and the one position (of the seven checked) least
+// likely to be a coincidence, so it doesn't need the same multiple-
+// comparisons caution the other six do.
+const TG_SUBHARMONIC_FRAC_HALF = 0.35;
 // Minimum audio before any of this means anything.
 const TG_MIN_SEC = 4;
 // One drift sample is taken per chunk. Long enough to stack a useful number
@@ -927,8 +942,11 @@ function tgEstimatePeriod(x, rate){
     // The candidate has to be a real peak in its own right, not merely a
     // fraction of the winner. Without that second test a faint watch gets
     // halved: the true peak is weak, so any noise bump near half its lag
-    // clears 0.55x it and gets mistaken for the fundamental.
-    if(cv > bv * TG_SUBHARMONIC_FRAC && cv > gate * TG_SUBHARMONIC_GATE_MULT){ bi = ci; bv = cv; break; }
+    // clears the bar and gets mistaken for the fundamental. div===2 gets
+    // its own, more lenient bar — see TG_SUBHARMONIC_FRAC_HALF above.
+    const fracNeeded = div === 2 ? TG_SUBHARMONIC_FRAC_HALF : TG_SUBHARMONIC_FRAC;
+    const gateMult = div === 2 ? 1 : TG_SUBHARMONIC_GATE_MULT;
+    if(cv > bv * fracNeeded && cv > gate * gateMult){ bi = ci; bv = cv; break; }
   }
 
   // Sub-bin precision from the shape of the correlation peak.
