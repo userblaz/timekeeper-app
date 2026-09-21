@@ -152,6 +152,13 @@ let tgDecimSumSq = [];
 let tgDecimCount = 0;
 let tgBestBand = null;   // which band the current lock came from
 let tgBandFilters = [];  // one JS biquad chain per band — see tgMakeBandFilters
+// Which gate inside tgAnalyze rejected the most recent attempt, and how
+// close it came — set right before every early `return null` in tgAnalyze,
+// read by the diagnostic recording's own display (tgDiagHtml) so "no lock"
+// says something more useful than that alone. Live listening doesn't show
+// this (it would just flicker through gates as the recording grows), but
+// nothing stops it from being read there too later.
+let tgLastFailReason = '';
 
 // Current lock, used to blink the tick dot in time with the watch.
 let tgDotRaf = null;
@@ -272,9 +279,11 @@ function tgDiagHtml(){
       : a.error ? `<p class="hint" style="margin-top:8px;color:var(--accent);">${escapeHtml(a.error)}</p>`
       : `
         <div class="tg-stat-row"><span>Peak level in this clip</span><b>${a.peakDb.toFixed(0)} dB</b></div>
+        <div class="tg-stat-row"><span>Noise floor (RMS)</span><b>${a.rmsDb.toFixed(0)} dB</b></div>
         <div class="tg-stat-row"><span>Duration analyzed</span><b>${a.durationSec.toFixed(1)}s</b></div>
         <div class="tg-stat-row"><span>Found a lock?</span><b style="color:${a.stats ? 'var(--good)' : 'var(--accent)'}">${a.stats ? `Yes — ${a.stats.bph} bph` : 'No'}</b></div>
         ${a.stats ? `<div class="tg-stat-row"><span>Lock strength</span><b>${Math.round(a.stats.lock*100)}%</b></div>` : ''}
+        ${a.failReason ? `<p class="hint" style="margin-top:6px;">${escapeHtml(a.failReason)}</p>` : ''}
       `;
     return `
       <div style="margin-top:10px;text-align:center;">
@@ -393,11 +402,13 @@ function tgAnalyzeRecording(audioBuffer){
     }
   }
   const rms = Math.sqrt(sumSq / pcm.length);
+  const stats = tgAnalyze();
   return {
     peakDb: 20 * Math.log10(Math.max(peak, 1e-9)),
     rmsDb: 20 * Math.log10(Math.max(rms, 1e-9)),
     durationSec: pcm.length / sr,
-    stats: tgAnalyze()
+    stats,
+    failReason: stats ? '' : tgLastFailReason
   };
 }
 
@@ -957,9 +968,10 @@ function tgRefinePeriod(env, period, chunkSec){
 
 
 function tgAnalyze(){
-  if(!tgEnvBufs.length) return null;
+  tgLastFailReason = '';
+  if(!tgEnvBufs.length){ tgLastFailReason = 'No audio captured yet.'; return null; }
   const total = Math.min(tgEnvWrite, tgEnvBufs[0].length);
-  if(total < tgEnvRate * TG_MIN_SEC) return null;
+  if(total < tgEnvRate * TG_MIN_SEC){ tgLastFailReason = 'Not enough audio yet.'; return null; }
 
   // 1. Pick the band. Each band is scored on a capped window — the point here
   // is only to choose, and correlating every band over the full recording
@@ -975,7 +987,7 @@ function tgAnalyze(){
     const sigma = e.r * Math.sqrt(e.n);
     if(!best || sigma > best.sigma) best = { band: b, sigma };
   }
-  if(!best) return null;
+  if(!best){ tgLastFailReason = 'No periodic signal found in any frequency band — the room may be as loud as the tick, or the mic isn’t picking up the escapement at all.'; return null; }
   tgBestBand = best.band;
 
   // 2. Coarse period, by autocorrelating the whole recording of the winning
@@ -986,8 +998,12 @@ function tgAnalyze(){
   const envStartAbs = tgEnvWrite - env.length;
   const corrEnv = tgDecimateMean(env, TG_CORR_DECIM);
   const est = tgEstimatePeriod(corrEnv, tgEnvRate / TG_CORR_DECIM);
-  if(!est) return null;
-  if(est.r < tgMinCorrelation(est.n)) return null;
+  if(!est){ tgLastFailReason = 'Lost the candidate period when re-checking it over the full recording.'; return null; }
+  if(est.r < tgMinCorrelation(est.n)){
+    const need = tgMinCorrelation(est.n);
+    tgLastFailReason = `Found a weak periodic candidate, but it wasn’t statistically significant enough yet (correlation ${est.r.toFixed(3)}, needed ${need.toFixed(3)} at this length — longer listening or a quieter room would help).`;
+    return null;
+  }
 
   let period = est.lag * TG_CORR_DECIM;
   let phase = 0;
@@ -1016,13 +1032,23 @@ function tgAnalyze(){
   // Un-refined, the period is only as good as the correlation bin it came
   // from — hundreds of seconds a day out. Reporting that as a rate would be
   // worse than reporting nothing.
-  if(!fit) return null;
+  if(!fit){
+    tgLastFailReason = 'Found a candidate period, but couldn’t refine it into a steady rate — the recording may be too short (needs ~20s+) or the tick too faint to locate within each chunk.';
+    return null;
+  }
   // And the fit has to be a line. A quarter of a beat of scatter means the
   // tick could not be located within the individual chunks.
-  if(fit.residual * tgEnvRate > period * TG_MAX_PHASE_SCATTER) return null;
+  if(fit.residual * tgEnvRate > period * TG_MAX_PHASE_SCATTER){
+    const scatterFrac = (fit.residual * tgEnvRate) / period;
+    tgLastFailReason = `Found a period, but its timing scattered too much across the recording to trust (${(scatterFrac*100).toFixed(0)}% of a beat, needed under ${(TG_MAX_PHASE_SCATTER*100).toFixed(0)}%) — the tick is too faint or inconsistent to pin down precisely yet.`;
+    return null;
+  }
 
   const beatMs = period / tgEnvRate * 1000;
-  if(!(beatMs > TG_MIN_BEAT_MS && beatMs < TG_MAX_BEAT_MS)) return null;
+  if(!(beatMs > TG_MIN_BEAT_MS && beatMs < TG_MAX_BEAT_MS)){
+    tgLastFailReason = `Measured beat interval (${beatMs.toFixed(0)}ms) is outside any real watch’s range.`;
+    return null;
+  }
 
   let bestBph = TG_STANDARD_BPH[0], bestDiff = Infinity;
   TG_STANDARD_BPH.forEach(b => {
@@ -1032,7 +1058,10 @@ function tgAnalyze(){
   const nominalMs = 3600000 / bestBph;
   // No real watch is 3% off its own beat rate. If the measurement is, we
   // locked onto something that isn't an escapement.
-  if(Math.abs(beatMs - nominalMs) / nominalMs > 0.03) return null;
+  if(Math.abs(beatMs - nominalMs) / nominalMs > 0.03){
+    tgLastFailReason = `Measured rate (${beatMs.toFixed(1)}ms/beat) is too far from any standard beat rate to be a real watch.`;
+    return null;
+  }
 
   const secPerDay = (nominalMs - beatMs) / nominalMs * 86400;
   // No mechanical watch, however badly damaged, runs a full percent off its
@@ -1043,7 +1072,10 @@ function tgAnalyze(){
   // watches use. That is a real periodic signal, not noise, so the
   // significance test alone cannot rule it out; this bound catches what it
   // misses; by rejecting the reading outright instead of reporting it.
-  if(Math.abs(secPerDay) > TG_MAX_PLAUSIBLE_SPD) return null;
+  if(Math.abs(secPerDay) > TG_MAX_PLAUSIBLE_SPD){
+    tgLastFailReason = `Measured rate was implausibly far off (${secPerDay.toFixed(0)} s/day) — likely hand tremor or another periodic noise, not the watch. Try resting the watch and phone still instead of holding them.`;
+    return null;
+  }
 
   // 4. Beat error: fold at the full tick-tock cycle and measure how unevenly
   // the two impulses are spaced.
@@ -1076,7 +1108,10 @@ function tgAnalyze(){
   // search above found something roughly as strong on both sides — i.e.
   // there was no real tick/tock alternation to measure, and what got folded
   // is not an escapement.
-  if(beatErrorMs > beatMs * TG_MAX_BEAT_ERROR_FRAC) return null;
+  if(beatErrorMs > beatMs * TG_MAX_BEAT_ERROR_FRAC){
+    tgLastFailReason = 'Found a steady periodic rate, but the tick/tock pattern didn’t look like a real escapement.';
+    return null;
+  }
 
   // 5. Lock quality, and how many beats went into the stack.
   const whole = tgFoldPhase(env, 0, env.length, period);
@@ -1090,7 +1125,10 @@ function tgAnalyze(){
   // source like tremor mostly cancels itself out under folding and rarely
   // does, which is what lets this catch the handful of false locks the rate
   // and beat-error bounds above let through.
-  if(snrDb < TG_MIN_SNR_DB) return null;
+  if(snrDb < TG_MIN_SNR_DB){
+    tgLastFailReason = `Found a steady, plausible beat rate (${bestBph} bph), but the stacked tick was only ${snrDb.toFixed(1)}dB above the folded noise floor (needed ${TG_MIN_SNR_DB}dB) — very close. A bit more time listening, or getting the mic closer to the caseback, would likely tip this over.`;
+    return null;
+  }
 
   // Re-anchor the blinking dot to the beat we just measured.
   tgLockPeriodMs = beatMs;
