@@ -3,6 +3,18 @@
 // can't be disabled from JS, which limits accuracy on iPhone specifically.
 // This whole file is the boundary to swap for a native audio module later.
 //
+// Capture is one plain mono channel, filtered into bands entirely in JS
+// (tgMakeBandFilters/tgBiquadStep) rather than via WebAudio's own
+// BiquadFilterNodes merged into a multi-channel stream — that combination
+// (several filter chains combined with a ChannelMergerNode into one
+// multi-channel ScriptProcessorNode) is a known Safari/WebKit weak spot
+// where channels can silently collapse, duplicate, or drop, and it
+// produced exactly that symptom: loud transients still registered, but a
+// genuinely quiet, held-still tick — on caseback, not just glass — never
+// produced so much as a raw flash, on a phone where a reference app read
+// cleanly. A single mono channel has nothing for that routing to get
+// wrong.
+//
 // How this measures, and why it isn't a threshold:
 //
 // An escapement heard through a phone mic is often quieter than the room it
@@ -139,6 +151,7 @@ let tgDecimPeak = 0;
 let tgDecimSumSq = [];
 let tgDecimCount = 0;
 let tgBestBand = null;   // which band the current lock came from
+let tgBandFilters = [];  // one JS biquad chain per band — see tgMakeBandFilters
 
 // Current lock, used to blink the tick dot in time with the watch.
 let tgDotRaf = null;
@@ -260,39 +273,26 @@ async function tgStart(){
   }
   tgSampleRate = tgAudioCtx.sampleRate;
   const source = tgAudioCtx.createMediaStreamSource(stream);
-  // The three bands are merged into one multi-channel stream and read by a
-  // single processor, rather than given a processor each — ScriptProcessors
-  // are expensive and run on the main thread, and three of them competing
-  // would cost more than the analysis they feed.
-  // Channel count is bands + 1: the extra channel is a straight,
-  // unfiltered tap off the source — no band-pass, no preamp. It answers a
-  // different question than the bands do. The bands ask "which slice of
-  // spectrum has the watch in it"; this asks "is the mic delivering
-  // anything at all", which the bands can't answer on their own, since a
-  // dead mic and a mic whose tick got filtered into the wrong band look
-  // identical downstream.
-  const RAW_CH = TG_BANDS.length;
-  const merger = tgAudioCtx.createChannelMerger(TG_BANDS.length + 1);
-  const nyquist = tgSampleRate / 2 - 500;
-  TG_BANDS.forEach((band, i) => {
-    // Two cascaded high-passes: one biquad rolls off at 12 dB/octave, which
-    // still lets plenty of noise through right below the corner. Doubling it
-    // up gets the band genuinely clean.
-    const hp1 = tgAudioCtx.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = band.lo;
-    const hp2 = tgAudioCtx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = band.lo;
-    const lp = tgAudioCtx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = Math.min(band.hi, nyquist);
-    const preamp = tgAudioCtx.createGain(); preamp.gain.value = TG_PREAMP;
-    source.connect(hp1); hp1.connect(hp2); hp2.connect(lp); lp.connect(preamp);
-    preamp.connect(merger, 0, i);
-  });
-  const rawTap = tgAudioCtx.createGain(); rawTap.gain.value = 1;
-  source.connect(rawTap);
-  rawTap.connect(merger, 0, RAW_CH);
-  const processor = tgAudioCtx.createScriptProcessor(1024, TG_BANDS.length + 1, 1);
+  // A single plain mono tap, filtered entirely in JS (tgProcessAudio/
+  // tgMakeBandFilters below) rather than the WebAudio graph. This used to
+  // run three BiquadFilterNode chains in parallel and combine them with a
+  // fourth, unfiltered tap into one 4-channel stream via a
+  // ChannelMergerNode feeding a single multi-channel ScriptProcessorNode —
+  // and that specific combination (multiple filter chains merged into one
+  // multi-channel ScriptProcessorNode) is a known weak spot in Safari/
+  // WebKit, where channels can silently collapse, duplicate, or drop
+  // instead of each carrying its own real signal. That fit the actual
+  // symptom exactly: loud transients (handling the watch) still registered
+  // because *something* reached the processor, while a genuinely quiet,
+  // held-still tick — on caseback, not just glass — never produced so much
+  // as a raw transient flash, on the same phone a reference app read
+  // cleanly. A single mono channel has nothing to merge and nothing for
+  // WebKit's channel routing to get wrong; every band's filtering now
+  // happens on plain sample arrays, in ordinary JS, where "does this
+  // number look right" can actually be checked.
+  const processor = tgAudioCtx.createScriptProcessor(1024, 1, 1);
   const silentGain = tgAudioCtx.createGain(); silentGain.gain.value = 0;
-  merger.connect(processor);
+  source.connect(processor);
   processor.connect(silentGain); silentGain.connect(tgAudioCtx.destination);
   tgProcessor = processor;
   tgResetCapture();
@@ -322,6 +322,45 @@ function tgScheduleRefresh(delay){
 }
 
 
+// A textbook RBJ-cookbook biquad, computed and applied by hand in plain
+// JS rather than via a WebAudio BiquadFilterNode — see the comment in
+// tgStart on why this moved out of the audio graph entirely. Q = 1/√2
+// (Butterworth, maximally flat) matches what a single BiquadFilterNode
+// defaults to, so the band shape is the same as before; only where the
+// math runs changed.
+function tgMakeBiquad(type, freq, sampleRate){
+  const f = Math.max(10, Math.min(freq, sampleRate / 2 - 10));
+  const w0 = 2 * Math.PI * f / sampleRate;
+  const cosw0 = Math.cos(w0), sinw0 = Math.sin(w0);
+  const alpha = sinw0 / (2 * Math.SQRT1_2);
+  let b0, b1, b2, a0, a1, a2;
+  if(type === 'highpass'){
+    b0 = (1 + cosw0) / 2; b1 = -(1 + cosw0); b2 = (1 + cosw0) / 2;
+  } else {
+    b0 = (1 - cosw0) / 2; b1 = 1 - cosw0; b2 = (1 - cosw0) / 2;
+  }
+  a0 = 1 + alpha; a1 = -2 * cosw0; a2 = 1 - alpha;
+  return { b0: b0/a0, b1: b1/a0, b2: b2/a0, a1: a1/a0, a2: a2/a0, x1: 0, x2: 0, y1: 0, y2: 0 };
+}
+function tgBiquadStep(f, x){
+  const y = f.b0*x + f.b1*f.x1 + f.b2*f.x2 - f.a1*f.y1 - f.a2*f.y2;
+  f.x2 = f.x1; f.x1 = x;
+  f.y2 = f.y1; f.y1 = y;
+  return y;
+}
+// One band's filter chain — two cascaded high-passes (one biquad rolls
+// off at 12 dB/octave, which still lets plenty of noise through right
+// below the corner; doubling it up gets the band genuinely clean) then a
+// low-pass, the same topology the old WebAudio node chain used.
+function tgMakeBandFilters(sampleRate){
+  const nyquist = sampleRate / 2 - 500;
+  return TG_BANDS.map(band => ({
+    hp1: tgMakeBiquad('highpass', band.lo, sampleRate),
+    hp2: tgMakeBiquad('highpass', band.lo, sampleRate),
+    lp: tgMakeBiquad('lowpass', Math.min(band.hi, nyquist), sampleRate)
+  }));
+}
+
 function tgResetCapture(){
   tgSampleRate = tgAudioCtx ? tgAudioCtx.sampleRate : tgSampleRate;
   tgDecim = Math.max(1, Math.round(tgSampleRate / TG_ENV_RATE));
@@ -331,6 +370,7 @@ function tgResetCapture(){
   tgDecimPeak = 0;
   tgDecimSumSq = TG_BANDS.map(() => 0);
   tgDecimCount = 0;
+  tgBandFilters = tgMakeBandFilters(tgSampleRate);
   tgBestBand = null;
   tgTotalSamples = 0;
   tgNoiseFloor = 0.0002;
@@ -393,26 +433,31 @@ function tgDotLoop(){
 // so raises the floor to meet the tick.
 function tgProcessAudio(e){
   const nb = TG_BANDS.length;
-  const rawCh = nb; // the extra, unfiltered channel added in tgStart
-  const chans = [];
-  for(let b=0;b<nb;b++) chans.push(e.inputBuffer.getChannelData(b));
-  const raw = e.inputBuffer.getChannelData(rawCh);
-  const len = chans[0].length;
+  // One plain mono channel now — see tgStart for why the multi-channel
+  // WebAudio graph this used to read from is gone. Each band's filtering
+  // runs right here, in JS, on this same array.
+  const raw = e.inputBuffer.getChannelData(0);
+  const len = raw.length;
   let bufferPeak = 0;
   let rawPeak = 0;
   let bufferSum = 0;
   for(let i=0;i<len;i++){
+    const x = raw[i];
     for(let b=0;b<nb;b++){
-      const v = chans[b][i];
+      const bf = tgBandFilters[b];
+      let v = tgBiquadStep(bf.hp1, x);
+      v = tgBiquadStep(bf.hp2, v);
+      v = tgBiquadStep(bf.lp, v);
+      v *= TG_PREAMP;
       tgDecimSumSq[b] += v * v;
     }
     // The meter, the noise-floor marker and the "is the mic alive at all"
-    // readout all follow this raw, unfiltered, un-preamped tap — not any of
-    // the analysis bands. That distinction matters: a filtered band reading
-    // zero could mean a dead mic, or could just mean the tick fell in a
-    // different band, and those look identical unless something bypasses the
-    // filters entirely.
-    const a = Math.abs(raw[i]);
+    // readout all follow this raw, unfiltered, un-preamped signal — not any
+    // of the analysis bands above. That distinction matters: a filtered
+    // band reading zero could mean a dead mic, or could just mean the tick
+    // fell in a different band, and those look identical unless something
+    // bypasses the filters entirely.
+    const a = Math.abs(x);
     bufferSum += a;
     if(a > tgDecimPeak) tgDecimPeak = a;
     if(a > rawPeak) rawPeak = a;
