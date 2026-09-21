@@ -229,7 +229,101 @@ function buildTimegrapherPanel(){
     <p class="hint" style="text-align:center;">Listens through the mic and locks onto the beat to estimate rate. It works by stacking every beat it hears on top of the others, so it can find a tick that is quieter than the room — but it needs time to do that. Rate is fairly reliable; beat error is approximate; true amplitude in degrees needs a calibrated contact mic, so it isn't shown.</p>
     ${tgSensitivityControlHtml()}
     <button type="button" class="btn-primary" data-action="tgstart" style="width:100%;margin-top:10px;">Start listening</button>
+    ${tgDiagHtml()}
   </div>`;
+}
+
+// --- Diagnostic: record a few seconds raw and play it straight back ------
+// A definitive test for "is the mic actually capturing the tick at all",
+// independent of any analysis code above. MediaRecorder is a genuinely
+// different capture path than the live getUserMedia + ScriptProcessor
+// stream the analysis runs on — worth trying on its own merits if the
+// analysis path ever turns out to be getting silenced/gated audio that a
+// human ear, listening to this same recording played back, can still
+// hear fine. If the tick isn't audible in this recording either, nothing
+// downstream can be fixed in JS — the OS/browser dropped it before any
+// code here ever saw it.
+let tgDiagRecording = false;
+let tgDiagUrl = null;
+let tgDiagSecondsLeft = 0;
+let tgDiagTimer = null;
+let tgDiagStream = null;
+let tgDiagRecorder = null;
+let tgDiagError = null;
+
+function tgDiagHtml(){
+  if(tgDiagError){
+    return `<p class="hint" style="text-align:center;color:var(--accent);margin-top:10px;">${escapeHtml(tgDiagError)}</p>`;
+  }
+  if(tgDiagRecording){
+    return `<p class="hint" style="text-align:center;margin-top:10px;">Recording… <span id="tgDiagCountdown">${tgDiagSecondsLeft}s</span> left — hold the mic to the watch now.</p>`;
+  }
+  if(tgDiagUrl){
+    return `
+      <div style="margin-top:10px;text-align:center;">
+        <audio controls src="${tgDiagUrl}" style="width:100%;"></audio>
+        <p class="hint" style="margin-top:6px;">Can you hear the tick in this? That tells us whether the mic captured it at all, separately from whether the analysis found it.</p>
+        <button type="button" class="manual-link" data-action="tgdiagstart">Record again</button>
+      </div>`;
+  }
+  return `<button type="button" class="btn-secondary" data-action="tgdiagstart" style="width:100%;margin-top:8px;">Record 8s & play it back (diagnostic)</button>`;
+}
+
+async function tgDiagStart(){
+  tgDiagError = null;
+  if(tgDiagUrl){ URL.revokeObjectURL(tgDiagUrl); tgDiagUrl = null; }
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1 }
+    });
+  }catch(e){
+    tgDiagError = "Couldn't access the microphone.";
+    render();
+    return;
+  }
+  tgDiagStream = stream;
+  // Safari's MediaRecorder support is real but picky about mime types —
+  // ask for whatever it actually supports rather than assuming webm,
+  // which iOS doesn't have.
+  const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
+  let mimeType = '';
+  for(const c of candidates){
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)){ mimeType = c; break; }
+  }
+  try{
+    tgDiagRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  }catch(e){
+    tgDiagError = "This browser can't record audio for playback.";
+    stream.getTracks().forEach(t => t.stop());
+    tgDiagStream = null;
+    render();
+    return;
+  }
+  const chunks = [];
+  tgDiagRecorder.ondataavailable = (e) => { if(e.data && e.data.size) chunks.push(e.data); };
+  tgDiagRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: tgDiagRecorder.mimeType || 'audio/webm' });
+    tgDiagUrl = URL.createObjectURL(blob);
+    if(tgDiagStream){ tgDiagStream.getTracks().forEach(t => t.stop()); tgDiagStream = null; }
+    tgDiagRecording = false;
+    render();
+  };
+  tgDiagRecorder.start();
+  tgDiagRecording = true;
+  tgDiagSecondsLeft = 8;
+  render();
+  tgDiagTimer = setInterval(() => {
+    tgDiagSecondsLeft--;
+    if(tgDiagSecondsLeft <= 0){
+      clearInterval(tgDiagTimer);
+      tgDiagTimer = null;
+      if(tgDiagRecorder && tgDiagRecorder.state !== 'inactive') tgDiagRecorder.stop();
+    } else {
+      const el = document.getElementById('tgDiagCountdown');
+      if(el) el.textContent = tgDiagSecondsLeft + 's';
+    }
+  }, 1000);
 }
 
 

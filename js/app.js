@@ -1705,6 +1705,8 @@ function attachHandlers(watch){
   if(tgStartBtn) tgStartBtn.onclick = () => tgStart();
   const tgStopBtn = document.querySelector('[data-action="tgstop"]');
   if(tgStopBtn) tgStopBtn.onclick = () => tgStop();
+  const tgDiagBtn = document.querySelector('[data-action="tgdiagstart"]');
+  if(tgDiagBtn) tgDiagBtn.onclick = () => tgDiagStart();
   const tgSensSlider = document.getElementById('tgSensSlider');
   if(tgSensSlider){
     tgSensSlider.oninput = (e) => {
