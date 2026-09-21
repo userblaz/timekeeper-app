@@ -382,7 +382,7 @@ async function tgDiagStart(){
 }
 
 // Runs a decoded recording through the exact same per-sample filter/
-// envelope pipeline tgProcessAudio uses live (tgBandFilters/tgBiquadStep),
+// envelope pipeline tgProcessAudioBlock uses live (tgBandFilters/tgBiquadStep),
 // in one pass over the whole buffer rather than callback-sized chunks,
 // then the same tgAnalyze used for a live lock. Reuses the module-level
 // capture state (tgEnvBufs, tgBandFilters, ...) — safe here since this
@@ -469,7 +469,7 @@ async function tgStart(){
   }
   tgSampleRate = tgAudioCtx.sampleRate;
   const source = tgAudioCtx.createMediaStreamSource(stream);
-  // A single plain mono tap, filtered entirely in JS (tgProcessAudio/
+  // A single plain mono tap, filtered entirely in JS (tgProcessAudioBlock/
   // tgMakeBandFilters below) rather than the WebAudio graph. This used to
   // run three BiquadFilterNode chains in parallel and combine them with a
   // fourth, unfiltered tap into one 4-channel stream via a
@@ -477,27 +477,91 @@ async function tgStart(){
   // and that specific combination (multiple filter chains merged into one
   // multi-channel ScriptProcessorNode) is a known weak spot in Safari/
   // WebKit, where channels can silently collapse, duplicate, or drop
-  // instead of each carrying its own real signal. That fit the actual
-  // symptom exactly: loud transients (handling the watch) still registered
-  // because *something* reached the processor, while a genuinely quiet,
-  // held-still tick — on caseback, not just glass — never produced so much
-  // as a raw transient flash, on the same phone a reference app read
-  // cleanly. A single mono channel has nothing to merge and nothing for
-  // WebKit's channel routing to get wrong; every band's filtering now
-  // happens on plain sample arrays, in ordinary JS, where "does this
-  // number look right" can actually be checked.
-  const processor = tgAudioCtx.createScriptProcessor(1024, 1, 1);
+  // instead of each carrying its own real signal. A single mono channel
+  // has nothing to merge and nothing for WebKit's channel routing to get
+  // wrong; every band's filtering now happens on plain sample arrays, in
+  // ordinary JS, where "does this number look right" can actually be
+  // checked.
+  //
+  // The node feeding that JS is AudioWorkletNode, not ScriptProcessorNode
+  // — confirmed, not just suspected, by the diagnostic recording (which
+  // captures via MediaRecorder and analyzes an already-complete buffer,
+  // bypassing any live node entirely): once the analysis itself was
+  // locking correctly offline, live listening still found nothing, which
+  // narrows the remaining problem specifically to *this* node. Deprecated
+  // and long known to be unreliable on Safari/iOS — it runs on the main
+  // thread and is vulnerable to being starved by layout, GC, or anything
+  // else competing for that thread, which reads as exactly "the mic hears
+  // nothing" from here. AudioWorkletNode runs its process() callback on a
+  // dedicated, high-priority audio rendering thread instead, which is the
+  // whole reason it replaced ScriptProcessorNode in the spec. Falls back
+  // to ScriptProcessorNode only if AudioWorklet itself isn't available at
+  // all (very old browsers) — worklet code lives in TG_WORKLET_SRC below,
+  // loaded from a Blob URL rather than a separate file so there's nothing
+  // new to add to index.html's own script list.
+  let node;
+  try{
+    if(!tgAudioCtx.audioWorklet) throw new Error('no AudioWorklet support');
+    const workletBlob = new Blob([TG_WORKLET_SRC], { type: 'application/javascript' });
+    const workletUrl = URL.createObjectURL(workletBlob);
+    try{
+      await tgAudioCtx.audioWorklet.addModule(workletUrl);
+    } finally {
+      URL.revokeObjectURL(workletUrl);
+    }
+    node = new AudioWorkletNode(tgAudioCtx, 'tg-capture-processor', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1]
+    });
+    node.port.onmessage = (e) => tgProcessAudioBlock(e.data);
+  }catch(e){
+    node = tgAudioCtx.createScriptProcessor(1024, 1, 1);
+    node.onaudioprocess = (ev) => tgProcessAudioBlock(ev.inputBuffer.getChannelData(0));
+  }
   const silentGain = tgAudioCtx.createGain(); silentGain.gain.value = 0;
-  source.connect(processor);
-  processor.connect(silentGain); silentGain.connect(tgAudioCtx.destination);
-  tgProcessor = processor;
+  source.connect(node);
+  node.connect(silentGain); silentGain.connect(tgAudioCtx.destination);
+  tgProcessor = node;
   tgResetCapture();
-  processor.onaudioprocess = tgProcessAudio;
   tgListening = true;
   render();
   tgScheduleRefresh(0);
   tgDotRaf = requestAnimationFrame(tgDotLoop);
 }
+
+// The AudioWorkletProcessor itself, as source text — registered via a
+// Blob URL (see tgStart) rather than shipped as its own file. process()
+// runs on the audio rendering thread on every quantum (128 samples,
+// standard across browsers) and buffers them up to the same 1024-sample
+// blocks tgProcessAudioBlock always expected from the old
+// ScriptProcessorNode, so nothing downstream needed to change for the
+// switch. Returning true keeps the node alive for the life of the
+// AudioContext; this never writes to its outputs, which is fine — it's
+// only ever connected through to destination via a silent gain to keep
+// the graph pulled, same as the old node was.
+const TG_WORKLET_SRC = `
+class TgCaptureProcessor extends AudioWorkletProcessor {
+  constructor(){
+    super();
+    this.bufSize = 1024;
+    this.buf = new Float32Array(this.bufSize);
+    this.pos = 0;
+  }
+  process(inputs){
+    const input = inputs[0];
+    const ch = input && input[0];
+    if(!ch) return true;
+    for(let i=0;i<ch.length;i++){
+      this.buf[this.pos++] = ch[i];
+      if(this.pos >= this.bufSize){
+        this.port.postMessage(this.buf.slice(0, this.pos));
+        this.pos = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('tg-capture-processor', TgCaptureProcessor);
+`;
 
 
 // Each live update is a fresh autocorrelation over the entire recording, so
@@ -627,12 +691,13 @@ function tgDotLoop(){
 // between the tick and the floor. Peak-hold is the opposite of what is
 // wanted here, since it reports the loudest noise sample in every window and
 // so raises the floor to meet the tick.
-function tgProcessAudio(e){
+// Takes a plain Float32Array of mono samples — from either the
+// AudioWorkletNode's postMessage (tgStart's preferred path) or the
+// ScriptProcessorNode fallback's onaudioprocess (older browsers without
+// AudioWorklet support). Both hand this the same shape, so everything
+// below is identical either way.
+function tgProcessAudioBlock(raw){
   const nb = TG_BANDS.length;
-  // One plain mono channel now — see tgStart for why the multi-channel
-  // WebAudio graph this used to read from is gone. Each band's filtering
-  // runs right here, in JS, on this same array.
-  const raw = e.inputBuffer.getChannelData(0);
   const len = raw.length;
   let bufferPeak = 0;
   let rawPeak = 0;
@@ -709,7 +774,12 @@ function tgTeardownAudio(){
   if(tgDotRaf){ cancelAnimationFrame(tgDotRaf); tgDotRaf = null; }
   clearTimeout(tgFlashTimeout);
   clearTimeout(tgRawFlashTimeout);
-  if(tgProcessor){ tgProcessor.onaudioprocess = null; try{ tgProcessor.disconnect(); }catch(e){} tgProcessor = null; }
+  if(tgProcessor){
+    tgProcessor.onaudioprocess = null;
+    if(tgProcessor.port){ try{ tgProcessor.port.onmessage = null; }catch(e){} }
+    try{ tgProcessor.disconnect(); }catch(e){}
+    tgProcessor = null;
+  }
   if(tgAudioCtx){ try{ tgAudioCtx.close(); }catch(e){} tgAudioCtx = null; }
   if(tgStream){ tgStream.getTracks().forEach(t => t.stop()); tgStream = null; }
 }
