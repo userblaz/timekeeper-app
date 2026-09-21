@@ -1016,15 +1016,38 @@ function tgAnalyze(){
   // the whole fold window. Once the period is close, longer chunks stack more
   // beats each and locate the phase far more precisely — which is what sets
   // how faint a watch can still yield a rate.
+  //
+  // On a shorter recording (a 25-30s diagnostic clip, say) the /8 and /6
+  // passes below collapse to the same TG_CHUNK_SEC floor as the first pass
+  // — durationSec/8 and durationSec/6 only exceed 5s once duration passes
+  // 40s and 30s respectively — so what looks like three escalating passes
+  // is really one 5-second chunk size tried three times. For a strong
+  // signal that's fine; for a faint one, each individual 5s chunk (a few
+  // dozen beats) may simply not have enough of its own SNR for
+  // tgFoldPhase to locate a peak, even though the *whole* recording
+  // correlated well enough to get this far — the final durationSec/4 pass
+  // exists specifically for that case: the largest chunk tgRefinePeriod's
+  // own 4-chunk minimum still allows, trading away fit-line resolution
+  // (the least useful thing to have on a faint recording anyway) for the
+  // most per-chunk SNR any schedule here can offer.
   const durationSec = env.length / tgEnvRate;
   const schedule = [
     TG_CHUNK_SEC,
     Math.max(TG_CHUNK_SEC, durationSec / 8),
-    Math.max(TG_CHUNK_SEC, durationSec / 6)
+    Math.max(TG_CHUNK_SEC, durationSec / 6),
+    durationSec / 4
   ];
+  // A pass that fails to produce enough usable chunks no longer aborts
+  // the whole refinement outright — it used to `break` here, which meant
+  // a failed *first* pass (the most likely one to fail on a faint signal,
+  // being the finest-grained) silently skipped every later, coarser pass
+  // that might have succeeded. Trying every scheduled size and keeping
+  // whichever succeeded is strictly better: a later failure can only ever
+  // leave `fit` at its last successful value, never make a working result
+  // worse.
   for(let iter=0; iter<schedule.length; iter++){
     const r = tgRefinePeriod(env, period, schedule[iter]);
-    if(!r) break;
+    if(!r) continue;
     period = r.period;
     phase = r.phase;
     fit = r;
