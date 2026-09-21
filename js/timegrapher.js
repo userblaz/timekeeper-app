@@ -448,14 +448,21 @@ function tgFormatStatsHtml(stats, isLive){
   const sign = stats.secPerDay >= 0 ? '+' : '';
   const lockPct = Math.round(stats.lock * 100);
   const lockLabel = stats.lock < 0.15 ? '(faint — get closer)' : stats.lock < 0.35 ? '(ok)' : '(solid)';
+  // The rate comes from the drift-line fit's slope (tgRefinePeriod), and a
+  // fit built from barely more chunks than its own 4-chunk minimum can
+  // move a lot between successive live refreshes as a few more seconds of
+  // audio arrive — not a wrong reading, just not a settled one yet. Only
+  // flagged live: the diagnostic recording is a one-shot measurement over
+  // a fixed window, so there's no "wait, it'll firm up" to point at there.
+  const stabilizing = isLive && stats.fitPoints < 8;
   return `
     <div class="tg-stat-row"><span>Detected beat rate</span><b>${stats.bph} bph</b></div>
-    <div class="tg-stat-row"><span>Rate</span><b style="color:${stats.secPerDay>=0?'var(--good)':'var(--bad)'}">${sign}${stats.secPerDay.toFixed(1)} s/day</b></div>
+    <div class="tg-stat-row"><span>Rate</span><b style="color:${stats.secPerDay>=0?'var(--good)':'var(--bad)'}">${sign}${stats.secPerDay.toFixed(1)} s/day</b>${stabilizing ? ' <span class="dial-unit">(settling…)</span>' : ''}</div>
     <div class="tg-stat-row"><span>Beat error</span><b>${stats.beatErrorMs.toFixed(1)} ms</b></div>
     <div class="tg-stat-row"><span>Beats stacked</span><b>${stats.beats}</b></div>
     <div class="tg-stat-row"><span>Heard in</span><b>${stats.band}</b></div>
     <div class="tg-stat-row"><span>Lock strength</span><b>${lockPct}% ${lockLabel}</b></div>
-    <p class="hint" style="margin-top:8px;">${isLive ? 'Still listening — rate tightens the longer this runs.' : "Amplitude in degrees isn't shown — that needs a calibrated contact mic."}</p>
+    <p class="hint" style="margin-top:8px;">${isLive ? (stabilizing ? 'Rate is still settling — keep listening, it firms up as more of the recording gets folded in.' : 'Still listening — rate tightens the longer this runs.') : "Amplitude in degrees isn't shown — that needs a calibrated contact mic."}</p>
   `;
 }
 
@@ -1257,7 +1264,14 @@ function tgAnalyzeBand(bandIdx, total){
     lock: est.r,
     band: TG_BANDS[bandIdx].label,
     beats,
-    seconds: env.length / tgEnvRate
+    seconds: env.length / tgEnvRate,
+    // How many chunks the drift-line fit actually had to work with — the
+    // rate comes from this line's slope, so a fit with barely more than
+    // the bare 4-chunk minimum is a much rougher estimate than one with a
+    // dozen. tgFormatStatsHtml uses this to flag a still-early rate as
+    // unsettled rather than showing it with the same confidence as a
+    // mature one.
+    fitPoints: fit.points
   };
 }
 
