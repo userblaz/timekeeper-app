@@ -276,6 +276,7 @@ let tgDiagStream = null;
 let tgDiagRecorder = null;
 let tgDiagError = null;
 let tgDiagAnalysis = null; // { peakDb, rmsDb, durationSec, stats } | { error } | null (still analyzing)
+let tgDiagExt = 'webm'; // file extension matching whatever mime type actually got used
 const TG_DIAG_SECONDS = 25;
 
 function tgDiagHtml(){
@@ -302,6 +303,7 @@ function tgDiagHtml(){
         <audio controls src="${tgDiagUrl}" style="width:100%;"></audio>
         <p class="hint" style="margin:6px 0;">Can you hear the tick in this? That tells us whether the mic captured it, separately from whether the analysis below found it.</p>
         ${analysisHtml}
+        <a href="${tgDiagUrl}" download="timegrapher-test.${tgDiagExt}" class="manual-link" style="display:inline-block;margin-top:6px;">Save this recording to send along</a><br/>
         <button type="button" class="manual-link" data-action="tgdiagstart" style="margin-top:6px;">Record again</button>
       </div>`;
   }
@@ -343,7 +345,9 @@ async function tgDiagStart(){
   const chunks = [];
   tgDiagRecorder.ondataavailable = (e) => { if(e.data && e.data.size) chunks.push(e.data); };
   tgDiagRecorder.onstop = async () => {
-    const blob = new Blob(chunks, { type: tgDiagRecorder.mimeType || 'audio/webm' });
+    const usedType = tgDiagRecorder.mimeType || 'audio/webm';
+    tgDiagExt = usedType.includes('mp4') ? 'm4a' : usedType.includes('ogg') ? 'ogg' : 'webm';
+    const blob = new Blob(chunks, { type: usedType });
     tgDiagUrl = URL.createObjectURL(blob);
     if(tgDiagStream){ tgDiagStream.getTracks().forEach(t => t.stop()); tgDiagStream = null; }
     tgDiagRecording = false;
@@ -979,34 +983,18 @@ function tgRefinePeriod(env, period, chunkSec){
 }
 
 
-function tgAnalyze(){
-  tgLastFailReason = '';
-  if(!tgEnvBufs.length){ tgLastFailReason = 'No audio captured yet.'; return null; }
-  const total = Math.min(tgEnvWrite, tgEnvBufs[0].length);
-  if(total < tgEnvRate * TG_MIN_SEC){ tgLastFailReason = 'Not enough audio yet.'; return null; }
-
-  // 1. Pick the band. Each band is scored on a capped window — the point here
-  // is only to choose, and correlating every band over the full recording
-  // would triple the cost of the step that is already the expensive one.
-  // Bands are compared on significance rather than raw correlation, so the
-  // comparison stays fair as the recording grows.
-  const selLen = Math.min(total, Math.round(TG_BAND_SELECT_SEC * tgEnvRate));
-  let best = null;
-  for(let b=0; b<TG_BANDS.length; b++){
-    const selEnv = tgEnvSlice(b, selLen);
-    const e = tgEstimatePeriod(tgDecimateMean(selEnv, TG_CORR_DECIM), tgEnvRate / TG_CORR_DECIM);
-    if(!e) continue;
-    const sigma = e.r * Math.sqrt(e.n);
-    if(!best || sigma > best.sigma) best = { band: b, sigma };
-  }
-  if(!best){ tgLastFailReason = 'No periodic signal found in any frequency band — the room may be as loud as the tick, or the mic isn’t picking up the escapement at all.'; return null; }
-  tgBestBand = best.band;
-
-  // 2. Coarse period, by autocorrelating the whole recording of the winning
-  // band. Correlating only the tail would throw away exactly the thing that
-  // makes a faint watch findable: the noise floor of the correlation falls as
-  // 1/sqrt(length), so every second kept is signal recovered.
-  const env = tgEnvSlice(best.band, total);
+// Steps 2-5 of the old tgAnalyze, for one specific band: coarse period,
+// refine, plausibility gates, beat error, SNR. Split out so tgAnalyze can
+// try more than one band instead of committing entirely to whichever one
+// won step 1's significance contest — see the comment on that loop below
+// for why that matters. Sets tgLastFailReason and returns null on any
+// gate failure, exactly as the inlined version used to.
+function tgAnalyzeBand(bandIdx, total){
+  // 2. Coarse period, by autocorrelating the whole recording of this band.
+  // Correlating only the tail would throw away exactly the thing that
+  // makes a faint watch findable: the noise floor of the correlation falls
+  // as 1/sqrt(length), so every second kept is signal recovered.
+  const env = tgEnvSlice(bandIdx, total);
   const envStartAbs = tgEnvWrite - env.length;
   const corrEnv = tgDecimateMean(env, TG_CORR_DECIM);
   const est = tgEstimatePeriod(corrEnv, tgEnvRate / TG_CORR_DECIM);
@@ -1166,6 +1154,7 @@ function tgAnalyze(){
   }
 
   // Re-anchor the blinking dot to the beat we just measured.
+  tgBestBand = bandIdx;
   tgLockPeriodMs = beatMs;
   if(tgStartWallClock){
     const tickEnvAbs = envStartAbs + phase;
@@ -1178,10 +1167,59 @@ function tgAnalyze(){
     beatErrorMs,
     snrDb,
     lock: est.r,
-    band: TG_BANDS[best.band].label,
+    band: TG_BANDS[bandIdx].label,
     beats,
     seconds: env.length / tgEnvRate
   };
+}
+
+// Picks a band and runs the full pipeline on it, same as this used to do
+// inline for a single winner — except now every band with a plausible
+// coarse candidate gets tried, most-significant first, and a band whose
+// full analysis fails a later plausibility gate falls through to the
+// next one instead of giving up outright. That distinction matters
+// specifically when a real, narrowband noise source (electrical hum, a
+// fan, anything with genuine — not random — periodicity) sits in one
+// band and is statistically *more* significant there than a faint watch
+// tick is in a different band: step 1 alone would hand that noise the
+// win and never even look at the band the watch is actually in. Confirmed
+// against a real reading: an independently-known 21600 bph watch kept
+// coming back with an implausible ~54ms period even after tightening the
+// subharmonic-walkdown gate, meaning the winning band's own strongest
+// candidate genuinely wasn't the watch — it needed a different band tried
+// at all, not a stricter check within the wrong one.
+function tgAnalyze(){
+  tgLastFailReason = '';
+  if(!tgEnvBufs.length){ tgLastFailReason = 'No audio captured yet.'; return null; }
+  const total = Math.min(tgEnvWrite, tgEnvBufs[0].length);
+  if(total < tgEnvRate * TG_MIN_SEC){ tgLastFailReason = 'Not enough audio yet.'; return null; }
+
+  // 1. Rank every band with a plausible coarse candidate by significance,
+  // rather than keeping only the single winner — see the function comment
+  // above for why the rest of this needs more than one shot.
+  const selLen = Math.min(total, Math.round(TG_BAND_SELECT_SEC * tgEnvRate));
+  const candidates = [];
+  for(let b=0; b<TG_BANDS.length; b++){
+    const selEnv = tgEnvSlice(b, selLen);
+    const e = tgEstimatePeriod(tgDecimateMean(selEnv, TG_CORR_DECIM), tgEnvRate / TG_CORR_DECIM);
+    if(!e) continue;
+    candidates.push({ band: b, sigma: e.r * Math.sqrt(e.n) });
+  }
+  if(!candidates.length){ tgLastFailReason = 'No periodic signal found in any frequency band — the room may be as loud as the tick, or the mic isn’t picking up the escapement at all.'; return null; }
+  candidates.sort((a, b) => b.sigma - a.sigma);
+
+  let firstFailReason = '';
+  for(let i=0; i<candidates.length; i++){
+    const result = tgAnalyzeBand(candidates[i].band, total);
+    if(result) return result;
+    // Keep the most-significant band's own failure reason to report if
+    // every band ultimately fails — it's the most likely explanation,
+    // and a later, weaker band's reason (often just "not significant
+    // enough") is usually less informative than the first one's.
+    if(!firstFailReason) firstFailReason = tgLastFailReason;
+  }
+  tgLastFailReason = firstFailReason;
+  return null;
 }
 
 
