@@ -117,7 +117,19 @@ const TG_MAX_BEAT_MS = 420;
 // A periodic impulse train correlates at its period and at every multiple of
 // it. Whenever half the winning lag correlates nearly as well, that half is
 // the real beat and the winner was a harmonic.
-const TG_SUBHARMONIC_FRAC = 0.55;
+const TG_SUBHARMONIC_FRAC = 0.65;
+// The walk-down below checks up to 7 candidate divisors (8 down to 2) per
+// call — a multiple-comparisons problem the plain significance gate
+// (tgMinCorrelation, calibrated for a single test) wasn't accounting for.
+// Confirmed against a real reading: a watch independently measured at
+// 21600 bph (166.7ms) came back from this walk-down as ~54ms — not a
+// clean fraction of 166.7ms at all, just a noise fluctuation at one of
+// the seven checked positions that happened to clear the single-test
+// gate. Multiplying the gate up here for this check specifically (not
+// touched anywhere else) cuts down how often chance alone hands one of
+// those seven checks a pass, while a real harmonic multiple — genuinely
+// strong at every sub-position — still clears it easily.
+const TG_SUBHARMONIC_GATE_MULT = 1.8;
 // Minimum audio before any of this means anything.
 const TG_MIN_SEC = 4;
 // One drift sample is taken per chunk. Long enough to stack a useful number
@@ -842,7 +854,7 @@ function tgEstimatePeriod(x, rate){
     // fraction of the winner. Without that second test a faint watch gets
     // halved: the true peak is weak, so any noise bump near half its lag
     // clears 0.55x it and gets mistaken for the fundamental.
-    if(cv > bv * TG_SUBHARMONIC_FRAC && cv > gate){ bi = ci; bv = cv; break; }
+    if(cv > bv * TG_SUBHARMONIC_FRAC && cv > gate * TG_SUBHARMONIC_GATE_MULT){ bi = ci; bv = cv; break; }
   }
 
   // Sub-bin precision from the shape of the correlation peak.
