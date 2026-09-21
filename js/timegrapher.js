@@ -233,16 +233,22 @@ function buildTimegrapherPanel(){
   </div>`;
 }
 
-// --- Diagnostic: record a few seconds raw and play it straight back ------
-// A definitive test for "is the mic actually capturing the tick at all",
-// independent of any analysis code above. MediaRecorder is a genuinely
-// different capture path than the live getUserMedia + ScriptProcessor
-// stream the analysis runs on — worth trying on its own merits if the
-// analysis path ever turns out to be getting silenced/gated audio that a
-// human ear, listening to this same recording played back, can still
-// hear fine. If the tick isn't audible in this recording either, nothing
-// downstream can be fixed in JS — the OS/browser dropped it before any
-// code here ever saw it.
+// --- Diagnostic: record, play it back, and analyze it offline ------------
+// Confirmed (by ear) that the mic does capture the tick — so this is no
+// longer just "can you hear it": it now also decodes the same recording
+// and runs it through the exact same band-filter/envelope/autocorrelation
+// pipeline tgAnalyze uses for live listening, but offline, on an exact,
+// complete buffer with none of a live ScriptProcessor callback's own
+// timing jitter or buffer gaps to muddy the result. That separates two
+// very different problems that "can you hear it" alone can't: a real but
+// faint signal the analysis simply isn't sensitive enough for yet (fixable
+// by tuning), versus something specific to the live-streaming path itself
+// (a different fix entirely). 25 seconds, not the original 8 — the
+// drift-refinement step (tgRefinePeriod) structurally needs at least
+// ~20 seconds of audio to produce any result at all regardless of how
+// strong the signal is (it requires 4 chunks of a few beat-periods each),
+// so an 8-second clip was guaranteed to come back empty on its own,
+// independent of anything about signal quality.
 let tgDiagRecording = false;
 let tgDiagUrl = null;
 let tgDiagSecondsLeft = 0;
@@ -250,6 +256,8 @@ let tgDiagTimer = null;
 let tgDiagStream = null;
 let tgDiagRecorder = null;
 let tgDiagError = null;
+let tgDiagAnalysis = null; // { peakDb, rmsDb, durationSec, stats } | { error } | null (still analyzing)
+const TG_DIAG_SECONDS = 25;
 
 function tgDiagHtml(){
   if(tgDiagError){
@@ -259,18 +267,29 @@ function tgDiagHtml(){
     return `<p class="hint" style="text-align:center;margin-top:10px;">Recording… <span id="tgDiagCountdown">${tgDiagSecondsLeft}s</span> left — hold the mic to the watch now.</p>`;
   }
   if(tgDiagUrl){
+    const a = tgDiagAnalysis;
+    const analysisHtml = !a ? '<p class="hint" style="margin-top:8px;">Analyzing the recording…</p>'
+      : a.error ? `<p class="hint" style="margin-top:8px;color:var(--accent);">${escapeHtml(a.error)}</p>`
+      : `
+        <div class="tg-stat-row"><span>Peak level in this clip</span><b>${a.peakDb.toFixed(0)} dB</b></div>
+        <div class="tg-stat-row"><span>Duration analyzed</span><b>${a.durationSec.toFixed(1)}s</b></div>
+        <div class="tg-stat-row"><span>Found a lock?</span><b style="color:${a.stats ? 'var(--good)' : 'var(--accent)'}">${a.stats ? `Yes — ${a.stats.bph} bph` : 'No'}</b></div>
+        ${a.stats ? `<div class="tg-stat-row"><span>Lock strength</span><b>${Math.round(a.stats.lock*100)}%</b></div>` : ''}
+      `;
     return `
       <div style="margin-top:10px;text-align:center;">
         <audio controls src="${tgDiagUrl}" style="width:100%;"></audio>
-        <p class="hint" style="margin-top:6px;">Can you hear the tick in this? That tells us whether the mic captured it at all, separately from whether the analysis found it.</p>
-        <button type="button" class="manual-link" data-action="tgdiagstart">Record again</button>
+        <p class="hint" style="margin:6px 0;">Can you hear the tick in this? That tells us whether the mic captured it, separately from whether the analysis below found it.</p>
+        ${analysisHtml}
+        <button type="button" class="manual-link" data-action="tgdiagstart" style="margin-top:6px;">Record again</button>
       </div>`;
   }
-  return `<button type="button" class="btn-secondary" data-action="tgdiagstart" style="width:100%;margin-top:8px;">Record 8s & play it back (diagnostic)</button>`;
+  return `<button type="button" class="btn-secondary" data-action="tgdiagstart" style="width:100%;margin-top:8px;">Record ${TG_DIAG_SECONDS}s & play it back (diagnostic)</button>`;
 }
 
 async function tgDiagStart(){
   tgDiagError = null;
+  tgDiagAnalysis = null;
   if(tgDiagUrl){ URL.revokeObjectURL(tgDiagUrl); tgDiagUrl = null; }
   let stream;
   try{
@@ -302,16 +321,27 @@ async function tgDiagStart(){
   }
   const chunks = [];
   tgDiagRecorder.ondataavailable = (e) => { if(e.data && e.data.size) chunks.push(e.data); };
-  tgDiagRecorder.onstop = () => {
+  tgDiagRecorder.onstop = async () => {
     const blob = new Blob(chunks, { type: tgDiagRecorder.mimeType || 'audio/webm' });
     tgDiagUrl = URL.createObjectURL(blob);
     if(tgDiagStream){ tgDiagStream.getTracks().forEach(t => t.stop()); tgDiagStream = null; }
     tgDiagRecording = false;
     render();
+    try{
+      const arrayBuffer = await blob.arrayBuffer();
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const decodeCtx = new Ctx();
+      const audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer);
+      tgDiagAnalysis = tgAnalyzeRecording(audioBuffer);
+      try{ decodeCtx.close(); }catch(e2){}
+    }catch(e){
+      tgDiagAnalysis = { error: "Couldn't decode this recording to analyze it: " + (e && e.message || e) };
+    }
+    render();
   };
   tgDiagRecorder.start();
   tgDiagRecording = true;
-  tgDiagSecondsLeft = 8;
+  tgDiagSecondsLeft = TG_DIAG_SECONDS;
   render();
   tgDiagTimer = setInterval(() => {
     tgDiagSecondsLeft--;
@@ -324,6 +354,51 @@ async function tgDiagStart(){
       if(el) el.textContent = tgDiagSecondsLeft + 's';
     }
   }, 1000);
+}
+
+// Runs a decoded recording through the exact same per-sample filter/
+// envelope pipeline tgProcessAudio uses live (tgBandFilters/tgBiquadStep),
+// in one pass over the whole buffer rather than callback-sized chunks,
+// then the same tgAnalyze used for a live lock. Reuses the module-level
+// capture state (tgEnvBufs, tgBandFilters, ...) — safe here since this
+// only ever runs from the idle Timegrapher screen, never while a live
+// listen (tgListening) is in progress.
+function tgAnalyzeRecording(audioBuffer){
+  const pcm = audioBuffer.getChannelData(0);
+  const sr = audioBuffer.sampleRate;
+  tgSampleRate = sr;
+  tgResetCapture();
+  const nb = TG_BANDS.length;
+  let peak = 0, sumSq = 0;
+  for(let i=0;i<pcm.length;i++){
+    const x = pcm[i];
+    for(let b=0;b<nb;b++){
+      const bf = tgBandFilters[b];
+      let v = tgBiquadStep(bf.hp1, x);
+      v = tgBiquadStep(bf.hp2, v);
+      v = tgBiquadStep(bf.lp, v);
+      v *= TG_PREAMP;
+      tgDecimSumSq[b] += v * v;
+    }
+    const a = Math.abs(x);
+    if(a > peak) peak = a;
+    sumSq += x * x;
+    if(a > tgDecimPeak) tgDecimPeak = a;
+    if(++tgDecimCount >= tgDecim){
+      const slot = tgEnvWrite % tgEnvBufs[0].length;
+      for(let b=0;b<nb;b++){ tgEnvBufs[b][slot] = tgDecimSumSq[b] / tgDecim; tgDecimSumSq[b] = 0; }
+      tgEnvWrite++;
+      tgDecimPeak = 0;
+      tgDecimCount = 0;
+    }
+  }
+  const rms = Math.sqrt(sumSq / pcm.length);
+  return {
+    peakDb: 20 * Math.log10(Math.max(peak, 1e-9)),
+    rmsDb: 20 * Math.log10(Math.max(rms, 1e-9)),
+    durationSec: pcm.length / sr,
+    stats: tgAnalyze()
+  };
 }
 
 
