@@ -113,21 +113,26 @@ async function handleSignedIn(user, isFreshSignIn){
   // Collection) shouldn't dump you back on Snap either. A plain refresh is
   // a *different* case (isFreshSignIn is false for it, see the two call
   // sites below): it restores whatever tab was last active instead (see
-  // the activeTab declaration in app.js). This used to also fire for a
-  // mobile browser simply reopening an already-signed-in tab — which,
-  // fresh sign-in or not, was landing wherever the browser's own scroll
-  // memory put it, looking like a stray scroll on Snap. scrollRestoration:
-  // 'manual' (index.html) is the real fix for that half of it: it stops
-  // the browser from ever attempting its own scroll restoration, on every
-  // load, fresh sign-in or not — so this can go back to only resetting the
-  // tab (and scrolling to the top) for a genuine sign-in, without
-  // reintroducing that bug.
+  // the activeTab declaration in app.js).
   if(isFreshSignIn){
     activeTab = 'data';
     try{ localStorage.setItem('timekeeper-active-tab', 'data'); }catch(e){}
-    window.scrollTo(0, 0);
-    lockScrollToTop(2000);
   }
+  // The scroll lock itself used to be gated on isFreshSignIn too, on the
+  // assumption that scrollRestoration:'manual' (index.html) alone was
+  // enough for the other path here — sb.auth.getSession()'s own call below,
+  // which covers a mobile browser simply reopening an already-signed-in
+  // tab, never a real sign-in tap. That assumption doesn't hold on Chrome
+  // for iOS: scrollRestoration:'manual' is a standard History API setting,
+  // and Chrome's own tab-resume mechanism on iOS isn't necessarily built on
+  // that API at all, so it can restore a stale scroll position regardless
+  // of it. Since this whole block only runs once per real transition from
+  // signed-out (or first load) to signed-in — the guard just above already
+  // short-circuits a token refresh or duplicate event for a user already
+  // showing — running this unconditionally here can't fire on every scroll
+  // or every re-render, only on that one transition, fresh sign-in or not.
+  window.scrollTo(0, 0);
+  lockScrollToTop(2000);
   // The bottom bar lives outside #root (see syncBottomTabs in app.js), so
   // just changing activeTab here doesn't move its highlight — without this,
   // signing back in right after signing out from some other tab left the
