@@ -131,6 +131,16 @@ async function handleSignedIn(user, isFreshSignIn){
   }
   showApp();
   await loadState();
+  // The scroll-to-top above runs while #root still shows its "Loading…"
+  // placeholder — before loadState() replaces it with the real list, whose
+  // height (and hence the page's scrollable range) can end up very
+  // different. A scroll position set against the placeholder's height
+  // isn't guaranteed to still be 0 once the real content lands, so this
+  // repeats the same reset now that the page is at its real, final height.
+  if(isFreshSignIn){
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  }
   syncTrueTime();
   setInterval(syncTrueTime, 5 * 60 * 1000);
 }

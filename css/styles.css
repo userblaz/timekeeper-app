@@ -1456,13 +1456,27 @@
      comment above it in index.html for why every tab needs this, not just
      Snap. Sized to the same 81px + safe-area strip so it reaches exactly
      to the screen edge and no further, behind the floating bottom-tabs
-     bar (z-index 30) either way. */
+     bar (z-index 30) either way.
+
+     Unlike #snapDock, which gets its real height from actual content
+     (buildSnapTriggerHtml's card) plus this same padding, this div is
+     empty — its whole height comes from the calc() below. iOS Safari's
+     own chrome (not Chrome/Brave for iOS, which don't do this) shows and
+     hides a bottom toolbar as you scroll, and env(safe-area-inset-bottom)
+     tracks that transition live — Safari specifically was seen leaving a
+     sliver of real content exposed under the bar right as the toolbar's
+     state changed, while Chrome/Brave (a constant safe-area-inset-bottom,
+     no auto-hiding chrome) never showed it. `bottom` overshoots past the
+     visible edge (clipped by the viewport either way, so no visible cost)
+     and `height` grows by the same amount, purely so a stale or momentarily
+     wrong safe-area reading still leaves the curtain's real top edge in the
+     same place instead of opening a gap under it. */
   #bottomBarCurtain{
     position:fixed;
     left:0;
     right:0;
-    bottom:0;
-    height:calc(81px + var(--safe-bottom));
+    bottom:-40px;
+    height:calc(121px + var(--safe-bottom));
     background:var(--bg);
     z-index:25;
     pointer-events:none;

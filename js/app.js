@@ -648,6 +648,18 @@ function render(){
     attachHandlers(watch);
     updateAnalogClock();
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
+    // Re-derives the bottom bar/curtain/dock visibility against whatever
+    // document.activeElement actually is right now, on every render — not
+    // just on the next focusin/focusout. A tap that both blurs a field and
+    // triggers a render() in the same gesture (e.g. picking a catalog
+    // result while a search field is focused) can have that field's own
+    // delayed focusout handler (see updateKeyboardHideState below) land
+    // before or after this render() unpredictably; if it lands after and
+    // reads a detached/stale activeElement, the bar can get stuck hidden
+    // until something else happens to focus. Since this is otherwise a
+    // cheap, idempotent read of live DOM state, running it again here
+    // self-heals that regardless of which order the race lands in.
+    if(typeof updateKeyboardHideState === 'function') updateKeyboardHideState();
     return;
   }
   if(activeTab === 'timegrapher'){
@@ -655,6 +667,7 @@ function render(){
     root.innerHTML = buildTimegrapherTabHtml();
     attachHandlers(watch);
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
+    if(typeof updateKeyboardHideState === 'function') updateKeyboardHideState();
     return;
   }
   if(activeTab === 'collection'){
@@ -685,6 +698,7 @@ function render(){
       try{ syncCollectionCardHeights(); }catch(e){ console.error('syncCollectionCardHeights failed:', e); }
     }
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
+    if(typeof updateKeyboardHideState === 'function') updateKeyboardHideState();
     return;
   }
   if(activeTab === 'profile'){
@@ -692,6 +706,7 @@ function render(){
     root.innerHTML = buildProfileTabHtml();
     attachProfileHandlers();
     if(typeof updateClockCollapse === 'function') updateClockCollapse();
+    if(typeof updateKeyboardHideState === 'function') updateKeyboardHideState();
     return;
   }
 
@@ -707,6 +722,7 @@ function render(){
 
   attachHandlers(watch);
   if(typeof updateClockCollapse === 'function') updateClockCollapse();
+  if(typeof updateKeyboardHideState === 'function') updateKeyboardHideState();
 }
 
 // One watch's picker card on the Data tab: a trimmed-down version of the
