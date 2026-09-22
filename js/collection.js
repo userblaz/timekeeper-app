@@ -2626,6 +2626,11 @@ async function addCollectionWatch(name){
   viewingCollectionId = w.id;
   editingCollectionId = w.id;
   render();
+  // Same fix as every other way into the edit form (startcollectionedit,
+  // viewcollection, selectCatalogWatch, etc.) — the manual add form can be
+  // scrolled by the time Save is tapped, and without this the edit form
+  // inherits that offset instead of starting at its own top.
+  scrollToPageTop(300);
 }
 
 function attachCollectionHandlers(){
@@ -3059,4 +3064,10 @@ async function selectCatalogWatch(entryId){
   viewingCollectionId = w.id;
   editingCollectionId = w.id;
   render();
+  // Same fix as every other way into the edit form (startcollectionedit,
+  // viewcollection, addCollectionWatch, etc., above) — the search results
+  // list this lands from is often scrolled down by the time a match gets
+  // tapped, and without this the edit form inherits that same offset
+  // instead of starting at its own top.
+  scrollToPageTop(300);
 }
