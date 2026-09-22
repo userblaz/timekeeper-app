@@ -45,6 +45,18 @@ let codeSentToEmail = ''; // locked in once a code is sent, so editing the
 let expectFreshSignIn = false;
 
 function showApp(){
+  // The email/password/code field just used to sign in can still hold
+  // focus at this point — hiding its container via display:none usually
+  // blurs it, but on at least one mobile browser that blur (and the
+  // keyboard-close animation it triggers) landed late enough to still be
+  // in flight when the scroll-to-top below ran, dragging the page back
+  // down again after it. Blurring explicitly, before any of that, means
+  // there's nothing left with focus for a delayed native scroll-into-view
+  // to act on.
+  if(document.activeElement && typeof document.activeElement.blur === 'function'){
+    const active = document.activeElement;
+    if(active === authEmailEl || active === authPasswordEl || active === authCodeEl) active.blur();
+  }
   if(authScreenEl) authScreenEl.style.display = 'none';
   if(appEl) appEl.style.display = '';
   if(bottomTabsEl) bottomTabsEl.style.display = '';
@@ -140,6 +152,14 @@ async function handleSignedIn(user, isFreshSignIn){
   if(isFreshSignIn){
     window.scrollTo(0, 0);
     requestAnimationFrame(() => window.scrollTo(0, 0));
+    // The two calls above land before the on-screen keyboard has actually
+    // finished closing on a real device — its close animation (and any
+    // scroll-into-view a mobile browser fires alongside it for the field
+    // that just lost focus) can still be running a couple hundred ms later
+    // and win the race against them, landing the page slightly scrolled
+    // despite both. One more, timed to land after that animation, catches
+    // it without needing this to poll for the animation actually ending.
+    setTimeout(() => window.scrollTo(0, 0), 400);
   }
   syncTrueTime();
   setInterval(syncTrueTime, 5 * 60 * 1000);
