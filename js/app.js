@@ -1608,7 +1608,7 @@ function attachHandlers(watch){
       // different watch is blocked until it's logged or cancelled.
       if(quickCaptured || manualMode) return;
       if(tgListening) tgAbort();
-      state.activeId = el.dataset.id; selectedOffsetIdx=null; selectedDriftIdx=null; offsetScrollLeft=null; driftScrollLeft=null; editingReadingId=null;
+      setActiveWatch(el.dataset.id); selectedOffsetIdx=null; selectedDriftIdx=null; offsetScrollLeft=null; driftScrollLeft=null; editingReadingId=null;
       render();
     };
   });

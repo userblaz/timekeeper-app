@@ -45,32 +45,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css?v=269"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="css/styles.css?v=270"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<!-- TEMPORARY diagnostic readout for the "lands slightly scrolled after
-     sign-in on Chrome for iOS" bug — every scroll-position fix tried so
-     far had zero visible effect, which only makes sense if the real,
-     live numbers aren't what they're assumed to be. Screenshot this HUD
-     at the moment the page looks wrong, then to-be-removed once that's
-     answered — not meant to ship long-term. -->
-<div id="scrollDebugHud" style="position:fixed; bottom:0; left:0; right:0; z-index:99999; background:rgba(220,0,0,0.9); color:#fff; font:9px/1.3 monospace; padding:2px 4px; pointer-events:none; white-space:pre-wrap; text-align:center;"></div>
-<script>
-(function(){
-  var hud = document.getElementById('scrollDebugHud');
-  if(!hud) return;
-  function tick(){
-    var vv = window.visualViewport;
-    var ae = document.activeElement;
-    hud.textContent =
-      'sY:' + window.scrollY + ' docST:' + document.documentElement.scrollTop +
-      (vv ? ' vvOT:' + Math.round(vv.offsetTop) + ' vvH:' + Math.round(vv.height) + ' vvS:' + vv.scale.toFixed(2) : ' no-vv') +
-      ' iH:' + window.innerHeight + ' aE:' + (ae ? ae.tagName : '-');
-    requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-})();
-</script>
 <div id="authScreen" style="display:none;">
   <div class="auth-box">
     <h1>Timekeeper</h1>
@@ -201,14 +178,14 @@
   </button>
 </div>
 
-<script src="js/utils.js?v=269"></script>
-<script src="js/data.js?v=269"></script>
-<script src="js/charts.js?v=269"></script>
-<script src="js/timegrapher.js?v=269"></script>
-<script src="js/clock.js?v=269"></script>
-<script src="js/collection.js?v=269"></script>
-<script src="js/demo.js?v=269"></script>
-<script src="js/app.js?v=269"></script>
-<script src="js/auth.js?v=269"></script>
-<script src="js/profile.js?v=269"></script></body>
+<script src="js/utils.js?v=270"></script>
+<script src="js/data.js?v=270"></script>
+<script src="js/charts.js?v=270"></script>
+<script src="js/timegrapher.js?v=270"></script>
+<script src="js/clock.js?v=270"></script>
+<script src="js/collection.js?v=270"></script>
+<script src="js/demo.js?v=270"></script>
+<script src="js/app.js?v=270"></script>
+<script src="js/auth.js?v=270"></script>
+<script src="js/profile.js?v=270"></script></body>
 </html>

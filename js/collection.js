@@ -2712,7 +2712,7 @@ function attachCollectionHandlers(){
     // active watch changes (see the "select" handler, app.js) — otherwise
     // a chart dot left selected on a *different* watch's detail page would
     // still show selected the next time this one's is opened.
-    state.activeId = snapBtn.dataset.id;
+    setActiveWatch(snapBtn.dataset.id);
     selectedOffsetIdx = null; selectedDriftIdx = null; offsetScrollLeft = null; driftScrollLeft = null; editingReadingId = null;
     viewingCollectionId = null; editingCollectionId = null; collectionPhotoFile = null;
     activeTab = 'data';

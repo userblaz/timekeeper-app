@@ -11,6 +11,30 @@ let state = { watches: [], activeId: null };
 let loaded = false;
 let saveStatus = '';
 
+// Every assignment to state.activeId used to just set the in-memory value
+// — loadState() then always re-derived it fresh as state.watches[0] on
+// every reload, rather than remembering which watch had actually been
+// selected. That looked fine as long as the watches query came back in the
+// same order every time, but its own ORDER BY (sort_order, then
+// created_at) has no tiebreaker for watches that share both — duplicates
+// added in quick succession while testing, for instance — and ties have no
+// guaranteed order across separate query executions. Which watch ends up
+// first, and so which one loadState() picked as "active", could silently
+// change reload to reload: the Snap tab's whole first card (a taller,
+// highlighted block when it has logged stats) would swap for a plain one,
+// shifting everything below it up by exactly that difference — which reads
+// exactly like the page landing scrolled, without actually being a scroll
+// bug at all. Routing every real assignment through here instead persists
+// the chosen id, so loadState() can restore the one the user actually had
+// selected instead of re-deriving a fresh, potentially different guess.
+function setActiveWatch(id){
+  state.activeId = id;
+  try{
+    if(id) localStorage.setItem('timekeeper-active-watch', id);
+    else localStorage.removeItem('timekeeper-active-watch');
+  }catch(e){}
+}
+
 // The shared reference catalog behind the Collection tab's "Add watch"
 // search (see collection.js) — read-only reference data, not personal
 // watches, so it's cached at module level here rather than living on
@@ -45,13 +69,26 @@ async function loadState(){
     // yet — same situation as wear_days below, so it gets the same
     // "fall back, don't take the whole app down" treatment rather than
     // throwing straight into the outer catch and wiping every watch.
+    //
+    // id is a THIRD tiebreaker, after both of those — two watches can share
+    // the same sort_order (never dragged into a custom order) and the same
+    // created_at (added in the same batch/transaction, which is common for
+    // duplicate test data), and Postgres makes no promise about the order
+    // of genuinely tied rows across separate query executions. Without a
+    // final tiebreaker guaranteed unique per row, watchRows' own order — and
+    // so which watch state.activeId below ends up defaulting to — could
+    // silently differ reload to reload. id always is unique, so this is
+    // what actually pins the order down completely.
     let watchRows;
     {
       const primary = await sb.from('watches').select('*')
         .order('sort_order', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
       if(primary.error){
-        const fallback = await sb.from('watches').select('*').order('created_at', { ascending: true });
+        const fallback = await sb.from('watches').select('*')
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true });
         if(fallback.error) throw fallback.error;
         watchRows = fallback.data;
       }else{
@@ -135,7 +172,15 @@ async function loadState(){
         .filter(r => r.watch_id === w.id)
         .map(serviceRecordFromRow)
     }));
-    state.activeId = state.watches[0] ? state.watches[0].id : null;
+    // Restores whichever watch was actually last selected (see
+    // setActiveWatch, above) rather than re-deriving a fresh guess every
+    // load — only falls back to the first watch if nothing was saved yet,
+    // or the saved id no longer matches any watch this account still has
+    // (deleted, or a different account's id from a shared device).
+    let savedActiveId = null;
+    try{ savedActiveId = localStorage.getItem('timekeeper-active-watch'); }catch(e){}
+    const savedStillExists = savedActiveId && state.watches.some(w => w.id === savedActiveId);
+    state.activeId = savedStillExists ? savedActiveId : (state.watches[0] ? state.watches[0].id : null);
   }catch(e){
     // network hiccup or not signed in yet — leave state empty rather than crash
     state.watches = [];
@@ -411,7 +456,7 @@ function importData(file){
         }
         state.watches.push(newWatch);
       }
-      if(!state.activeId && state.watches[0]) state.activeId = state.watches[0].id;
+      if(!state.activeId && state.watches[0]) setActiveWatch(state.watches[0].id);
       saveStatus = 'saved';
       render();
     }catch(e){
@@ -628,7 +673,7 @@ async function addWatch(name){
     ...emptySpecFields()
   };
   state.watches.push(w);
-  state.activeId = w.id;
+  setActiveWatch(w.id);
   saveState();
   return w;
 }
@@ -687,7 +732,7 @@ async function addWatchFromCatalog(entry){
     ...specFieldsFromRow(data)
   };
   state.watches.push(w);
-  state.activeId = w.id;
+  setActiveWatch(w.id);
   saveState();
   return w;
 }
@@ -1057,7 +1102,7 @@ async function deleteWatch(watchId){
   if(error){ saveStatus = 'error'; render(); return; }
   state.watches = state.watches.filter(w => w.id !== watchId);
   if(state.activeId === watchId){
-    state.activeId = state.watches[0] ? state.watches[0].id : null;
+    setActiveWatch(state.watches[0] ? state.watches[0].id : null);
   }
   saveState();
 }
