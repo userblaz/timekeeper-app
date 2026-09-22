@@ -66,6 +66,28 @@ function showApp(){
   if(typeof syncBottomTabsClearance === 'function') syncBottomTabsClearance();
 }
 
+// Forcing the scroll position back to 0 at one or two guessed moments
+// (right after sign-in, after loadState() repopulates the page, after a
+// fixed delay for the keyboard-close animation) kept losing the race to
+// whatever a real mobile browser does on its own after a sign-in tap —
+// each fix moved the point where it lost, rather than actually closing the
+// gap, because the real culprit is some later, variable-timed adjustment
+// (a keyboard animation, an autofill prompt, a late layout shift) rather
+// than any single moment this could reliably land after. Polling instead
+// of guessing: for durationMs after this is called, any scroll away from 0
+// gets corrected on the very next frame, regardless of what caused it or
+// when. Self-terminating, and only ever runs for this one, brief window
+// right after a genuine sign-in — never a plain refresh or tab switch,
+// where a real scroll position is exactly what should be left alone.
+function lockScrollToTop(durationMs){
+  const until = Date.now() + durationMs;
+  function tick(){
+    if(window.scrollY !== 0) window.scrollTo(0, 0);
+    if(Date.now() < until) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function showAuthScreen(){
   if(appEl) appEl.style.display = 'none';
   if(bottomTabsEl) bottomTabsEl.style.display = 'none';
@@ -97,7 +119,7 @@ async function handleSignedIn(user, isFreshSignIn){
     activeTab = 'data';
     try{ localStorage.setItem('timekeeper-active-tab', 'data'); }catch(e){}
     window.scrollTo(0, 0);
-    requestAnimationFrame(() => window.scrollTo(0, 0));
+    lockScrollToTop(2000);
   }
   // The bottom bar lives outside #root (see syncBottomTabs in app.js), so
   // just changing activeTab here doesn't move its highlight — without this,
@@ -143,24 +165,6 @@ async function handleSignedIn(user, isFreshSignIn){
   }
   showApp();
   await loadState();
-  // The scroll-to-top above runs while #root still shows its "Loading…"
-  // placeholder — before loadState() replaces it with the real list, whose
-  // height (and hence the page's scrollable range) can end up very
-  // different. A scroll position set against the placeholder's height
-  // isn't guaranteed to still be 0 once the real content lands, so this
-  // repeats the same reset now that the page is at its real, final height.
-  if(isFreshSignIn){
-    window.scrollTo(0, 0);
-    requestAnimationFrame(() => window.scrollTo(0, 0));
-    // The two calls above land before the on-screen keyboard has actually
-    // finished closing on a real device — its close animation (and any
-    // scroll-into-view a mobile browser fires alongside it for the field
-    // that just lost focus) can still be running a couple hundred ms later
-    // and win the race against them, landing the page slightly scrolled
-    // despite both. One more, timed to land after that animation, catches
-    // it without needing this to poll for the animation actually ending.
-    setTimeout(() => window.scrollTo(0, 0), 400);
-  }
   syncTrueTime();
   setInterval(syncTrueTime, 5 * 60 * 1000);
 }
