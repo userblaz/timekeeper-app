@@ -48,6 +48,34 @@
 <link rel="stylesheet" href="css/styles.css?v=269"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+<!-- TEMPORARY diagnostic readout for the "lands slightly scrolled after
+     sign-in on Chrome for iOS" bug — every scroll-position fix tried so
+     far had zero visible effect, which only makes sense if the real,
+     live numbers aren't what they're assumed to be. Screenshot this HUD
+     at the moment the page looks wrong, then to-be-removed once that's
+     answered — not meant to ship long-term. -->
+<div id="scrollDebugHud" style="position:fixed; top:0; right:0; z-index:99999; background:rgba(220,0,0,0.9); color:#fff; font:10px/1.4 monospace; padding:4px 6px; pointer-events:none; white-space:pre; max-width:100vw;"></div>
+<script>
+(function(){
+  var hud = document.getElementById('scrollDebugHud');
+  if(!hud) return;
+  function tick(){
+    var vv = window.visualViewport;
+    var ae = document.activeElement;
+    hud.textContent =
+      'scrollY:' + window.scrollY +
+      ' docScrollTop:' + document.documentElement.scrollTop +
+      ' bodyScrollTop:' + document.body.scrollTop + '\n' +
+      (vv
+        ? 'vv.offsetTop:' + Math.round(vv.offsetTop) + ' vv.pageTop:' + Math.round(vv.pageTop) + ' vv.height:' + Math.round(vv.height) + ' vv.scale:' + vv.scale.toFixed(3)
+        : 'no visualViewport') + '\n' +
+      'innerHeight:' + window.innerHeight + ' outerHeight:' + window.outerHeight + '\n' +
+      'activeEl:' + (ae ? (ae.tagName + (ae.id ? '#' + ae.id : '')) : 'none');
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
 <div id="authScreen" style="display:none;">
   <div class="auth-box">
     <h1>Timekeeper</h1>
