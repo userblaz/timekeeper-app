@@ -68,24 +68,31 @@ function showApp(){
 
 // Forcing the scroll position back to 0 at one or two guessed moments
 // (right after sign-in, after loadState() repopulates the page, after a
-// fixed delay for the keyboard-close animation) kept losing the race to
-// whatever a real mobile browser does on its own after a sign-in tap —
-// each fix moved the point where it lost, rather than actually closing the
-// gap, because the real culprit is some later, variable-timed adjustment
-// (a keyboard animation, an autofill prompt, a late layout shift) rather
-// than any single moment this could reliably land after. Polling instead
-// of guessing: for durationMs after this is called, any scroll away from 0
-// gets corrected on the very next frame, regardless of what caused it or
-// when. Self-terminating, and only ever runs for this one, brief window
-// right after a genuine sign-in — never a plain refresh or tab switch,
-// where a real scroll position is exactly what should be left alone.
+// fixed delay for the keyboard-close animation) never actually fixed this
+// on Chrome for iOS — confirmed by hand that scrollTo(0,0) alone, however
+// many times it's called, does nothing there. The tell was a real user
+// swipe fixing it instantly, by even a single pixel: window.scrollY was
+// most likely already reading 0 the whole time, with the page genuinely
+// painted a few pixels off anyway — swapping the short auth screen for the
+// real, tall app content leaves Chrome's own toolbar/viewport compositing
+// stale until something forces it to recompute, and a scrollTo call that
+// doesn't actually move scrollY (because it already reads 0) doesn't
+// count as that something. A real swipe does. This forces the same real
+// movement in code — away from 0, then back — rather than only asserting
+// the end position, on every frame for durationMs so it also outlasts
+// whatever later, variable-timed thing (keyboard animation, autofill
+// prompt, Chrome's own restore) might re-assert a stale offset afterward.
+// Self-terminating, and only ever runs for this one, brief window right
+// after a genuine sign-in — never a plain refresh or tab switch, where a
+// real scroll position is exactly what should be left alone.
 function lockScrollToTop(durationMs){
   const until = Date.now() + durationMs;
   function tick(){
-    if(window.scrollY !== 0) window.scrollTo(0, 0);
+    window.scrollTo(0, 1);
+    window.scrollTo(0, 0);
     if(Date.now() < until) requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+  tick();
 }
 
 function showAuthScreen(){
