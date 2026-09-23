@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Photo Reading Test</title>
+<script>
+  // Same saved theme as the main app (same origin, same key), so this test
+  // page matches whatever the user picked there.
+  try{
+    var t = localStorage.getItem('timekeeper-theme');
+    if(t === null){
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    }
+    if(t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  }catch(e){}
+</script>
+<style>
+  :root{
+    --bg:#14141C; --surface:#1E1E2A; --surface-2:#262635; --ink:#F5F5FA;
+    --grey:#9C9AB5; --grey-light:#6E6C87; --line:#33333D; --accent:#3B82F6;
+    --good:#22C55E; --bad:#F87171; --warn:#FBBF24;
+    color-scheme:dark;
+  }
+  :root[data-theme="light"]{
+    --bg:#F7F7FA; --surface:#FFFFFF; --surface-2:#F0F0F5; --ink:#14141C;
+    --grey:#6B6B85; --grey-light:#9C9AB5; --line:#E1E1E8;
+    --good:#16A34A; --bad:#DC2626; --warn:#B45309;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--ink);}
+  body{
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size:15px; line-height:1.45;
+    padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 32px);
+  }
+  .wrap{max-width:560px; margin:0 auto;}
+  h1{font-size:20px; margin:0 0 2px;}
+  .sub{color:var(--grey); font-size:13px; margin:0 0 14px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px;}
+  .row{display:flex; gap:10px; align-items:center;}
+  .row > *{flex:1;}
+  .muted{color:var(--grey); font-size:13px;}
+  .tiny{color:var(--grey-light); font-size:12px;}
+  button{
+    font:inherit; color:var(--ink); background:var(--surface-2); border:1px solid var(--line);
+    border-radius:10px; padding:10px 12px; cursor:pointer;
+  }
+  button:active{transform:scale(0.98);}
+  button:disabled{opacity:0.45;}
+  .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+  .seg{display:flex; background:var(--surface-2); border-radius:10px; padding:3px; margin-bottom:14px;}
+  .seg button{flex:1; border:none; background:transparent; padding:8px; color:var(--grey);}
+  .seg button.on{background:var(--surface); color:var(--ink); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,0.25);}
+  .pill{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px;
+    border-radius:999px; background:var(--surface-2); border:1px solid var(--line); color:var(--grey); cursor:pointer;
+  }
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--grey-light);}
+  .dot.ok{background:var(--good);} .dot.bad{background:var(--bad);} .dot.wait{background:var(--warn);}
+  label.f{display:block; font-size:12px; color:var(--grey); margin-bottom:4px;}
+  select, input[type=number]{
+    width:100%; font:inherit; color:var(--ink); background:var(--surface-2);
+    border:1px solid var(--line); border-radius:10px; padding:9px 10px;
+  }
+
+  /* Live camera */
+  .cam{position:relative; width:100%; aspect-ratio:3/4; background:#000; border-radius:14px; overflow:hidden;}
+  .cam video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .guide{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    border-radius:50%; border:2px solid rgba(255,255,255,0.85);
+    box-shadow:0 0 0 2000px rgba(0,0,0,0.45); pointer-events:none;
+  }
+  .guide::before{ /* 12 o'clock hint */
+    content:"12"; position:absolute; left:50%; top:-26px; transform:translateX(-50%);
+    color:#fff; font-size:12px; font-weight:700; letter-spacing:0.5px;
+  }
+  .guide::after{ /* center cross */
+    content:""; position:absolute; left:50%; top:50%; width:14px; height:14px; transform:translate(-50%,-50%);
+    background:
+      linear-gradient(#fff,#fff) center/100% 1.5px no-repeat,
+      linear-gradient(#fff,#fff) center/1.5px 100% no-repeat;
+    opacity:0.8;
+  }
+  .cam-hint{position:absolute; left:0; right:0; bottom:10px; text-align:center; color:#fff; font-size:12px; text-shadow:0 1px 3px #000; pointer-events:none;}
+  .shutter{
+    display:block; margin:14px auto 4px; width:72px; height:72px; border-radius:50%;
+    background:#fff; border:5px solid var(--accent); padding:0;
+  }
+  .zoomrow{margin-top:10px;}
+  .zoomrow input{width:100%;}
+
+  /* Alignment */
+  .stage{position:relative; width:100%;}
+  #alignCanvas{display:block; width:100%; aspect-ratio:1/1; border-radius:12px; touch-action:none; background:#000;}
+  #loupe{
+    position:absolute; top:8px; left:8px; width:150px; height:150px; border-radius:50%;
+    border:2px solid #fff; box-shadow:0 2px 12px rgba(0,0,0,0.6); display:none; pointer-events:none; background:#000;
+  }
+  .steps{display:flex; gap:6px; margin-bottom:8px;}
+  .steps span{flex:1; height:4px; border-radius:2px; background:var(--line);}
+  .steps span.done{background:var(--accent);}
+  .instr{font-weight:600; margin-bottom:10px; min-height:42px;}
+  .nudge{display:flex; gap:6px; align-items:center; margin-top:10px;}
+  .nudge button{flex:0 0 44px; padding:8px 0;}
+  .nudge .who{flex:1; font-size:13px; color:var(--grey);}
+
+  .result-big{font-size:34px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-0.5px;}
+  .ahead{color:var(--good);} .behind{color:var(--bad);}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; margin-top:8px;}
+  .kv div:nth-child(odd){color:var(--grey);}
+  .kv div:nth-child(even){font-variant-numeric:tabular-nums;}
+  .warnbox{margin-top:10px; font-size:13px; color:var(--warn);}
+
+  .log-item{display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--line); font-size:13px;}
+  .log-item:first-child{border-top:none;}
+  .log-item b{font-variant-numeric:tabular-nums;}
+  .x{background:none; border:none; color:var(--grey-light); padding:0 4px;}
+
+  /* Test target */
+  #targetCanvas{display:block; width:100%; max-width:520px; margin:0 auto; aspect-ratio:1/1;}
+  .target-digital{text-align:center; font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:8px;}
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Photo reading · test</h1>
+  <p class="sub">Test page only. Nothing here is saved to your account.</p>
+
+  <div class="row" style="margin-bottom:12px;">
+    <div><span class="pill" id="syncPill" title="Tap to resync"><span class="dot wait" id="syncDot"></span><span id="syncText">syncing time…</span></span></div>
+  </div>
+
+  <div class="seg">
+    <button type="button" id="tabMeasure" class="on">Measure</button>
+    <button type="button" id="tabTarget">Test target</button>
+  </div>
+
+  <!-- ============ MEASURE ============ -->
+  <section id="measureView">
+
+    <!-- idle -->
+    <div id="idleBox" class="card">
+      <p style="margin-top:0">Take a photo of the dial and line up the seconds hand. The photo's exact moment is compared with the synced reference time.</p>
+      <div class="row" style="margin-bottom:12px;">
+        <div>
+          <label class="f" for="beatSel">Beat rate</label>
+          <select id="beatSel">
+            <option value="0">Sweep / unknown</option>
+            <option value="1">Quartz (1 step/s)</option>
+            <option value="5">18,000 bph</option>
+            <option value="6">21,600 bph</option>
+            <option value="7">25,200 bph</option>
+            <option value="8" selected>28,800 bph</option>
+            <option value="10">36,000 bph</option>
+          </select>
+        </div>
+        <div>
+          <label class="f" for="latencyInput">Camera delay correction (ms)</label>
+          <input type="number" id="latencyInput" inputmode="numeric" step="1" value="0">
+        </div>
+      </div>
+      <button type="button" class="btn-primary" id="startCamBtn" style="width:100%">Open camera</button>
+      <p class="tiny" id="desktopHint" style="margin-bottom:0"></p>
+      <p class="bad tiny" id="camError" style="color:var(--bad); margin-bottom:0"></p>
+    </div>
+
+    <!-- live -->
+    <div id="liveBox" class="card hidden">
+      <div class="cam" id="camBox">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="guide" id="guide"></div>
+        <div class="cam-hint">Fill the circle with the dial · 12 at the top · hold the phone flat over it</div>
+      </div>
+      <div class="zoomrow hidden" id="zoomRow">
+        <label class="f" for="zoomSlider">Camera zoom</label>
+        <input type="range" id="zoomSlider">
+      </div>
+      <button type="button" class="shutter" id="shutterBtn" aria-label="Capture"></button>
+      <div class="row">
+        <button type="button" id="cancelCamBtn">Cancel</button>
+      </div>
+      <p class="tiny" id="camDiag" style="margin-bottom:0"></p>
+    </div>
+
+    <!-- align -->
+    <div id="alignBox" class="card hidden">
+      <div class="steps" id="stepBar"><span></span><span></span><span></span><span></span></div>
+      <div class="instr" id="instr"></div>
+      <div class="stage">
+        <canvas id="alignCanvas"></canvas>
+        <canvas id="loupe"></canvas>
+      </div>
+      <div class="nudge" id="nudgeRow">
+        <span class="who" id="nudgeWho">Fine-tune</span>
+        <button type="button" data-nx="-1" data-ny="0" aria-label="Left">◀</button>
+        <button type="button" data-nx="0" data-ny="-1" aria-label="Up">▲</button>
+        <button type="button" data-nx="0" data-ny="1" aria-label="Down">▼</button>
+        <button type="button" data-nx="1" data-ny="0" aria-label="Right">▶</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button type="button" id="undoBtn">Undo point</button>
+        <button type="button" id="retakeBtn">Retake</button>
+      </div>
+
+      <div id="resultBox" class="hidden" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+        <div class="muted">Watch vs reference</div>
+        <div class="result-big" id="resOffset">–</div>
+        <div class="row" style="margin-top:8px;">
+          <button type="button" id="minMinus">−1 min</button>
+          <button type="button" id="minPlus">+1 min</button>
+        </div>
+        <div class="tiny" style="margin-top:4px;">Use these only if the watch's minute hand is off by a whole minute or more.</div>
+        <div class="kv" id="resDetails"></div>
+        <div class="warnbox hidden" id="resWarn"></div>
+        <div class="row" style="margin-top:12px;">
+          <button type="button" class="btn-primary" id="logBtn">Log reading</button>
+        </div>
+        <button type="button" id="calibBtn" style="width:100%; margin-top:8px;">This was a photo of the test target: set delay correction from it</button>
+      </div>
+    </div>
+
+    <!-- log -->
+    <div class="card">
+      <div class="row" style="margin-bottom:6px;">
+        <strong>Test log</strong>
+        <div style="text-align:right; flex:0 0 auto;">
+          <button type="button" id="copyBtn" style="padding:6px 10px; font-size:13px;">Copy CSV</button>
+          <button type="button" id="clearBtn" style="padding:6px 10px; font-size:13px;">Clear</button>
+        </div>
+      </div>
+      <div id="logList" class="muted">No readings yet.</div>
+    </div>
+  </section>
+
+  <!-- ============ TEST TARGET ============ -->
+  <section id="targetView" class="hidden">
+    <div class="card">
+      <canvas id="targetCanvas"></canvas>
+      <div class="target-digital" id="targetDigital">--:--:--.---</div>
+      <p class="muted" style="margin-bottom:0">Open this tab on a computer screen, then photograph it with your phone using <b>Measure</b>. The reading should come out close to 0.00 s. Whatever is left over is mostly camera delay (plus a little screen delay), and the button under the result turns it into a correction.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ---------- small helpers ----------
+const $ = id => document.getElementById(id);
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+function store(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function load(key, def){ try{ const v = localStorage.getItem(key); return v === null ? def : JSON.parse(v); }catch(e){ return def; } }
+function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function fmtClock(ms){
+  const d = new Date(ms);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+function fmtOffset(s){
+  const sign = s > 0 ? '+' : (s < 0 ? '−' : '±');
+  return `${sign}${Math.abs(s).toFixed(2)} s`;
+}
+
+// ---------- reference time ----------
+// Same source as the app's clock (timeapi.io), but several samples, keeping
+// the one with the shortest round trip — the error bound is half of it.
+// Tied to performance.now() rather than Date.now(): it's the same clock the
+// camera frame timestamps use, and it has sub-millisecond resolution.
+const T = { perfOffset: performance.timeOrigin || (Date.now() - performance.now()), err: null, status: 'pending' };
+function refNow(){ return performance.now() + T.perfOffset; }
+
+async function syncOnce(){
+  const t0 = performance.now();
+  const res = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Etc/UTC', { cache: 'no-store' });
+  const t1 = performance.now();
+  if(!res.ok) throw new Error('bad response');
+  const d = await res.json();
+  const serverMs = Date.UTC(d.year, d.month - 1, d.day, d.hour, d.minute, d.seconds, d.milliSeconds || 0);
+  if(isNaN(serverMs)) throw new Error('bad datetime');
+  const rtt = t1 - t0;
+  return { rtt, offset: serverMs + rtt / 2 - t1 };
+}
+async function syncTime(){
+  T.status = 'pending'; renderSync();
+  const samples = [];
+  for(let i = 0; i < 5; i++){
+    try{ samples.push(await syncOnce()); }catch(e){}
+    await new Promise(r => setTimeout(r, 150));
+  }
+  if(samples.length){
+    samples.sort((a, b) => a.rtt - b.rtt);
+    T.perfOffset = samples[0].offset;
+    T.err = samples[0].rtt / 2 + 1; // +1 ms: server reports whole milliseconds
+    T.status = 'synced';
+  }else{
+    T.perfOffset = Date.now() - performance.now();
+    T.err = null;
+    T.status = 'failed';
+  }
+  renderSync();
+}
+function renderSync(){
+  const dot = $('syncDot'), txt = $('syncText');
+  dot.className = 'dot ' + (T.status === 'synced' ? 'ok' : T.status === 'failed' ? 'bad' : 'wait');
+  txt.textContent = T.status === 'synced' ? `atomic time synced · ±${Math.round(T.err)} ms`
+    : T.status === 'failed' ? 'sync failed: using phone clock (tap to retry)'
+    : 'syncing time…';
+}
+$('syncPill').onclick = syncTime;
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') syncTime(); });
+
+// ---------- settings ----------
+const beatSel = $('beatSel'), latencyInput = $('latencyInput');
+beatSel.value = String(load('tk-photo-beat', 8));
+latencyInput.value = String(load('tk-photo-latency', 0));
+beatSel.onchange = () => { store('tk-photo-beat', Number(beatSel.value)); updateResult(); };
+latencyInput.onchange = () => { store('tk-photo-latency', Number(latencyInput.value) || 0); };
+const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+if(!coarsePointer) $('desktopHint').textContent = 'On a computer? Photo readings need a phone camera. You can open "Test target" here and photograph the screen with your phone.';
+
+// ---------- views ----------
+function show(id){ ['idleBox', 'liveBox', 'alignBox'].forEach(b => $(b).classList.toggle('hidden', b !== id)); }
+$('tabMeasure').onclick = () => setTab('measure');
+$('tabTarget').onclick = () => setTab('target');
+function setTab(t){
+  $('tabMeasure').classList.toggle('on', t === 'measure');
+  $('tabTarget').classList.toggle('on', t === 'target');
+  $('measureView').classList.toggle('hidden', t !== 'measure');
+  $('targetView').classList.toggle('hidden', t !== 'target');
+  if(t === 'target') startTarget(); else stopTarget();
+}
+
+// ---------- camera ----------
+const video = $('video');
+const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+const C = { stream: null, track: null, pending: false, fallbackTimer: null };
+
+async function startCamera(){
+  $('camError').textContent = '';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $('camError').textContent = 'Camera not available here (the page must be opened over https).';
+    return;
+  }
+  try{
+    C.stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+  }catch(e){
+    $('camError').textContent = e && e.name === 'NotAllowedError'
+      ? 'Camera permission was denied. Allow it in the browser settings and try again.'
+      : 'Could not open the camera: ' + (e && e.message ? e.message : e);
+    return;
+  }
+  C.track = C.stream.getVideoTracks()[0];
+  video.srcObject = C.stream;
+  show('liveBox');
+  try{ await video.play(); }catch(e){}
+  sizeGuide();
+
+  // Optional extras where the browser supports them (mostly Android Chrome).
+  let caps = {};
+  try{ caps = C.track.getCapabilities ? C.track.getCapabilities() : {}; }catch(e){}
+  if(caps.focusMode && caps.focusMode.includes('continuous')){
+    try{ await C.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); }catch(e){}
+  }
+  if(caps.zoom){
+    const z = $('zoomSlider');
+    z.min = caps.zoom.min; z.max = caps.zoom.max; z.step = caps.zoom.step || 0.1;
+    z.value = (C.track.getSettings().zoom) || caps.zoom.min;
+    z.oninput = () => { C.track.applyConstraints({ advanced: [{ zoom: Number(z.value) }] }).catch(() => {}); };
+    $('zoomRow').classList.remove('hidden');
+  }else{
+    $('zoomRow').classList.add('hidden');
+  }
+
+  const s = C.track.getSettings ? C.track.getSettings() : {};
+  $('camDiag').textContent = `camera ${video.videoWidth || s.width || '?'}×${video.videoHeight || s.height || '?'}`
+    + ` · frame timing ${hasRVFC ? 'per-frame' : 'basic (less precise)'}`;
+
+  if(hasRVFC) video.requestVideoFrameCallback(onFrame);
+}
+function stopCamera(){
+  if(C.stream) C.stream.getTracks().forEach(t => t.stop());
+  C.stream = null; C.track = null; C.pending = false;
+  video.srcObject = null;
+}
+function sizeGuide(){
+  const box = $('camBox').getBoundingClientRect();
+  const d = Math.min(box.width, box.height) * 0.84;
+  const g = $('guide');
+  g.style.width = d + 'px'; g.style.height = d + 'px';
+}
+window.addEventListener('resize', () => { if(C.stream) sizeGuide(); });
+
+function onFrame(now, meta){
+  if(!C.stream) return;
+  if(C.pending){
+    C.pending = false;
+    clearTimeout(C.fallbackTimer);
+    grabFrame(now, meta);
+    return;
+  }
+  video.requestVideoFrameCallback(onFrame);
+}
+$('shutterBtn').onclick = () => {
+  if(!video.videoWidth) return;
+  if(hasRVFC){
+    C.pending = true;
+    // If no new frame arrives shortly, grab what's on screen.
+    C.fallbackTimer = setTimeout(() => { if(C.pending){ C.pending = false; grabFrame(performance.now(), null); } }, 400);
+  }else{
+    grabFrame(performance.now(), null);
+  }
+};
+$('startCamBtn').onclick = startCamera;
+$('cancelCamBtn').onclick = () => { stopCamera(); show('idleBox'); };
+
+// ---------- capture ----------
+const A = { crop: null, size: 0, refMs: 0, source: '', pts: [], step: 0, sel: -1, minuteAdj: 0, drag: null };
+const PT_NAMES = ['center', '12 marker', '3 marker', 'hand tip'];
+
+function grabFrame(now, meta){
+  // Best available moment the frame was actually taken, on the performance.now() clock.
+  let t = now, source = 'screen time (approx.)';
+  if(meta && typeof meta.captureTime === 'number' && meta.captureTime <= now + 5 && now - meta.captureTime < 1000){
+    t = meta.captureTime; source = 'camera capture time';
+  }else if(meta && typeof meta.presentationTime === 'number' && Math.abs(now - meta.presentationTime) < 1000){
+    t = meta.presentationTime; source = 'frame arrival time';
+  }
+  const latency = Number(latencyInput.value) || 0;
+  const refMs = t + T.perfOffset - latency;
+
+  // Crop the square around the on-screen guide circle.
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const box = video.getBoundingClientRect();
+  const scale = Math.max(box.width / vw, box.height / vh); // object-fit: cover
+  const guideR = Math.min(box.width, box.height) * 0.42;
+  const side = Math.min(vw, vh, (guideR / scale) * 2 * 1.12);
+  const sx = (vw - side) / 2, sy = (vh - side) / 2;
+  const out = Math.round(Math.min(side, 1600));
+  const cv = document.createElement('canvas');
+  cv.width = out; cv.height = out;
+  cv.getContext('2d').drawImage(video, sx, sy, side, side, 0, 0, out, out);
+
+  stopCamera();
+  Object.assign(A, { crop: cv, size: out, refMs, source, latency, pts: [], step: 0, sel: -1, minuteAdj: 0, drag: null,
+    syncErr: T.err, syncStatus: T.status });
+  show('alignBox');
+  requestAnimationFrame(() => { sizeAlignCanvas(); renderAlign(); });
+}
+$('retakeBtn').onclick = () => { show('idleBox'); startCamera(); };
+
+// ---------- dial geometry ----------
+// Center, 12 and 3 define the dial's axes directly in the photo. That
+// corrects rotation and most of the tilt (the dial shows up as an ellipse,
+// and these two axes are what describe it), so the hand angle is measured
+// in the dial's own frame rather than on screen.
+function handSeconds(p){
+  const [c, t, r, h] = p;
+  const ux = t.x - c.x, uy = t.y - c.y, vx = r.x - c.x, vy = r.y - c.y;
+  const dx = h.x - c.x, dy = h.y - c.y;
+  const det = ux * vy - vx * uy;
+  if(Math.abs(det) < 1e-6) return null;
+  const a = (dx * vy - vx * dy) / det;   // along 12
+  const b = (ux * dy - dx * uy) / det;   // along 3
+  let th = Math.atan2(b, a);
+  if(th < 0) th += 2 * Math.PI;
+  return th * 60 / (2 * Math.PI);
+}
+function dialPoint(p, secs, k){
+  const [c, t, r] = p;
+  const th = secs / 60 * 2 * Math.PI;
+  return { x: c.x + ((t.x - c.x) * Math.cos(th) + (r.x - c.x) * Math.sin(th)) * k,
+           y: c.y + ((t.y - c.y) * Math.cos(th) + (r.y - c.y) * Math.sin(th)) * k };
+}
+function tiltCheck(p){
+  const [c, t, r] = p;
+  const ux = t.x - c.x, uy = t.y - c.y, vx = r.x - c.x, vy = r.y - c.y;
+  const lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy);
+  const ratio = Math.min(lu, lv) / Math.max(lu, lv);
+  const angle = Math.abs(Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / (lu * lv)))) * 180 / Math.PI);
+  return { ratio, angle };
+}
+
+// ---------- alignment drawing ----------
+const alignCanvas = $('alignCanvas'), loupe = $('loupe');
+const dpr = () => Math.max(1, window.devicePixelRatio || 1);
+
+function sizeAlignCanvas(){
+  const w = alignCanvas.getBoundingClientRect().width;
+  alignCanvas.width = Math.round(w * dpr());
+  alignCanvas.height = alignCanvas.width;
+  const lw = 150 * dpr();
+  loupe.width = lw; loupe.height = lw;
+}
+window.addEventListener('resize', () => { if(A.crop && !$('alignBox').classList.contains('hidden')){ sizeAlignCanvas(); renderAlign(); } });
+
+// Draws the photo plus overlays into ctx; s/ox/oy map crop pixels to canvas pixels.
+function drawScene(ctx, s, ox, oy){
+  const W = ctx.canvas.width, H = ctx.canvas.height, D = dpr();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.setTransform(s, 0, 0, s, ox, oy);
+  ctx.drawImage(A.crop, 0, 0);
+  const px = n => n * D / s; // screen-pixel widths in crop units
+  const p = A.pts;
+  const accent = css('--accent') || '#3B82F6';
+
+  function line(a, b, color, w, dash){
+    ctx.setLineDash(dash ? dash.map(px) : []);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = px(w + 2);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = px(w);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Projected minute ring: should sit on the dial's own markers when 12/3 are right.
+  if(p.length >= 3){
+    for(let i = 0; i < 60; i++){
+      const major = i % 5 === 0;
+      line(dialPoint(p, i, major ? 0.86 : 0.93), dialPoint(p, i, 1.0), 'rgba(59,130,246,0.9)', major ? 1.6 : 1);
+    }
+  }
+  if(p.length >= 2) line(p[0], p[1], accent, 1.2, [4, 4]);
+  if(p.length >= 3) line(p[0], p[2], accent, 1.2, [4, 4]);
+  if(p.length >= 4){
+    const sec = handSeconds(p);
+    if(sec !== null) line(p[0], dialPoint(p, sec, 1.12), '#FBBF24', 1.4);
+  }
+  // Points
+  p.forEach((pt, i) => {
+    const r = px(i === A.sel ? 9 : 7);
+    const col = i === 3 ? '#FBBF24' : (i === 0 ? '#FFFFFF' : accent);
+    ctx.lineWidth = px(3); ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = px(i === A.sel ? 2 : 1.4); ctx.strokeStyle = col;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = px(1);
+    ctx.beginPath();
+    ctx.moveTo(pt.x - r * 0.6, pt.y); ctx.lineTo(pt.x + r * 0.6, pt.y);
+    ctx.moveTo(pt.x, pt.y - r * 0.6); ctx.lineTo(pt.x, pt.y + r * 0.6);
+    ctx.stroke();
+  });
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+function renderAlign(){
+  if(!A.crop) return;
+  const s = alignCanvas.width / A.size;
+  drawScene(alignCanvas.getContext('2d'), s, 0, 0);
+
+  const steps = $('stepBar').children;
+  for(let i = 0; i < 4; i++) steps[i].classList.toggle('done', i < A.pts.length);
+  const instr = [
+    'Tap the center of the seconds hand (its pivot).',
+    'Tap the 12 o\'clock marker. On a small-seconds subdial, tap its 60 mark.',
+    'Tap the 3 o\'clock marker. On a small-seconds subdial, tap its 15 mark.',
+    'Tap the tip of the seconds hand.',
+    'Check that the blue ring sits on the dial\'s markers. Drag any point to fine-tune.'
+  ];
+  $('instr').textContent = `${Math.min(A.pts.length + 1, 4)}/4 · ` + instr[A.pts.length];
+  if(A.pts.length === 4) $('instr').textContent = instr[4];
+  $('undoBtn').disabled = A.pts.length === 0;
+  $('nudgeRow').classList.toggle('hidden', A.sel < 0);
+  if(A.sel >= 0) $('nudgeWho').textContent = 'Fine-tune: ' + PT_NAMES[A.sel];
+  updateResult();
+}
+
+function renderLoupe(pt){
+  const cssScale = alignCanvas.getBoundingClientRect().width / A.size; // css px per crop px
+  const L = 150 / (cssScale * 4);                                     // crop px visible in loupe (4× zoom)
+  const s = loupe.width / L;
+  drawScene(loupe.getContext('2d'), s, loupe.width / 2 - pt.x * s, loupe.height / 2 - pt.y * s);
+  // Keep the loupe away from the finger.
+  const rel = pt.x / A.size;
+  loupe.style.left = rel < 0.5 ? 'auto' : '8px';
+  loupe.style.right = rel < 0.5 ? '8px' : 'auto';
+  loupe.style.top = pt.y / A.size < 0.35 ? 'auto' : '8px';
+  loupe.style.bottom = pt.y / A.size < 0.35 ? '8px' : 'auto';
+  loupe.style.display = 'block';
+}
+
+// ---------- alignment input ----------
+// Tap places the next point. Dragging moves a point at reduced speed
+// (relative to the finger, not under it) so it stays visible and can be
+// placed precisely; the loupe shows it magnified meanwhile.
+const DRAG_GAIN = 0.35;
+function toCrop(e){
+  const r = alignCanvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * A.size / r.width, y: (e.clientY - r.top) * A.size / r.height, cssPerCrop: r.width / A.size };
+}
+alignCanvas.addEventListener('pointerdown', e => {
+  if(!A.crop) return;
+  e.preventDefault();
+  alignCanvas.setPointerCapture(e.pointerId);
+  const q = toCrop(e);
+  let idx = -1, best = 30 / q.cssPerCrop; // 30 css px hit radius
+  A.pts.forEach((pt, i) => { const d = Math.hypot(pt.x - q.x, pt.y - q.y); if(d < best){ best = d; idx = i; } });
+  if(idx < 0){
+    if(A.pts.length >= 4) return;
+    A.pts.push({ x: q.x, y: q.y });
+    idx = A.pts.length - 1;
+  }
+  A.sel = idx;
+  A.drag = { id: e.pointerId, lastX: e.clientX, lastY: e.clientY };
+  renderAlign(); renderLoupe(A.pts[idx]);
+});
+alignCanvas.addEventListener('pointermove', e => {
+  if(!A.drag || e.pointerId !== A.drag.id) return;
+  const q = toCrop(e);
+  const pt = A.pts[A.sel];
+  pt.x += (e.clientX - A.drag.lastX) * DRAG_GAIN / q.cssPerCrop;
+  pt.y += (e.clientY - A.drag.lastY) * DRAG_GAIN / q.cssPerCrop;
+  pt.x = Math.max(0, Math.min(A.size, pt.x)); pt.y = Math.max(0, Math.min(A.size, pt.y));
+  A.drag.lastX = e.clientX; A.drag.lastY = e.clientY;
+  renderAlign(); renderLoupe(pt);
+});
+function endDrag(e){
+  if(!A.drag || e.pointerId !== A.drag.id) return;
+  A.drag = null; loupe.style.display = 'none';
+}
+alignCanvas.addEventListener('pointerup', endDrag);
+alignCanvas.addEventListener('pointercancel', endDrag);
+
+document.querySelectorAll('[data-nx]').forEach(b => b.onclick = () => {
+  if(A.sel < 0) return;
+  const pt = A.pts[A.sel];
+  pt.x += Number(b.dataset.nx) * 0.5; pt.y += Number(b.dataset.ny) * 0.5;
+  renderAlign();
+});
+$('undoBtn').onclick = () => { A.pts.pop(); A.sel = A.pts.length - 1; renderAlign(); };
+$('minMinus').onclick = () => { A.minuteAdj--; updateResult(); };
+$('minPlus').onclick = () => { A.minuteAdj++; updateResult(); };
+
+// ---------- result ----------
+function computeResult(){
+  if(A.pts.length < 4) return null;
+  const watchSec = handSeconds(A.pts);
+  if(watchSec === null) return null;
+  const refSec = ((A.refMs / 1000) % 60 + 60) % 60;
+  let off = watchSec - refSec;
+  off = ((off + 30) % 60 + 60) % 60 - 30; // nearest: −30 … +30 s
+  off += A.minuteAdj * 60;
+  return { watchSec, refSec, offset: off };
+}
+function updateResult(){
+  const res = computeResult();
+  $('resultBox').classList.toggle('hidden', !res);
+  if(!res) return;
+  const el = $('resOffset');
+  el.textContent = fmtOffset(res.offset) + (Math.abs(res.offset) < 0.005 ? '' : res.offset > 0 ? ' ahead' : ' behind');
+  el.className = 'result-big ' + (res.offset >= 0 ? 'ahead' : 'behind');
+
+  const steps = Number(beatSel.value);
+  const rows = [
+    ['Photo taken at', fmtClock(A.refMs) + ' (reference)'],
+    ['Seconds hand at', res.watchSec.toFixed(2) + ' s'],
+    ['Reference seconds', res.refSec.toFixed(2) + ' s'],
+    ['Photo timing', A.source + (A.latency ? ` · −${A.latency} ms correction` : '')],
+    ['Time sync', A.syncStatus === 'synced' ? `±${Math.round(A.syncErr)} ms` : 'not synced (phone clock)'],
+  ];
+  if(steps > 0) rows.push(['Hand steps', `every ${(1 / steps).toFixed(3)} s → single photo ±${(0.5 / steps).toFixed(2)} s at best`]);
+  $('resDetails').innerHTML = rows.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('');
+
+  const warn = [];
+  const tc = tiltCheck(A.pts);
+  if(tc.ratio < 0.8 || Math.abs(tc.angle - 90) > 15) warn.push('The photo looks quite tilted. It\'s corrected for, but a flatter photo is more accurate.');
+  if(A.syncStatus !== 'synced') warn.push('Time wasn\'t synced, so this compares against the phone\'s own clock.');
+  if(A.source !== 'camera capture time' && !A.latency) warn.push('This browser doesn\'t report the exact capture moment. Calibrate the camera delay with the test target for best accuracy.');
+  $('resWarn').innerHTML = warn.join('<br>');
+  $('resWarn').classList.toggle('hidden', !warn.length);
+}
+
+$('calibBtn').onclick = () => {
+  const res = computeResult();
+  if(!res) return;
+  // A target photo should read 0. If it reads −0.08 s, our timestamp is 80 ms late.
+  const newLatency = Math.round((Number(A.latency) || 0) - res.offset * 1000);
+  latencyInput.value = String(newLatency);
+  store('tk-photo-latency', newLatency);
+  $('calibBtn').textContent = `Delay correction set to ${newLatency} ms`;
+  setTimeout(() => { $('calibBtn').textContent = 'This was a photo of the test target: set delay correction from it'; }, 3000);
+};
+
+// ---------- test log ----------
+let log = load('tk-photo-log', []);
+function renderLog(){
+  const el = $('logList');
+  if(!log.length){ el.className = 'muted'; el.textContent = 'No readings yet.'; return; }
+  el.className = '';
+  el.innerHTML = log.slice().reverse().map((r, i) => {
+    const idx = log.length - 1 - i;
+    const d = new Date(r.refMs);
+    const cls = r.offset >= 0 ? 'ahead' : 'behind';
+    return `<div class="log-item"><span>${d.toLocaleDateString()} ${fmtClock(r.refMs)}<br><span class="tiny">${r.source} · ${r.sync}</span></span>
+      <span style="text-align:right"><b class="${cls}">${fmtOffset(r.offset)}</b><br><button type="button" class="x" data-del="${idx}">remove</button></span></div>`;
+  }).join('');
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { log.splice(Number(b.dataset.del), 1); store('tk-photo-log', log); renderLog(); });
+}
+$('logBtn').onclick = () => {
+  const res = computeResult();
+  if(!res) return;
+  log.push({
+    refMs: Math.round(A.refMs), offset: Number(res.offset.toFixed(3)),
+    watchSec: Number(res.watchSec.toFixed(3)), refSec: Number(res.refSec.toFixed(3)),
+    source: A.source, latency: A.latency, sync: A.syncStatus === 'synced' ? `±${Math.round(A.syncErr)} ms` : 'unsynced',
+    beat: Number(beatSel.value)
+  });
+  store('tk-photo-log', log);
+  renderLog();
+  A.crop = null;
+  show('idleBox');
+};
+$('clearBtn').onclick = () => { log = []; store('tk-photo-log', log); renderLog(); };
+$('copyBtn').onclick = async () => {
+  const lines = ['time_iso,offset_s,watch_s,ref_s,timing,latency_ms,sync,steps_per_s'];
+  log.forEach(r => lines.push([new Date(r.refMs).toISOString(), r.offset, r.watchSec, r.refSec, `"${r.source}"`, r.latency, `"${r.sync}"`, r.beat].join(',')));
+  const text = lines.join('\n');
+  try{ await navigator.clipboard.writeText(text); $('copyBtn').textContent = 'Copied'; }
+  catch(e){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); $('copyBtn').textContent = 'Copied'; }catch(e2){}
+    ta.remove();
+  }
+  setTimeout(() => { $('copyBtn').textContent = 'Copy CSV'; }, 1500);
+};
+
+// ---------- test target ----------
+// A clean dial driven by the synced reference time, with a smoothly
+// sweeping seconds hand — photograph it to check the whole pipeline.
+let targetRaf = null;
+function startTarget(){
+  const cv = $('targetCanvas');
+  const size = Math.round(cv.getBoundingClientRect().width * dpr());
+  cv.width = size; cv.height = size;
+  cancelAnimationFrame(targetRaf);
+  const draw = () => {
+    // Draw for the moment this frame is likely to be on screen (about one frame ahead).
+    drawTarget(cv, refNow() + 16);
+    $('targetDigital').textContent = fmtClock(refNow());
+    targetRaf = requestAnimationFrame(draw);
+  };
+  draw();
+}
+function stopTarget(){ cancelAnimationFrame(targetRaf); targetRaf = null; }
+function drawTarget(cv, ms){
+  const ctx = cv.getContext('2d'), S = cv.width, cx = S / 2, R = S * 0.46;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, S, S);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.arc(cx, cx, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#222'; ctx.lineWidth = S * 0.006; ctx.stroke();
+  for(let i = 0; i < 60; i++){
+    const a = i / 60 * Math.PI * 2, major = i % 5 === 0, key = i % 15 === 0;
+    const r1 = R * (key ? 0.80 : major ? 0.86 : 0.92), r2 = R * 0.97;
+    ctx.strokeStyle = '#111'; ctx.lineWidth = S * (key ? 0.012 : major ? 0.007 : 0.003);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.sin(a) * r1, cx - Math.cos(a) * r1);
+    ctx.lineTo(cx + Math.sin(a) * r2, cx - Math.cos(a) * r2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#111'; ctx.font = `600 ${S * 0.06}px -apple-system, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  [['12', 0], ['3', 15], ['6', 30], ['9', 45]].forEach(([t, s]) => {
+    const a = s / 60 * Math.PI * 2;
+    ctx.fillText(t, cx + Math.sin(a) * R * 0.68, cx - Math.cos(a) * R * 0.68);
+  });
+  const d = new Date(ms);
+  const sec = d.getSeconds() + d.getMilliseconds() / 1000;
+  const min = d.getMinutes() + sec / 60;
+  const hr = (d.getHours() % 12) + min / 60;
+  function hand(frac, len, width, color, tail){
+    const a = frac * Math.PI * 2;
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.sin(a) * tail, cx + Math.cos(a) * tail);
+    ctx.lineTo(cx + Math.sin(a) * len, cx - Math.cos(a) * len);
+    ctx.stroke();
+  }
+  hand(hr / 12, R * 0.5, S * 0.022, '#111', 0);
+  hand(min / 60, R * 0.75, S * 0.014, '#111', 0);
+  hand(sec / 60, R * 0.95, S * 0.004, '#D11A1A', R * 0.18);
+  ctx.fillStyle = '#D11A1A';
+  ctx.beginPath(); ctx.arc(cx, cx, S * 0.014, 0, Math.PI * 2); ctx.fill();
+}
+
+// ---------- go ----------
+renderLog();
+syncTime();
+})();
+</script>
+</body>
+</html>
